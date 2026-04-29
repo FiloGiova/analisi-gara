@@ -1,0 +1,18 @@
+[Unit]
+Description=Webapp Rapporti Arbitrali
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/volume1/webapps/rapporti-arbitrali
+ExecStart=/usr/bin/node /volume1/webapps/rapporti-arbitrali/server.js
+Restart=always
+RestartSec=5
+Environment=PORT=3000
+Environment=HOST=0.0.0.0
+Environment=STORAGE_DIR=/volume1/rapporti-arbitrali
+Environment=NODE_ENV=production
+Environment=COOKIE_SECURE=false
+
+[Install]
+WantedBy=multi-user.target
