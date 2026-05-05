@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { EVALUATION_SECTIONS, POTENTIAL_OPTIONS, getRefereeLabel } from '../../../shared/reportTemplate.js';
 import SegmentedChoice from './SegmentedChoice.jsx';
-import { Field, TextArea } from './Field.jsx';
+import { Field, TextArea, TextInput } from './Field.jsx';
+import ConfirmModal from './ConfirmModal.jsx';
 
 function groupTechniqueItems(groups) {
   return groups.reduce((acc, group) => {
@@ -57,25 +57,16 @@ function RatingCard({ group, value, onChange }) {
 }
 
 function CopyConfirmModal({ fromRole, onConfirm, onCancel }) {
-  return createPortal(
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-        <h3>Copia valutazione</h3>
-        <p>
-          Stai per copiare la valutazione del <strong>{getRefereeLabel(fromRole)}</strong> su questa scheda.
-          {' '}<strong>Le modifiche non salvate andranno perse.</strong> Vuoi continuare?
-        </p>
-        <div className="modal-actions">
-          <button type="button" className="ghost-button" onClick={onCancel}>
-            Annulla
-          </button>
-          <button type="button" className="danger-button" onClick={onConfirm}>
-            Sì, copia
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+  return (
+    <ConfirmModal
+      title="Copia valutazione"
+      confirmLabel="Sì, copia"
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      Stai per copiare la valutazione del <strong>{getRefereeLabel(fromRole)}</strong> su questa scheda.
+      {' '}<strong>Le modifiche non salvate andranno perse.</strong> Vuoi continuare?
+    </ConfirmModal>
   );
 }
 
@@ -102,6 +93,11 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
 
   function setComment(sectionId, comment) {
     updateSection(sectionId, (section) => ({ ...section, comment }));
+  }
+
+  function setVote(rawValue) {
+    const vote = rawValue.replace(/\D/g, '').slice(0, 2);
+    onChange({ ...value, vote });
   }
 
   return (
@@ -222,6 +218,17 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
             value={value.technicalErrors}
             onChange={(event) => onChange({ ...value, technicalErrors: event.target.value })}
             placeholder="Indicare tipo di errore e riferimento tempo di gioco. Se assenti: NO"
+          />
+        </Field>
+
+        <Field label="Voto">
+          <TextInput
+            className="vote-input"
+            inputMode="numeric"
+            maxLength={2}
+            value={value.vote || ''}
+            onChange={(event) => setVote(event.target.value)}
+            placeholder="00"
           />
         </Field>
       </section>

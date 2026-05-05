@@ -6,9 +6,16 @@ import { getDb } from '../database/connection.js';
 import {
   COMMON_MATCH_CHARACTERISTICS,
   EVALUATION_SECTIONS,
+  deriveSeason,
   getRefereeLabel,
   getRefereeNumber
 } from '../../shared/reportTemplate.js';
+
+function safeSeasonSegment(season) {
+  const raw = String(season || '').replace('/', '-');
+  const cleaned = raw.replace(/[^a-zA-Z0-9-]/g, '');
+  return cleaned || 'no-season';
+}
 
 const PAGE = {
   size: 'A4',
@@ -71,6 +78,18 @@ function extractSurname(fullName) {
   const allCaps = tokens.every((token) => token === token.toUpperCase());
   if (allCaps) return first;
   return firstLooksLikeSurname ? first : tokens[tokens.length - 1];
+}
+
+function refereeSurnameForRole(report, role) {
+  const refereeId = role === 'first'
+    ? report.data?.firstRefereeId || report.firstRefereeId
+    : report.data?.secondRefereeId || report.secondRefereeId;
+  if (refereeId) {
+    const row = getDb().prepare('SELECT last_name FROM referees WHERE id = ?').get(refereeId);
+    if (row?.last_name) return row.last_name;
+  }
+  const refereeName = role === 'first' ? report.data.firstRefereeName : report.data.secondRefereeName;
+  return extractSurname(refereeName);
 }
 
 function textOrDash(value) {
@@ -422,10 +441,10 @@ function addFooter(doc, report, role) {
 
 export function getPdfFileInfo(report, role) {
   const matchPart = safeFilePart(report.data.matchNumber || report.matchNumber || report.id);
-  const refereeName = role === 'first' ? report.data.firstRefereeName : report.data.secondRefereeName;
-  const surnamePart = safeFilePart(extractSurname(refereeName) || `arbitro${getRefereeNumber(role)}`);
+  const surnamePart = safeFilePart(refereeSurnameForRole(report, role) || `arbitro${getRefereeNumber(role)}`);
   const fileName = `${matchPart}_${surnamePart}.pdf`;
-  const dir = path.join(config.outputDir, `report-${report.id}`);
+  const season = report.sportSeason || deriveSeason(report.data?.reportDate || report.reportDate);
+  const dir = path.join(config.outputDir, safeSeasonSegment(season), `report-${report.id}`);
   return {
     dir,
     fileName,

@@ -1,3 +1,22 @@
+export const COMPETITIONS = [
+  { value: 'DR1', label: 'Divisione Regionale 1' },
+  { value: 'Serie C', label: 'Serie C' }
+];
+
+export function deriveSeason(dateString) {
+  if (!dateString) return null;
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1; // 1-based
+  const startYear = month >= 7 ? year : year - 1;
+  return `${startYear}/${startYear + 1}`;
+}
+
+export function currentSportSeason(date = new Date()) {
+  return deriveSeason(date instanceof Date ? date.toISOString().slice(0, 10) : date);
+}
+
 export const COMMON_REQUIRED_FIELDS = [
   ['observerName', 'Osservatore'],
   ['reportDate', 'Data'],
@@ -17,6 +36,20 @@ export const RATING_OPTIONS = {
   quality: ['Migliorabile', 'Standard', 'Di qualità'],
   qualityWithNotEvaluable: ['Migliorabile', 'Standard', 'Di qualità', 'N/V']
 };
+
+// Mappa rating qualitativi → numerici per i grafici di andamento.
+// 'N/V' e valore vuoto → null (skip nel grafico).
+export const RATING_VALUE_MAP = {
+  'Migliorabile': 0,
+  'Standard': 1,
+  'Di qualità': 2,
+  'Eccellente': 2
+};
+
+export function ratingToNumber(rating) {
+  if (!rating || rating === 'N/V') return null;
+  return RATING_VALUE_MAP[rating] ?? null;
+}
 
 export const POTENTIAL_OPTIONS = ['Nessuna', 'Bassa', 'Media', 'Alta'];
 
@@ -195,6 +228,7 @@ export function createEmptyEvaluation() {
     sections: Object.fromEntries(EVALUATION_SECTIONS.map((section) => [section.id, createEmptySection(section)])),
     globalJudgement: '',
     technicalErrors: 'NO',
+    vote: '',
     potential: {
       level: '',
       comment: ''
@@ -213,7 +247,9 @@ export function createEmptyReport() {
     teamAway: '',
     scoreHome: '',
     scoreAway: '',
+    firstRefereeId: null,
     firstRefereeName: '',
+    secondRefereeId: null,
     secondRefereeName: '',
     matchCharacteristics: createEmptySection(COMMON_MATCH_CHARACTERISTICS),
     evaluations: {

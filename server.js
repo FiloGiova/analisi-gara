@@ -8,6 +8,10 @@ import { attachUser, requireAdmin, requireAuth } from './src/middleware/auth.js'
 import { authRouter } from './src/routes/auth.routes.js';
 import { reportsRouter } from './src/routes/reports.routes.js';
 import { usersRouter } from './src/routes/users.routes.js';
+import { accessLogsRouter } from './src/routes/accessLogs.routes.js';
+import { refereesRouter } from './src/routes/referees.routes.js';
+import { photosRouter, refereePhotosRouter } from './src/routes/photos.routes.js';
+import { meRouter } from './src/routes/me.routes.js';
 
 initializeDatabase();
 getDb().prepare('DELETE FROM sessions WHERE expires_at <= ?').run(new Date().toISOString());
@@ -32,6 +36,11 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/reports', requireAuth, reportsRouter);
 app.use('/api/users', requireAuth, requireAdmin, usersRouter);
+app.use('/api/access-logs', requireAuth, requireAdmin, accessLogsRouter);
+app.use('/api/me', requireAuth, meRouter);
+app.use('/api/photos', photosRouter);
+app.use('/api/referees', requireAuth, refereePhotosRouter);
+app.use('/api/referees', requireAuth, refereesRouter);
 app.use('/api', (_req, res) => {
   res.status(404).json({ message: 'Endpoint non trovato.' });
 });

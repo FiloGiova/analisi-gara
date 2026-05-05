@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { COMPETITIONS } from '../../../shared/reportTemplate.js';
 import { api, ApiError } from '../lib/api.js';
+import Select from '../components/Select.jsx';
 
 const emptyNewUser = {
   username: '',
   displayName: '',
   password: '',
-  role: 'user'
+  role: 'observer',
+  instructorCompetitions: []
 };
 
 const emptyPasswordForm = {
@@ -14,18 +18,99 @@ const emptyPasswordForm = {
   confirmPassword: ''
 };
 
+const emptyEditForm = {
+  displayName: '',
+  role: 'observer',
+  active: true,
+  instructorCompetitions: []
+};
+
+const ROLE_OPTIONS = [
+  { value: 'observer', label: 'Osservatore' },
+  { value: 'instructor', label: 'Formatore' },
+  { value: 'admin', label: 'Admin' }
+];
+
 function UserRoleBadge({ role }) {
-  return <span className={`status-badge ${role === 'admin' ? 'status-final' : 'status-draft'}`}>{role === 'admin' ? 'Admin' : 'Utente'}</span>;
+  const label = role === 'admin' ? 'Admin' : role === 'instructor' ? 'Formatore' : role === 'referee' ? 'Arbitro' : 'Osservatore';
+  const className = role === 'admin' ? 'status-final' : role === 'instructor' || role === 'referee' ? 'status-draft' : '';
+  return <span className={`status-badge ${className}`}>{label}</span>;
 }
 
 function UserStatusBadge({ active }) {
   return <span className={`status-badge ${active ? 'status-final' : 'status-draft'}`}>{active ? 'Attivo' : 'Disattivo'}</span>;
 }
 
+function instructorCompetitions(user) {
+  if (Array.isArray(user?.instructorCompetitions)) return user.instructorCompetitions;
+  if (user?.instructorCompetition) return [user.instructorCompetition];
+  if (Array.isArray(user?.formatterCompetitions)) return user.formatterCompetitions;
+  return user?.formatterCompetition ? [user.formatterCompetition] : [];
+}
+
+function competitionLabel(value) {
+  return COMPETITIONS.find((competition) => competition.value === value)?.label || value;
+}
+
+function formatCompetitions(values = []) {
+  return values.length ? values.map(competitionLabel).join(', ') : '-';
+}
+
+function Modal({ title, children, onClose }) {
+  return createPortal(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box form-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="section-heading">
+          <div>
+            <h2>{title}</h2>
+          </div>
+          <button type="button" className="ghost-button" onClick={onClose}>Chiudi</button>
+        </div>
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function CompetitionChoices({ value, onChange }) {
+  const selected = Array.isArray(value) ? value : [];
+
+  function toggle(competition) {
+    if (selected.includes(competition)) {
+      onChange(selected.filter((item) => item !== competition));
+    } else {
+      onChange([...selected, competition]);
+    }
+  }
+
+  return (
+    <div className="competition-checks">
+      {COMPETITIONS.map((competition) => (
+        <label key={competition.value}>
+          <input
+            type="checkbox"
+            checked={selected.includes(competition.value)}
+            onChange={() => toggle(competition.value)}
+          />
+          <span>{competition.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState(emptyNewUser);
   const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
+  const [resetPassword, setResetPassword] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [resetUser, setResetUser] = useState(null);
+  const [editUser, setEditUser] = useState(null);
+  const [editForm, setEditForm] = useState(emptyEditForm);
+  const [openActionsId, setOpenActionsId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -53,11 +138,33 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
   }, [currentUser.role]);
 
   function updateNewUser(field, value) {
-    setNewUser((previous) => ({ ...previous, [field]: value }));
+    setNewUser((previous) => ({
+      ...previous,
+      [field]: value,
+      ...(field === 'role' && value !== 'instructor' ? { instructorCompetitions: [] } : {})
+    }));
   }
 
   function updatePasswordForm(field, value) {
     setPasswordForm((previous) => ({ ...previous, [field]: value }));
+  }
+
+  function updateEditForm(field, value) {
+    setEditForm((previous) => ({
+      ...previous,
+      [field]: value,
+      ...(field === 'role' && value !== 'instructor' ? { instructorCompetitions: [] } : {})
+    }));
+  }
+
+  function updateUserPayload(user, updates = {}) {
+    return {
+      displayName: user.displayName,
+      role: user.role,
+      instructorCompetition: instructorCompetitions(user),
+      active: user.active,
+      ...updates
+    };
   }
 
   async function handleChangePassword(event) {
@@ -76,6 +183,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
         newPassword: passwordForm.newPassword
       });
       setPasswordForm(emptyPasswordForm);
+      setShowPasswordModal(false);
       setSuccess('Password aggiornata. Ti riporto al login per rientrare con quella nuova.');
       window.setTimeout(onPasswordChanged, 900);
     } catch (err) {
@@ -89,10 +197,18 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     event.preventDefault();
     setError('');
     setSuccess('');
+    if (newUser.role === 'instructor' && newUser.instructorCompetitions.length === 0) {
+      setError('Assegna almeno un campionato al formatore.');
+      return;
+    }
     setBusy(true);
     try {
-      await api.createUser(newUser);
+      await api.createUser({
+        ...newUser,
+        instructorCompetition: newUser.role === 'instructor' ? newUser.instructorCompetitions : []
+      });
       setNewUser(emptyNewUser);
+      setShowCreateModal(false);
       setSuccess('Utente creato. Puoi comunicargli username e password iniziale.');
       await loadUsers();
     } catch (err) {
@@ -102,42 +218,43 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     }
   }
 
-  async function handleRenameUser(user) {
-    const displayName = window.prompt('Nome visualizzato', user.displayName || user.username);
-    if (displayName === null) return;
-
-    setError('');
-    setSuccess('');
-    try {
-      await api.updateUser(user.id, {
-        displayName,
-        role: user.role,
-        active: user.active
-      });
-      setSuccess('Nome utente aggiornato.');
-      await loadUsers();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Aggiornamento non riuscito.');
-    }
+  function openEditModal(user) {
+    setEditUser(user);
+    setEditForm({
+      displayName: user.displayName || user.username,
+      role: user.role,
+      active: Boolean(user.active),
+      instructorCompetitions: instructorCompetitions(user)
+    });
+    setOpenActionsId(null);
   }
 
-  async function handleToggleRole(user) {
-    const nextRole = user.role === 'admin' ? 'user' : 'admin';
-    const ok = window.confirm(`Impostare ${user.username} come ${nextRole === 'admin' ? 'admin' : 'utente semplice'}?`);
-    if (!ok) return;
+  async function handleEditUser(event) {
+    event.preventDefault();
+    if (!editUser) return;
 
     setError('');
     setSuccess('');
+    if (editForm.role === 'instructor' && editForm.instructorCompetitions.length === 0) {
+      setError('Assegna almeno un campionato al formatore.');
+      return;
+    }
+    setBusy(true);
     try {
-      await api.updateUser(user.id, {
-        displayName: user.displayName,
-        role: nextRole,
-        active: user.active
-      });
-      setSuccess('Ruolo aggiornato.');
+      await api.updateUser(editUser.id, updateUserPayload(editUser, {
+        displayName: editForm.displayName,
+        role: editForm.role,
+        active: editUser.id === currentUser.id ? true : editForm.active,
+        instructorCompetition: editForm.role === 'instructor' ? editForm.instructorCompetitions : []
+      }));
+      setEditUser(null);
+      setEditForm(emptyEditForm);
+      setSuccess('Utente aggiornato.');
       await loadUsers();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Cambio ruolo non riuscito.');
+      setError(err instanceof ApiError ? err.message : 'Aggiornamento utente non riuscito.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -152,12 +269,9 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
 
     setError('');
     setSuccess('');
+    setOpenActionsId(null);
     try {
-      await api.updateUser(user.id, {
-        displayName: user.displayName,
-        role: user.role,
-        active: !user.active
-      });
+      await api.updateUser(user.id, updateUserPayload(user, { active: !user.active }));
       setSuccess(user.active ? 'Utente disattivato.' : 'Utente riattivato.');
       await loadUsers();
     } catch (err) {
@@ -165,18 +279,29 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     }
   }
 
-  async function handleResetPassword(user) {
-    const password = window.prompt(`Nuova password temporanea per ${user.username}`);
-    if (password === null) return;
+  function openResetModal(user) {
+    setResetUser(user);
+    setResetPassword('');
+    setOpenActionsId(null);
+  }
+
+  async function handleResetPassword(event) {
+    event.preventDefault();
+    if (!resetUser) return;
 
     setError('');
     setSuccess('');
+    setBusy(true);
     try {
-      await api.resetUserPassword(user.id, password);
+      await api.resetUserPassword(resetUser.id, resetPassword);
       setSuccess("Password reimpostata. Le sessioni di quell'utente sono state chiuse.");
+      setResetUser(null);
+      setResetPassword('');
       await loadUsers();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Reset password non riuscito.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -191,159 +316,279 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
 
   return (
     <div className="page-stack">
+      {showCreateModal ? (
+        <Modal title="Crea nuova utenza" onClose={() => setShowCreateModal(false)}>
+          <form className="modal-form" onSubmit={handleCreateUser}>
+            <label className="field">
+              Username
+              <input
+                value={newUser.username}
+                onChange={(event) => updateNewUser('username', event.target.value)}
+                placeholder="es. mrossi"
+                autoComplete="off"
+                required
+              />
+            </label>
+            <label className="field">
+              Nome visualizzato
+              <input
+                value={newUser.displayName}
+                onChange={(event) => updateNewUser('displayName', event.target.value)}
+                placeholder="Mario Rossi"
+                autoComplete="off"
+              />
+            </label>
+            <label className="field">
+              Password iniziale
+              <input
+                type="password"
+                value={newUser.password}
+                onChange={(event) => updateNewUser('password', event.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </label>
+            <label className="field">
+              Ruolo
+              <Select
+                value={newUser.role}
+                onChange={(v) => updateNewUser('role', v)}
+                options={ROLE_OPTIONS}
+              />
+            </label>
+            {newUser.role === 'instructor' ? (
+              <div className="field">
+                <span>Campionati formatore</span>
+                <CompetitionChoices
+                  value={newUser.instructorCompetitions}
+                  onChange={(value) => updateNewUser('instructorCompetitions', value)}
+                />
+              </div>
+            ) : null}
+            <div className="modal-actions">
+              <button type="button" className="ghost-button" onClick={() => setShowCreateModal(false)}>Annulla</button>
+              <button type="submit" className="primary-button" disabled={busy}>
+                {busy ? 'Creazione...' : 'Crea utente'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {showPasswordModal ? (
+        <Modal title="Cambia la tua password" onClose={() => setShowPasswordModal(false)}>
+          <form className="modal-form" onSubmit={handleChangePassword}>
+            <label className="field">
+              Password attuale
+              <input
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(event) => updatePasswordForm('currentPassword', event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </label>
+            <label className="field">
+              Nuova password
+              <input
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(event) => updatePasswordForm('newPassword', event.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </label>
+            <label className="field">
+              Conferma nuova password
+              <input
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(event) => updatePasswordForm('confirmPassword', event.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="ghost-button" onClick={() => setShowPasswordModal(false)}>Annulla</button>
+              <button type="submit" className="primary-button" disabled={busy}>
+                {busy ? 'Salvataggio...' : 'Aggiorna password'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {resetUser ? (
+        <Modal title={`Reset password ${resetUser.username}`} onClose={() => setResetUser(null)}>
+          <form className="modal-form" onSubmit={handleResetPassword}>
+            <label className="field">
+              Nuova password temporanea
+              <input
+                type="password"
+                value={resetPassword}
+                onChange={(event) => setResetPassword(event.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="ghost-button" onClick={() => setResetUser(null)}>Annulla</button>
+              <button type="submit" className="primary-button" disabled={busy}>
+                {busy ? 'Reset...' : 'Reset password'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {editUser ? (
+        <Modal title={`Modifica ${editUser.username}`} onClose={() => setEditUser(null)}>
+          <form className="modal-form" onSubmit={handleEditUser}>
+            <label className="field">
+              Username
+              <input value={editUser.username} disabled />
+            </label>
+            <label className="field">
+              Nome visualizzato
+              <input
+                value={editForm.displayName}
+                onChange={(event) => updateEditForm('displayName', event.target.value)}
+                autoComplete="off"
+              />
+            </label>
+            <label className="field">
+              Ruolo
+              <Select
+                value={editForm.role}
+                onChange={(value) => updateEditForm('role', value)}
+                options={ROLE_OPTIONS}
+              />
+            </label>
+            <label className="field">
+              Stato
+              <Select
+                value={editForm.active ? '1' : '0'}
+                onChange={(value) => updateEditForm('active', value === '1')}
+                disabled={editUser.id === currentUser.id}
+                options={[
+                  { value: '1', label: 'Attivo' },
+                  { value: '0', label: 'Disattivo' }
+                ]}
+              />
+            </label>
+            {editForm.role === 'instructor' ? (
+              <div className="field">
+                <span>Campionati formatore</span>
+                <CompetitionChoices
+                  value={editForm.instructorCompetitions}
+                  onChange={(value) => updateEditForm('instructorCompetitions', value)}
+                />
+              </div>
+            ) : null}
+            <div className="modal-actions">
+              <button type="button" className="ghost-button" onClick={() => setEditUser(null)}>Annulla</button>
+              <button type="submit" className="primary-button" disabled={busy}>
+                {busy ? 'Salvataggio...' : 'Salva modifiche'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
       <section className="dashboard-hero admin-hero">
         <div>
           <p className="eyebrow">Amministrazione</p>
           <h1>Utenti, password e accessi.</h1>
-          <p>
-            Gestisci le utenze locali dei colleghi senza registrazione pubblica. Le password restano hashate nel database SQLite.
-          </p>
+          <p>Gestisci utenze locali, ruolo e campionati da formatore.</p>
+        </div>
+        <div className="hero-actions">
+          <button type="button" className="hero-button" onClick={() => setShowCreateModal(true)}>
+            + Crea utente
+          </button>
+          <button type="button" className="ghost-button light-hero-button" onClick={() => setShowPasswordModal(true)}>
+            Cambia password
+          </button>
         </div>
       </section>
 
       {error ? <div className="error-banner">{error}</div> : null}
       {success ? <div className="success-banner">{success}</div> : null}
 
-      <section className="admin-grid">
-        <form className="common-card admin-panel" onSubmit={handleChangePassword}>
-          <div className="section-heading">
-            <div>
-              <h2>Cambia la tua password</h2>
-              <p>Dopo il salvataggio dovrai rientrare con la nuova password.</p>
-            </div>
-          </div>
-
-          <label className="field">
-            Password attuale
-            <input
-              type="password"
-              value={passwordForm.currentPassword}
-              onChange={(event) => updatePasswordForm('currentPassword', event.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          <label className="field">
-            Nuova password
-            <input
-              type="password"
-              value={passwordForm.newPassword}
-              onChange={(event) => updatePasswordForm('newPassword', event.target.value)}
-              autoComplete="new-password"
-              minLength={8}
-              required
-            />
-          </label>
-          <label className="field">
-            Conferma nuova password
-            <input
-              type="password"
-              value={passwordForm.confirmPassword}
-              onChange={(event) => updatePasswordForm('confirmPassword', event.target.value)}
-              autoComplete="new-password"
-              minLength={8}
-              required
-            />
-          </label>
-          <button type="submit" className="primary-button full-button" disabled={busy}>
-            Aggiorna password
-          </button>
-        </form>
-
-        <form className="common-card admin-panel" onSubmit={handleCreateUser}>
-          <div className="section-heading">
-            <div>
-              <h2>Crea nuova utenza</h2>
-              <p>Per colleghi osservatori o altri amministratori.</p>
-            </div>
-          </div>
-
-          <label className="field">
-            Username
-            <input
-              value={newUser.username}
-              onChange={(event) => updateNewUser('username', event.target.value)}
-              placeholder="es. mrossi"
-              autoComplete="off"
-              required
-            />
-          </label>
-          <label className="field">
-            Nome visualizzato
-            <input
-              value={newUser.displayName}
-              onChange={(event) => updateNewUser('displayName', event.target.value)}
-              placeholder="Mario Rossi"
-              autoComplete="off"
-            />
-          </label>
-          <label className="field">
-            Password iniziale
-            <input
-              type="password"
-              value={newUser.password}
-              onChange={(event) => updateNewUser('password', event.target.value)}
-              autoComplete="new-password"
-              minLength={8}
-              required
-            />
-          </label>
-          <label className="field">
-            Ruolo
-            <select value={newUser.role} onChange={(event) => updateNewUser('role', event.target.value)}>
-              <option value="user">Utente</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
-          <button type="submit" className="primary-button full-button" disabled={busy}>
-            Crea utente
-          </button>
-        </form>
-      </section>
-
       <section className="common-card">
         <div className="section-heading">
           <div>
             <h2>Utenti locali</h2>
-            <p>Reset password, ruoli e attivazione. Le sessioni vengono chiuse quando resetti una password o disattivi un utente.</p>
+            <p>Le azioni amministrative sono nel menu di ogni riga.</p>
           </div>
         </div>
 
         {loading ? <div className="empty-state">Caricamento utenti...</div> : null}
         {!loading ? (
-          <div className="users-list">
-            {users.map((user) => (
-              <article className={`user-row ${user.active ? '' : 'is-disabled'}`} key={user.id}>
-                <div>
-                  <span className="match-number">{user.username}</span>
-                  <h3>{user.displayName || user.username}</h3>
-                  <p>Creato il {new Date(user.createdAt).toLocaleDateString('it-IT')}</p>
-                </div>
-                <div className="user-badges">
-                  <UserRoleBadge role={user.role} />
-                  <UserStatusBadge active={user.active} />
-                </div>
-                <div className="card-actions">
-                  <button type="button" className="ghost-button" onClick={() => handleRenameUser(user)}>
-                    Nome
-                  </button>
-                  <button type="button" className="ghost-button" onClick={() => handleToggleRole(user)}>
-                    {user.role === 'admin' ? 'Rendi utente' : 'Rendi admin'}
-                  </button>
-                  <button type="button" className="ghost-button" onClick={() => handleResetPassword(user)}>
-                    Reset password
-                  </button>
-                  <button
-                    type="button"
-                    className={user.active ? 'danger-button' : 'ghost-button'}
-                    onClick={() => handleToggleActive(user)}
-                    disabled={user.id === currentUser.id}
-                  >
-                    {user.active ? 'Disattiva' : 'Riattiva'}
-                  </button>
-                </div>
-              </article>
-            ))}
+          <div style={{ overflowX: 'auto' }}>
+            <table className="referee-table users-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Nome</th>
+                  <th>Ruolo</th>
+                  <th>Stato</th>
+                  <th>Campionati formatore</th>
+                  <th>Creato</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} className={user.active ? '' : 'is-disabled'}>
+                    <td style={{ fontFamily: 'monospace', color: 'var(--muted)', fontSize: '0.82rem' }}>
+                      {user.username}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{user.displayName || user.username}</td>
+                    <td><UserRoleBadge role={user.role} /></td>
+                    <td><UserStatusBadge active={user.active} /></td>
+                    <td>
+                      {user.role === 'instructor'
+                        ? formatCompetitions(instructorCompetitions(user))
+                        : user.role === 'referee'
+                          ? `Arbitro #${user.refereeId || '-'}`
+                          : '-'}
+                    </td>
+                    <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                      {new Date(user.createdAt).toLocaleDateString('it-IT')}
+                    </td>
+                    <td>
+                      <div className="row-menu" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="icon-menu-button"
+                          aria-label={`Azioni utente ${user.username}`}
+                          onClick={() => setOpenActionsId((current) => current === user.id ? null : user.id)}
+                        >
+                          ☰
+                        </button>
+                        {openActionsId === user.id ? (
+                          <div className="row-menu-dropdown">
+                            <button type="button" onClick={() => openEditModal(user)}>Modifica</button>
+                            <button type="button" onClick={() => openResetModal(user)}>Reset password</button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(user)}
+                              disabled={user.id === currentUser.id}
+                            >
+                              {user.active ? 'Disattiva' : 'Riattiva'}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : null}
       </section>

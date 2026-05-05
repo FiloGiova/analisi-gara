@@ -67,6 +67,22 @@ ADMIN_PASSWORD='nuova-password' npm run seed:admin
 
 ## Sviluppo
 
+Per lavorare in locale con API e frontend insieme:
+
+```bash
+npm run dev
+```
+
+Apri:
+
+```text
+http://localhost:5173
+```
+
+Il comando avvia Express su `3000` e Vite su `5173`; i dati restano in `./storage`.
+
+In alternativa, puoi avviarli separatamente:
+
 Terminale 1:
 
 ```bash
@@ -196,10 +212,10 @@ e aggiorna `ExecStart`.
 
 ## Export PDF
 
-Dal dettaglio rapporto puoi generare due PDF. I file vengono salvati in:
+Dal dettaglio rapporto puoi generare due PDF. I file vengono salvati per stagione in:
 
 ```text
-STORAGE_DIR/output/report-ID/
+STORAGE_DIR/output/2025-2026/report-ID/
 ```
 
 con nomi:
@@ -210,6 +226,42 @@ numGara_arbitro2.pdf
 ```
 
 Il PDF contiene intestazione gara, arbitro valutato, valutazioni e commenti. La sezione `Potenzialità` è esclusa.
+
+## Import Rapporti Storici
+
+Per importare PDF storici ben strutturati come report definitivi, prima fai una prova:
+
+```bash
+npm run import:legacy-pdfs -- --dry-run /percorso/12801_Moratti.pdf /percorso/12801_Scibetta.pdf
+```
+
+Quando osservatore e arbitri vengono riconosciuti nel DB:
+
+```bash
+npm run import:legacy-pdfs -- --commit /percorso/12801_Moratti.pdf /percorso/12801_Scibetta.pdf
+```
+
+Lo script crea il record nel DB, collega `created_by` all'osservatore trovato per nome, collega gli arbitri anagrafici, e copia i PDF originali in `STORAGE_DIR/output/<stagione>/report-<id>/`. Se gli arbitri non sono ancora presenti, puoi aggiungere `--create-missing-referees`.
+
+Per importare molti PDF insieme, copiali in una cartella e passa il glob:
+
+```bash
+npm run import:legacy-pdfs -- --dry-run /tmp/rapporti-storici/*.pdf
+npm run import:legacy-pdfs -- --commit /tmp/rapporti-storici/*.pdf
+```
+
+## Account arbitri
+
+Gli utenti con ruolo `referee` vedono solo i propri rapporti, senza voto numerico e senza potenzialità nel payload web. Il PDF resta scaricabile solo per la propria scheda.
+
+Per predisporre le credenziali degli arbitri di una stagione:
+
+```bash
+node scripts/seed-referee-accounts.js --season 2025/2026 --output-csv storage/seeds/referees-2025-2026.csv --dry-run
+node scripts/seed-referee-accounts.js --season 2025/2026 --output-csv storage/seeds/referees-2025-2026.csv
+```
+
+Il CSV contiene password in chiaro: consegnarlo offline e cancellarlo dopo la consegna.
 
 ## Aggiornamento dell'App sul NAS
 
@@ -223,6 +275,8 @@ Lo script fa in automatico:
 1. Builda il frontend (`npm run build`)
 2. Trasferisce i file modificati sul NAS (esclude `node_modules`, `.env`, `storage`)
 3. Riavvia il server
+
+Lo script apre una connessione SSH riutilizzabile: la password SSH viene chiesta una sola volta e le operazioni successive usano lo stesso canale. Se il NAS richiede anche `sudo`, quella password può essere chiesta una volta nella fase di installazione/riavvio.
 
 ### Se hai aggiunto nuove dipendenze npm
 

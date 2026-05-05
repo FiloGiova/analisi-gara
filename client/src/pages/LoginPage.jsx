@@ -24,11 +24,21 @@ export default function LoginPage({ onLogin }) {
   return (
     <main className="login-page">
       <section className="login-art">
-        <div className="orb orb-one" />
-        <div className="orb orb-two" />
+        <div className="login-court-scene" aria-hidden="true">
+          <span className="court-line court-line-one" />
+          <span className="court-line court-line-two" />
+          <span className="court-arc court-arc-one" />
+          <span className="court-arc court-arc-two" />
+          <span className="court-lane" />
+          <span className="court-dot court-dot-one" />
+          <span className="court-dot court-dot-two" />
+          <span className="court-dot court-dot-three" />
+        </div>
         <div className="login-card">
           <div className="brand login-brand">
-            <span className="brand-mark">RA</span>
+            <span className="brand-mark">
+              <img src="/app-logo.png" alt="" />
+            </span>
             <span>
               <strong>Rapporti Arbitrali</strong>
               <small>Compila, archivia, esporta</small>

@@ -23,7 +23,10 @@ usersRouter.post(
       username: req.body?.username,
       password: req.body?.password,
       displayName: req.body?.displayName,
-      role: req.body?.role
+      role: req.body?.role,
+      refereeId: req.body?.refereeId,
+      instructorCompetition: req.body?.instructorCompetition,
+      formatterCompetition: req.body?.formatterCompetition
     });
     res.status(201).json({ user });
   })
@@ -39,6 +42,9 @@ usersRouter.put(
       id,
       displayName: req.body?.displayName,
       role: req.body?.role,
+      refereeId: req.body?.refereeId,
+      instructorCompetition: req.body?.instructorCompetition,
+      formatterCompetition: req.body?.formatterCompetition,
       active: req.body?.active
     });
     res.json({ user });
