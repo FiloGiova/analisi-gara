@@ -29,10 +29,30 @@ function canInspectReferees(user) {
   return Boolean(user.instructorCompetitions?.length || user.instructorCompetition);
 }
 
+const ROLE_LABELS = { referee1: '1° arbitro', referee2: '2° arbitro', referee3: '3° arbitro' };
+
+function designationRole(game, refereeId) {
+  for (const role of ['referee1', 'referee2', 'referee3']) {
+    if (game.officials[role]?.refereeId === refereeId) return role;
+  }
+  return null;
+}
+
+function colleagueLabel(game, myRole) {
+  const others = ['referee1', 'referee2', 'referee3']
+    .filter((role) => role !== myRole)
+    .map((role) => game.officials[role])
+    .filter(Boolean)
+    .map((official) => official.refereeName || official.externalName)
+    .filter(Boolean);
+  return others.join(', ');
+}
+
 export default function RefereeDetailPage({ id, currentUser }) {
   const [referee, setReferee] = useState(null);
   const [seasons, setSeasons] = useState([CURRENT_SEASON]);
   const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON);
+  const [designations, setDesignations] = useState([]);
   const [error, setError] = useState('');
   const canInspect = canInspectReferees(currentUser);
 
@@ -49,6 +69,13 @@ export default function RefereeDetailPage({ id, currentUser }) {
     api.getReferee(id, { season: selectedSeason })
       .then((data) => setReferee(data.referee))
       .catch((err) => setError(err.message || 'Arbitro non trovato.'));
+  }, [canInspect, id, selectedSeason]);
+
+  useEffect(() => {
+    if (!canInspect) return;
+    api.listGames({ refereeId: id, season: selectedSeason })
+      .then((data) => setDesignations(data.games || []))
+      .catch(() => setDesignations([]));
   }, [canInspect, id, selectedSeason]);
 
   if (!canInspect) return <div className="empty-state"><h2>Sezione arbitri non abilitata</h2></div>;
@@ -179,6 +206,80 @@ export default function RefereeDetailPage({ id, currentUser }) {
                     <td>{report.status === 'final' ? 'Definitivo' : 'Bozza'}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="common-card">
+        <div className="section-heading">
+          <div>
+            <h2>Designazioni stagione ({designations.length})</h2>
+            <p>Tutte le gare dirette nella stagione selezionata, dalle designazioni importate.</p>
+          </div>
+        </div>
+
+        {designations.length === 0 ? (
+          <div className="empty-state" style={{ padding: '24px' }}>
+            Nessuna designazione registrata in questa stagione.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="referee-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Giorn.</th>
+                  <th>Gara</th>
+                  <th>Incontro</th>
+                  <th>Ruolo</th>
+                  <th>Collega</th>
+                  <th>Osservatore</th>
+                  <th>Rapporto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {designations.map((game) => {
+                  const role = designationRole(game, referee.id);
+                  return (
+                    <tr key={game.id} className="is-clickable" onClick={() => navigate(`/games/${game.id}`)}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{formatDate(game.scheduledAt)}</td>
+                      <td style={{ color: 'var(--muted)' }}>{game.matchday ?? '—'}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{game.matchNumber}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {game.teamHome} - {game.teamAway}
+                        {game.scoreHome !== '' && game.scoreAway !== '' ? (
+                          <span style={{ color: 'var(--muted)', fontWeight: 400 }}> ({game.scoreHome}-{game.scoreAway})</span>
+                        ) : null}
+                      </td>
+                      <td>{role ? ROLE_LABELS[role] : '—'}</td>
+                      <td>{colleagueLabel(game, role) || '—'}</td>
+                      <td style={{ color: game.officials.observer ? 'inherit' : 'var(--muted)' }}>
+                        {game.officials.observer
+                          ? game.officials.observer.userName || game.officials.observer.externalName
+                          : '—'}
+                      </td>
+                      <td>
+                        {game.reportId ? (
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            style={{ padding: '1px 8px' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/reports/${game.reportId}`);
+                            }}
+                          >
+                            {game.reportStatus === 'final' ? 'Definitivo' : 'Bozza'}
+                          </button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

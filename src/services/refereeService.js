@@ -1,5 +1,5 @@
 import { currentSportSeason, EVALUATION_SECTIONS, ratingToNumber } from '../../shared/reportTemplate.js';
-import { getDb } from '../database/connection.js';
+import { dbGet, dbAll, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 
 function asText(value) {
@@ -67,44 +67,47 @@ function normalizeOptionalIsoDate(value, label) {
   return clean;
 }
 
-function upsertSeasonCategory(refereeId, { sportSeason, category, active }) {
+async function upsertSeasonCategory(refereeId, { sportSeason, category, active }) {
   const season = normalizeSeason(sportSeason);
   const cleanCategory = asText(category) || null;
   const seasonActive = active === undefined ? 1 : (active ? 1 : 0);
 
-  getDb()
-    .prepare(
-      `INSERT INTO referee_season_categories (referee_id, sport_season, category, active)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(referee_id, sport_season)
-       DO UPDATE SET category = excluded.category,
-                     active = excluded.active,
-                     updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`
-    )
-    .run(refereeId, season, cleanCategory, seasonActive);
+  await dbRun(
+    `INSERT INTO referee_season_categories (referee_id, sport_season, category, active)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(referee_id, sport_season)
+     DO UPDATE SET category = excluded.category,
+                   active = excluded.active,
+                   updated_at = iso_now()`,
+    [refereeId, season, cleanCategory, seasonActive]
+  );
 
   if (season === currentSportSeason()) {
-    getDb()
-      .prepare("UPDATE referees SET category = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?")
-      .run(cleanCategory, refereeId);
+    await dbRun('UPDATE referees SET category = ?, updated_at = iso_now() WHERE id = ?', [cleanCategory, refereeId]);
   }
 }
 
-export function listSeasons({ competition = '', competitions = [] } = {}) {
+export async function listSeasons({ competition = '', competitions = [] } = {}) {
   const cleanCompetitions = normalizeCompetitions({ competition, competitions });
   const seasons = new Set([currentSportSeason()]);
   if (cleanCompetitions.length) {
-    for (const row of getDb().prepare(`SELECT DISTINCT sport_season FROM referee_season_categories WHERE ${inClause('category', cleanCompetitions)} ORDER BY sport_season DESC`).all(...cleanCompetitions)) {
+    for (const row of await dbAll(
+      `SELECT DISTINCT sport_season FROM referee_season_categories WHERE ${inClause('category', cleanCompetitions)} ORDER BY sport_season DESC`,
+      cleanCompetitions
+    )) {
       if (row.sport_season) seasons.add(row.sport_season);
     }
-    for (const row of getDb().prepare(`SELECT DISTINCT sport_season FROM reports WHERE sport_season IS NOT NULL AND ${inClause('competition', cleanCompetitions)} ORDER BY sport_season DESC`).all(...cleanCompetitions)) {
+    for (const row of await dbAll(
+      `SELECT DISTINCT sport_season FROM reports WHERE sport_season IS NOT NULL AND ${inClause('competition', cleanCompetitions)} ORDER BY sport_season DESC`,
+      cleanCompetitions
+    )) {
       if (row.sport_season) seasons.add(row.sport_season);
     }
   } else {
-    for (const row of getDb().prepare('SELECT DISTINCT sport_season FROM referee_season_categories ORDER BY sport_season DESC').all()) {
+    for (const row of await dbAll('SELECT DISTINCT sport_season FROM referee_season_categories ORDER BY sport_season DESC')) {
       if (row.sport_season) seasons.add(row.sport_season);
     }
-    for (const row of getDb().prepare('SELECT DISTINCT sport_season FROM reports WHERE sport_season IS NOT NULL ORDER BY sport_season DESC').all()) {
+    for (const row of await dbAll('SELECT DISTINCT sport_season FROM reports WHERE sport_season IS NOT NULL ORDER BY sport_season DESC')) {
       if (row.sport_season) seasons.add(row.sport_season);
     }
   }
@@ -112,8 +115,7 @@ export function listSeasons({ competition = '', competitions = [] } = {}) {
   return [...seasons].sort((a, b) => b.localeCompare(a));
 }
 
-export function listReferees({ competition = '', competitions = [], season = '', activeOnly = false } = {}) {
-  const db = getDb();
+export async function listReferees({ competition = '', competitions = [], season = '', activeOnly = false } = {}) {
   const sportSeason = normalizeSeason(season);
   const cleanCompetitions = normalizeCompetitions({ competition, competitions });
   const clauses = ['sc.sport_season = ?'];
@@ -129,53 +131,54 @@ export function listReferees({ competition = '', competitions = [], season = '',
     clauses.push('sc.active = 1');
   }
 
-  const rows = db
-    .prepare(
-      `SELECT r.*,
-              sc.category AS season_category,
-              sc.sport_season,
-              sc.active AS season_active
-       FROM referees r
-       JOIN referee_season_categories sc ON sc.referee_id = r.id
-       WHERE ${clauses.join(' AND ')}
-       ORDER BY r.last_name, r.first_name`
-    )
-    .all(...params);
+  const rows = await dbAll(
+    `SELECT r.*,
+            sc.category AS season_category,
+            sc.sport_season,
+            sc.active AS season_active
+     FROM referees r
+     JOIN referee_season_categories sc ON sc.referee_id = r.id
+     WHERE ${clauses.join(' AND ')}
+     ORDER BY r.last_name, r.first_name`,
+    params
+  );
 
   return rows.map(rowToReferee);
 }
 
-export function getReferee(id, { season = '', competition = '', competitions = [] } = {}) {
+export async function getReferee(id, { season = '', competition = '', competitions = [] } = {}) {
   const sportSeason = normalizeSeason(season);
   const cleanCompetitions = normalizeCompetitions({ competition, competitions });
-  const row = getDb()
-    .prepare(
-      `SELECT r.*,
-              sc.category AS season_category,
-              sc.sport_season,
-              sc.active AS season_active
-       FROM referees r
-       LEFT JOIN referee_season_categories sc
-         ON sc.referee_id = r.id AND sc.sport_season = ?
-       WHERE r.id = ?`
-    )
-    .get(sportSeason, id);
+  const row = await dbGet(
+    `SELECT r.*,
+            sc.category AS season_category,
+            sc.sport_season,
+            sc.active AS season_active
+     FROM referees r
+     LEFT JOIN referee_season_categories sc
+       ON sc.referee_id = r.id AND sc.sport_season = ?
+     WHERE r.id = ?`,
+    [sportSeason, id]
+  );
   if (!row) throw new HttpError(404, 'Arbitro non trovato.');
   if (cleanCompetitions.length && !cleanCompetitions.includes(row.season_category)) {
     throw new HttpError(403, 'Arbitro fuori dal campionato assegnato.');
   }
 
+  const allCategories = await listSeasonCategories(id);
+  const categoryHistory = cleanCompetitions.length
+    ? allCategories.filter((item) => cleanCompetitions.includes(item.category))
+    : allCategories;
+
   return {
     ...rowToReferee(row),
-    categoryHistory: cleanCompetitions.length
-      ? listSeasonCategories(id).filter((item) => cleanCompetitions.includes(item.category))
-      : listSeasonCategories(id),
-    reports: listReportsForReferee(id, { season: sportSeason, competitions: cleanCompetitions }),
-    stats: getRefereeStats(id, { season: sportSeason, competitions: cleanCompetitions })
+    categoryHistory,
+    reports: await listReportsForReferee(id, { season: sportSeason, competitions: cleanCompetitions }),
+    stats: await getRefereeStats(id, { season: sportSeason, competitions: cleanCompetitions })
   };
 }
 
-export function createReferee({
+export async function createReferee({
   licenseNumber,
   firstName,
   lastName,
@@ -191,17 +194,14 @@ export function createReferee({
   if (!asText(firstName)) throw new HttpError(400, 'Nome obbligatorio.');
   if (!asText(lastName)) throw new HttpError(400, 'Cognome obbligatorio.');
 
-  const db = getDb();
   const normalizedBirthDate = normalizeOptionalIsoDate(birthDate, 'Data di nascita');
   const normalizedCertificateExpiry = normalizeOptionalIsoDate(certificateExpiry, 'Scadenza certificato');
   const season = normalizeSeason(sportSeason);
-  const result = db
-    .prepare(
-      `INSERT INTO referees
-         (license_number, first_name, last_name, birth_date, email, phone, province, certificate_expiry, category, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  const result = await dbRun(
+    `INSERT INTO referees
+       (license_number, first_name, last_name, birth_date, email, phone, province, certificate_expiry, category, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [
       licenseNumber || null,
       asText(firstName),
       asText(lastName),
@@ -212,15 +212,16 @@ export function createReferee({
       normalizedCertificateExpiry,
       season === currentSportSeason() ? (asText(category) || null) : null,
       notes || null
-    );
+    ]
+  );
 
-  upsertSeasonCategory(result.lastInsertRowid, { sportSeason: season, category, active: true });
-  return getReferee(result.lastInsertRowid, { season });
+  const newId = result.rows[0].id;
+  await upsertSeasonCategory(newId, { sportSeason: season, category, active: true });
+  return getReferee(newId, { season });
 }
 
-export function updateReferee(id, updates) {
-  getReferee(id, { season: updates.sportSeason });
-  const db = getDb();
+export async function updateReferee(id, updates) {
+  await getReferee(id, { season: updates.sportSeason });
   const fields = [];
   const params = [];
 
@@ -253,14 +254,14 @@ export function updateReferee(id, updates) {
   }
 
   if (fields.length) {
-    fields.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')");
+    fields.push('updated_at = iso_now()');
     params.push(id);
-    db.prepare(`UPDATE referees SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    await dbRun(`UPDATE referees SET ${fields.join(', ')} WHERE id = ?`, params);
   }
 
   if (updates.category !== undefined || updates.active !== undefined || updates.sportSeason !== undefined) {
-    const current = getReferee(id, { season: updates.sportSeason });
-    upsertSeasonCategory(id, {
+    const current = await getReferee(id, { season: updates.sportSeason });
+    await upsertSeasonCategory(id, {
       sportSeason: updates.sportSeason,
       category: updates.category !== undefined ? updates.category : current.category,
       active: updates.active !== undefined ? updates.active : current.seasonActive
@@ -270,16 +271,15 @@ export function updateReferee(id, updates) {
   return getReferee(id, { season: updates.sportSeason });
 }
 
-export function listSeasonCategories(refereeId) {
-  return getDb()
-    .prepare(
-      `SELECT id, sport_season AS sportSeason, category, active, created_at AS createdAt, updated_at AS updatedAt
-       FROM referee_season_categories
-       WHERE referee_id = ?
-       ORDER BY sport_season DESC`
-    )
-    .all(refereeId)
-    .map((row) => ({ ...row, active: Boolean(row.active) }));
+export async function listSeasonCategories(refereeId) {
+  const rows = await dbAll(
+    `SELECT id, sport_season AS "sportSeason", category, active, created_at AS "createdAt", updated_at AS "updatedAt"
+     FROM referee_season_categories
+     WHERE referee_id = ?
+     ORDER BY sport_season DESC`,
+    [refereeId]
+  );
+  return rows.map((row) => ({ ...row, active: Boolean(row.active) }));
 }
 
 function rowToRefereeReport(row) {
@@ -300,34 +300,33 @@ function rowToRefereeReport(row) {
   };
 }
 
-export function listReportsForReferee(refereeId, { season = '', competition = '', competitions = [] } = {}) {
+export async function listReportsForReferee(refereeId, { season = '', competition = '', competitions = [] } = {}) {
   const sportSeason = normalizeSeason(season);
   const cleanCompetitions = normalizeCompetitions({ competition, competitions });
   const competitionClause = cleanCompetitions.length ? `AND ${inClause('competition', cleanCompetitions)}` : '';
   const params = cleanCompetitions.length
     ? [refereeId, sportSeason, ...cleanCompetitions, refereeId, sportSeason, ...cleanCompetitions]
     : [refereeId, sportSeason, refereeId, sportSeason];
-  return getDb()
-    .prepare(
-      `SELECT id, status, 'first' AS role, report_date, sport_season, match_number, competition,
-              team_home, team_away, score_home, score_away, first_referee_vote AS vote,
-              observer_name, updated_at
-       FROM reports
-       WHERE first_referee_id = ? AND sport_season = ? ${competitionClause}
-       UNION ALL
-      SELECT id, status, 'second' AS role, report_date, sport_season, match_number, competition,
-              team_home, team_away, score_home, score_away, second_referee_vote AS vote,
-              observer_name, updated_at
-       FROM reports
-       WHERE second_referee_id = ? AND sport_season = ? ${competitionClause}
-       ORDER BY report_date DESC, id DESC`
-    )
-    .all(...params)
-    .map(rowToRefereeReport);
+  const rows = await dbAll(
+    `SELECT id, status, 'first' AS role, report_date, sport_season, match_number, competition,
+            team_home, team_away, score_home, score_away, first_referee_vote AS vote,
+            observer_name, updated_at
+     FROM reports
+     WHERE first_referee_id = ? AND sport_season = ? ${competitionClause}
+     UNION ALL
+    SELECT id, status, 'second' AS role, report_date, sport_season, match_number, competition,
+            team_home, team_away, score_home, score_away, second_referee_vote AS vote,
+            observer_name, updated_at
+     FROM reports
+     WHERE second_referee_id = ? AND sport_season = ? ${competitionClause}
+     ORDER BY report_date DESC, id DESC`,
+    params
+  );
+  return rows.map(rowToRefereeReport);
 }
 
-export function getRefereeStats(refereeId, { season = '', competition = '', competitions = [] } = {}) {
-  const reports = listReportsForReferee(refereeId, { season, competition, competitions });
+export async function getRefereeStats(refereeId, { season = '', competition = '', competitions = [] } = {}) {
+  const reports = await listReportsForReferee(refereeId, { season, competition, competitions });
   const votes = reports.map((report) => Number(report.vote)).filter((vote) => Number.isInteger(vote));
   const average = votes.length ? votes.reduce((sum, vote) => sum + vote, 0) / votes.length : null;
   return {
@@ -338,20 +337,19 @@ export function getRefereeStats(refereeId, { season = '', competition = '', comp
   };
 }
 
-export function getRefereeProgress(refereeId, { season = '' } = {}) {
+export async function getRefereeProgress(refereeId, { season = '' } = {}) {
   const sportSeason = normalizeSeason(season);
-  const rows = getDb()
-    .prepare(
-      `SELECT id, status, report_date, sport_season, match_number, competition,
-              first_referee_id, second_referee_id, first_referee_vote, second_referee_vote,
-              payload_json
-       FROM reports
-       WHERE (first_referee_id = ? OR second_referee_id = ?)
-         AND sport_season = ?
-         AND status = 'final'
-       ORDER BY report_date ASC, id ASC`
-    )
-    .all(refereeId, refereeId, sportSeason);
+  const rows = await dbAll(
+    `SELECT id, status, report_date, sport_season, match_number, competition,
+            first_referee_id, second_referee_id, first_referee_vote, second_referee_vote,
+            payload_json
+     FROM reports
+     WHERE (first_referee_id = ? OR second_referee_id = ?)
+       AND sport_season = ?
+       AND status = 'final'
+     ORDER BY report_date ASC, id ASC`,
+    [refereeId, refereeId, sportSeason]
+  );
 
   const matches = [];
   const votes = [];
@@ -408,7 +406,7 @@ export function getRefereeProgress(refereeId, { season = '' } = {}) {
   };
 }
 
-export function getRefereeRanking({ season = '', competition = '', competitions = [] } = {}) {
+export async function getRefereeRanking({ season = '', competition = '', competitions = [] } = {}) {
   const sportSeason = normalizeSeason(season);
   const cleanCompetitions = normalizeCompetitions({ competition, competitions });
   const competitionClause = cleanCompetitions.length ? `AND ${inClause('competition', cleanCompetitions)}` : '';
@@ -416,42 +414,41 @@ export function getRefereeRanking({ season = '', competition = '', competitions 
   const params = cleanCompetitions.length
     ? [sportSeason, ...cleanCompetitions, sportSeason, ...cleanCompetitions, sportSeason, ...cleanCompetitions]
     : [sportSeason, sportSeason, sportSeason];
-  const rows = getDb()
-    .prepare(
-      `WITH votes AS (
-         SELECT first_referee_id AS referee_id, first_referee_vote AS vote
-         FROM reports
-         WHERE first_referee_id IS NOT NULL
-           AND sport_season = ?
-           AND first_referee_vote IS NOT NULL
-           AND first_referee_vote != ''
-           ${competitionClause}
-         UNION ALL
-         SELECT second_referee_id AS referee_id, second_referee_vote AS vote
-         FROM reports
-         WHERE second_referee_id IS NOT NULL
-           AND sport_season = ?
-           AND second_referee_vote IS NOT NULL
-           AND second_referee_vote != ''
-           ${competitionClause}
-       )
-       SELECT r.id,
-              r.first_name,
-              r.last_name,
-              sc.category AS season_category,
-              sc.sport_season,
-              COUNT(v.vote) AS votes_count,
-              GROUP_CONCAT(v.vote, '|') AS votes,
-              AVG(CAST(v.vote AS INTEGER)) AS average_vote
-       FROM votes v
-       JOIN referees r ON r.id = v.referee_id
-       LEFT JOIN referee_season_categories sc
-         ON sc.referee_id = r.id AND sc.sport_season = ?
-       ${seasonCategoryClause}
-       GROUP BY r.id
-       ORDER BY average_vote DESC, votes_count DESC, r.last_name, r.first_name`
-    )
-    .all(...params);
+  const rows = await dbAll(
+    `WITH votes AS (
+       SELECT first_referee_id AS referee_id, first_referee_vote AS vote
+       FROM reports
+       WHERE first_referee_id IS NOT NULL
+         AND sport_season = ?
+         AND first_referee_vote IS NOT NULL
+         AND first_referee_vote != ''
+         ${competitionClause}
+       UNION ALL
+       SELECT second_referee_id AS referee_id, second_referee_vote AS vote
+       FROM reports
+       WHERE second_referee_id IS NOT NULL
+         AND sport_season = ?
+         AND second_referee_vote IS NOT NULL
+         AND second_referee_vote != ''
+         ${competitionClause}
+     )
+     SELECT r.id,
+            r.first_name,
+            r.last_name,
+            sc.category AS season_category,
+            sc.sport_season,
+            COUNT(v.vote) AS votes_count,
+            string_agg(v.vote, '|') AS votes,
+            AVG(CAST(v.vote AS INTEGER)) AS average_vote
+     FROM votes v
+     JOIN referees r ON r.id = v.referee_id
+     LEFT JOIN referee_season_categories sc
+       ON sc.referee_id = r.id AND sc.sport_season = ?
+     ${seasonCategoryClause}
+     GROUP BY r.id, sc.category, sc.sport_season
+     ORDER BY average_vote DESC, votes_count DESC, r.last_name, r.first_name`,
+    params
+  );
 
   return rows.map((row) => ({
     id: row.id,
@@ -462,26 +459,94 @@ export function getRefereeRanking({ season = '', competition = '', competitions 
     season: row.sport_season || sportSeason,
     votes: row.votes ? row.votes.split('|') : [],
     votesCount: row.votes_count,
-    averageVote: row.average_vote === null ? null : Number(row.average_vote.toFixed(1))
+    averageVote: row.average_vote === null ? null : Number(Number(row.average_vote).toFixed(1))
   }));
 }
 
-export function listRosters(refereeId) {
-  return listSeasonCategories(refereeId).map((row) => ({
+export async function listRosters(refereeId) {
+  const categories = await listSeasonCategories(refereeId);
+  return categories.map((row) => ({
     id: row.id,
     competition: row.category,
     sport_season: row.sportSeason
   }));
 }
 
-export function addRoster(refereeId, { competition, sportSeason }) {
-  getReferee(refereeId, { season: sportSeason });
-  upsertSeasonCategory(refereeId, { sportSeason, category: competition, active: true });
+export async function addRoster(refereeId, { competition, sportSeason }) {
+  await getReferee(refereeId, { season: sportSeason });
+  await upsertSeasonCategory(refereeId, { sportSeason, category: competition, active: true });
   return listRosters(refereeId);
 }
 
-export function removeRoster(refereeId, rosterId) {
-  getDb()
-    .prepare('DELETE FROM referee_season_categories WHERE id = ? AND referee_id = ?')
-    .run(rosterId, refereeId);
+export async function removeRoster(refereeId, rosterId) {
+  await dbRun('DELETE FROM referee_season_categories WHERE id = ? AND referee_id = ?', [rosterId, refereeId]);
+}
+
+// ---------------------------------------------------------------------------
+// Fasce arbitri (esordienti / playoff / playout), per campionato e stagione.
+// ---------------------------------------------------------------------------
+export const REFEREE_BANDS = ['esordiente', 'playoff', 'playout'];
+
+// Elenco degli arbitri iscritti a una (o più) fasce, filtrabile per campionato,
+// stagione e fascia. Con `competitions` si applica lo scoping del formatore.
+export async function listBandMembers({ competition = '', competitions = [], season = '', band = '' } = {}) {
+  const sportSeason = normalizeSeason(season);
+  const cleanCompetitions = normalizeCompetitions({ competition, competitions });
+  const clauses = ['rb.sport_season = ?'];
+  const params = [sportSeason];
+  if (band) {
+    if (!REFEREE_BANDS.includes(band)) throw new HttpError(400, 'Fascia non valida.');
+    clauses.push('rb.band = ?');
+    params.push(band);
+  }
+  if (cleanCompetitions.length) {
+    clauses.push(inClause('rb.competition', cleanCompetitions));
+    params.push(...cleanCompetitions);
+  }
+  const rows = await dbAll(
+    `SELECT rb.id AS band_id, rb.band, rb.competition, rb.sport_season,
+            r.id, r.first_name, r.last_name, r.license_number, r.active
+       FROM referee_bands rb
+       JOIN referees r ON r.id = rb.referee_id
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY rb.competition, rb.band, r.last_name, r.first_name`,
+    params
+  );
+  return rows.map((row) => ({
+    bandId: row.band_id,
+    band: row.band,
+    competition: row.competition,
+    sportSeason: row.sport_season,
+    refereeId: row.id,
+    fullName: `${row.last_name} ${row.first_name}`.trim(),
+    licenseNumber: row.license_number || '',
+    active: Boolean(row.active)
+  }));
+}
+
+export async function addBandMember({ refereeId, competition, sportSeason, band }) {
+  const id = Number(refereeId);
+  const comp = asText(competition);
+  const season = normalizeSeason(sportSeason);
+  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'Arbitro non valido.');
+  if (!comp) throw new HttpError(400, 'Campionato obbligatorio.');
+  if (!REFEREE_BANDS.includes(band)) throw new HttpError(400, 'Fascia non valida.');
+  const referee = await dbGet('SELECT id FROM referees WHERE id = ?', [id]);
+  if (!referee) throw new HttpError(404, 'Arbitro non trovato.');
+  await dbRun(
+    `INSERT INTO referee_bands (referee_id, competition, sport_season, band)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (referee_id, competition, sport_season, band) DO NOTHING`,
+    [id, comp, season, band]
+  );
+  return listBandMembers({ competition: comp, season, band });
+}
+
+// Ritorna la riga della fascia (per verificarne il campionato prima di eliminarla).
+export async function getBandRow(bandId) {
+  return (await dbGet('SELECT * FROM referee_bands WHERE id = ?', [Number(bandId)])) || null;
+}
+
+export async function removeBandMember(bandId) {
+  await dbRun('DELETE FROM referee_bands WHERE id = ?', [Number(bandId)]);
 }

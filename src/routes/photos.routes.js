@@ -27,7 +27,7 @@ photosRouter.get(
   '/profiles/:filename',
   requireAuth,
   asyncHandler(async (req, res) => {
-    streamProfilePhoto(req.params.filename, res);
+    await streamProfilePhoto(req.params.filename, res);
   })
 );
 
@@ -42,7 +42,7 @@ refereePhotosRouter.post(
     if (!req.file) throw new HttpError(400, 'File mancante.');
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'ID arbitro non valido.');
-    const photoPath = savePhotoForReferee(id, req.file.buffer);
+    const photoPath = await savePhotoForReferee(id, req.file.buffer);
     res.json({ photoPath });
   })
 );
@@ -53,7 +53,7 @@ refereePhotosRouter.delete(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'ID arbitro non valido.');
-    deletePhotoForReferee(id);
+    await deletePhotoForReferee(id);
     res.json({ ok: true });
   })
 );

@@ -12,6 +12,12 @@ import AdminRefereesPage from './pages/AdminRefereesPage.jsx';
 import RefereeDetailPage from './pages/RefereeDetailPage.jsx';
 import RefereeHomePage from './pages/RefereeHomePage.jsx';
 import AccountPage from './pages/AccountPage.jsx';
+import GamesPage from './pages/GamesPage.jsx';
+import GameDetailPage from './pages/GameDetailPage.jsx';
+import DesignateObserversPage from './pages/DesignateObserversPage.jsx';
+import AdminSourcesPage from './pages/AdminSourcesPage.jsx';
+import AdminImportsPage from './pages/AdminImportsPage.jsx';
+import CoveragePage from './pages/CoveragePage.jsx';
 
 function useRoute() {
   const [path, setPath] = useState(getHashPath());
@@ -28,11 +34,15 @@ function useRoute() {
 export default function App() {
   const route = useRoute();
   const [user, setUser] = useState(null);
+  const [features, setFeatures] = useState({ aiEnabled: false });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.me()
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        setUser(data.user);
+        setFeatures(data.features || { aiEnabled: false });
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -62,8 +72,14 @@ export default function App() {
     ? <RefereeHomePage currentUser={user} />
     : <DashboardPage currentUser={user} />;
   if (route.name === 'refereeHome') page = <RefereeHomePage currentUser={user} />;
-  if (!isReferee && route.name === 'newReport') page = <ReportFormPage currentUser={user} />;
-  if (!isReferee && route.name === 'editReport') page = <ReportFormPage id={route.id} currentUser={user} />;
+  if (!isReferee && route.name === 'games') page = <GamesPage currentUser={user} />;
+  if (!isReferee && route.name === 'designateObservers') page = <DesignateObserversPage currentUser={user} />;
+  if (!isReferee && route.name === 'gameDetail') page = <GameDetailPage id={route.id} currentUser={user} />;
+  if (route.name === 'adminSources') page = <AdminSourcesPage currentUser={user} />;
+  if (route.name === 'adminImports') page = <AdminImportsPage currentUser={user} />;
+  if (!isReferee && route.name === 'coverage') page = <CoveragePage currentUser={user} />;
+  if (!isReferee && route.name === 'newReport') page = <ReportFormPage currentUser={user} features={features} gameId={route.gameId} />;
+  if (!isReferee && route.name === 'editReport') page = <ReportFormPage id={route.id} currentUser={user} features={features} />;
   if (route.name === 'reportDetail') page = <ReportDetailPage id={route.id} currentUser={user} />;
   if (route.name === 'account') page = (
     <AccountPage

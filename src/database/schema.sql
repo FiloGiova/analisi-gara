@@ -101,6 +101,18 @@ CREATE TABLE IF NOT EXISTS referee_season_categories (
   FOREIGN KEY (referee_id) REFERENCES referees(id) ON DELETE CASCADE
 );
 
+-- Fasce/liste arbitri per campionato e stagione (esordienti, playoff, playout).
+CREATE TABLE IF NOT EXISTS referee_bands (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  referee_id   INTEGER NOT NULL,
+  competition  TEXT NOT NULL,
+  sport_season TEXT NOT NULL,
+  band         TEXT NOT NULL CHECK (band IN ('esordiente', 'playoff', 'playout')),
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  UNIQUE(referee_id, competition, sport_season, band),
+  FOREIGN KEY (referee_id) REFERENCES referees(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS access_logs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id     INTEGER NOT NULL,
@@ -108,4 +120,112 @@ CREATE TABLE IF NOT EXISTS access_logs (
   user_agent  TEXT,
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS competition_sources (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  sport_season     TEXT NOT NULL,
+  name             TEXT NOT NULL,
+  source_type      TEXT NOT NULL DEFAULT 'fip_public' CHECK (source_type IN ('fip_public')),
+  url              TEXT NOT NULL,
+  params_json      TEXT,
+  competition      TEXT,
+  active           INTEGER NOT NULL DEFAULT 1,
+  last_synced_at   TEXT,
+  last_sync_status TEXT,
+  created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS games (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  sport_season          TEXT NOT NULL,
+  competition_source_id INTEGER,
+  external_source       TEXT NOT NULL DEFAULT 'manual' CHECK (external_source IN ('fip_public', 'xlsx', 'manual')),
+  match_number          TEXT NOT NULL,
+  competition           TEXT,
+  phase                 TEXT,
+  girone                TEXT,
+  matchday              INTEGER,
+  leg                   TEXT CHECK (leg IN ('andata', 'ritorno')),
+  scheduled_at          TEXT,
+  team_home             TEXT NOT NULL DEFAULT '',
+  team_away             TEXT NOT NULL DEFAULT '',
+  venue                 TEXT,
+  status                TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'played', 'postponed', 'cancelled')),
+  score_home            TEXT,
+  score_away            TEXT,
+  notes                 TEXT,
+  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  last_synced_at        TEXT,
+  UNIQUE (sport_season, match_number),
+  FOREIGN KEY (competition_source_id) REFERENCES competition_sources(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS game_officials (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  game_id       INTEGER NOT NULL,
+  role          TEXT NOT NULL CHECK (role IN ('referee1', 'referee2', 'referee3', 'observer')),
+  referee_id    INTEGER,
+  user_id       INTEGER,
+  external_name TEXT NOT NULL DEFAULT '',
+  source        TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('fip_public', 'xlsx', 'manual')),
+  status        TEXT NOT NULL DEFAULT 'provisional' CHECK (status IN ('provisional', 'confirmed')),
+  manual_lock   INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  UNIQUE (game_id, role),
+  FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+  FOREIGN KEY (referee_id) REFERENCES referees(id) ON DELETE SET NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS person_aliases (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  source          TEXT NOT NULL,
+  external_name   TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,
+  referee_id      INTEGER,
+  user_id         INTEGER,
+  verified_by     INTEGER,
+  verified_at     TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  UNIQUE (source, normalized_name),
+  FOREIGN KEY (referee_id) REFERENCES referees(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS sync_runs (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  type                  TEXT NOT NULL DEFAULT 'fip_sync' CHECK (type IN ('fip_sync', 'xlsx_import')),
+  competition_source_id INTEGER,
+  started_by            INTEGER,
+  started_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  finished_at           TEXT,
+  status                TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'success', 'partial', 'error')),
+  created_count         INTEGER NOT NULL DEFAULT 0,
+  updated_count         INTEGER NOT NULL DEFAULT 0,
+  conflict_count        INTEGER NOT NULL DEFAULT 0,
+  error_count           INTEGER NOT NULL DEFAULT 0,
+  summary_json          TEXT,
+  FOREIGN KEY (competition_source_id) REFERENCES competition_sources(id) ON DELETE SET NULL,
+  FOREIGN KEY (started_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS game_changes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  game_id     INTEGER NOT NULL,
+  field       TEXT NOT NULL,
+  old_value   TEXT,
+  new_value   TEXT,
+  source      TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('fip_public', 'xlsx', 'manual')),
+  changed_by  INTEGER,
+  sync_run_id INTEGER,
+  reason      TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+  FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (sync_run_id) REFERENCES sync_runs(id) ON DELETE SET NULL
 );

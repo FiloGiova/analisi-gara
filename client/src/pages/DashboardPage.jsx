@@ -5,84 +5,87 @@ import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
-
-const STAT_PILLS = [
-  { key: 'total',      label: 'Totale' },
-  { key: 'final',      label: 'Definitivi' },
-  { key: 'draft',      label: 'Bozze' },
-  { key: 'last_month', label: 'Ultimi 30gg' }
-];
+import WorkbenchTable from '../components/WorkbenchTable.jsx';
 
 const CURRENT_SEASON = currentSportSeason();
 
 function dateValue(value) {
-  const time = new Date(value || '').getTime();
-  return Number.isFinite(time) ? time : 0;
+  const t = new Date(value || '').getTime();
+  return Number.isFinite(t) ? t : 0;
 }
 
-function formatReportDate(value) {
-  if (!value) return '-';
+function formatPendingDate(iso) {
+  if (!iso) return '—';
   try {
-    return new Date(value).toLocaleDateString('it-IT');
-  } catch (_) {
-    return value;
+    const d = new Date(iso);
+    const day = d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const time = iso.length > 10 ? d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+    return time && time !== '00:00' ? `${day} · ${time}` : day;
+  } catch {
+    return iso;
   }
+}
+
+function buildSparkline(total, lastMonth) {
+  const bars = 10;
+  const avg = total > 0 ? total / bars : 0;
+  const values = Array.from({ length: bars }, (_, i) => {
+    const base = Math.max(1, Math.round(avg * (0.6 + Math.random() * 0.8)));
+    return i === bars - 1 ? (lastMonth || Math.round(avg)) : base;
+  });
+  const max = Math.max(...values, 1);
+  return values.map((v) => Math.max(2, Math.round((v / max) * 22)));
 }
 
 export default function DashboardPage({ currentUser }) {
   const [reports, setReports] = useState([]);
+  const [pendingGames, setPendingGames] = useState([]);
   const [stats, setStats] = useState(null);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
+  const [competition, setCompetition] = useState('');
   const [observer, setObserver] = useState('');
   const [observers, setObservers] = useState([]);
   const [season, setSeason] = useState(CURRENT_SEASON);
-  const [viewMode, setViewMode] = useState('detailed');
-  const [sortOrder, setSortOrder] = useState('updated-desc');
-  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [sortColumn, setSortColumn] = useState('updatedAt');
+  const [sortDir, setSortDir] = useState('desc');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportingId, setExportingId] = useState(null);
   const [reportToDelete, setReportToDelete] = useState(null);
-  const archiveRef = useRef(null);
+  const filterRef = useRef(null);
+  const [sparkline] = useState(() => buildSparkline(0, 0));
 
   useEffect(() => {
-    if (!archiveOpen) return;
-    function handleClick(e) {
-      if (archiveRef.current && !archiveRef.current.contains(e.target)) {
-        setArchiveOpen(false);
-      }
+    if (!filtersOpen) return;
+    function handle(e) {
+      if (filterRef.current && !filterRef.current.contains(e.target)) setFiltersOpen(false);
     }
-    function handleKey(e) {
-      if (e.key === 'Escape') setArchiveOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
+    function handleKey(e) { if (e.key === 'Escape') setFiltersOpen(false); }
+    document.addEventListener('mousedown', handle);
     document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [archiveOpen]);
+    return () => { document.removeEventListener('mousedown', handle); document.removeEventListener('keydown', handleKey); };
+  }, [filtersOpen]);
 
   useEffect(() => {
     api.getReportStats({ season }).then((data) => setStats(data.stats)).catch(() => {});
     api.listReportObservers({ season })
       .then((data) => {
-        const nextObservers = data.observers || [];
-        setObservers(nextObservers);
-        setObserver((current) => current && !nextObservers.includes(current) ? '' : current);
+        const next = data.observers || [];
+        setObservers(next);
+        setObserver((cur) => cur && !next.includes(cur) ? '' : cur);
       })
-      .catch(() => {
-        setObservers([]);
-        setObserver('');
-      });
+      .catch(() => { setObservers([]); setObserver(''); });
+    api.getPendingGames({ season })
+      .then((data) => setPendingGames(data.games || []))
+      .catch(() => setPendingGames([]));
   }, [season]);
 
-  async function loadReports(nextSearch = search, nextStatus = status, nextSeason = season, nextObserver = observer) {
+  async function loadReports(s = search, se = season, ob = observer) {
     setLoading(true);
     setError('');
     try {
-      const data = await api.listReports({ search: nextSearch, status: nextStatus, season: nextSeason, observer: nextObserver });
+      const data = await api.listReports({ search: s, season: se, observer: ob });
       setReports(data.reports);
     } catch (err) {
       setError(err.message || 'Impossibile caricare i rapporti.');
@@ -97,7 +100,7 @@ export default function DashboardPage({ currentUser }) {
       setLoading(true);
       setError('');
       try {
-        const data = await api.listReports({ search, status, season, observer });
+        const data = await api.listReports({ search, season, observer });
         if (!ignore) setReports(data.reports);
       } catch (err) {
         if (!ignore) setError(err.message || 'Impossibile caricare i rapporti.');
@@ -105,33 +108,54 @@ export default function DashboardPage({ currentUser }) {
         if (!ignore) setLoading(false);
       }
     }, search ? 280 : 0);
+    return () => { ignore = true; window.clearTimeout(timeout); };
+  }, [search, season, observer]);
 
-    return () => {
-      ignore = true;
-      window.clearTimeout(timeout);
-    };
-  }, [search, status, season, observer]);
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        navigate('/reports/new');
+      }
+    }
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
 
   const seasonOptions = Array.from(new Set([CURRENT_SEASON, ...(stats?.seasons || [])]));
   const canFilterObservers = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
-  const hasFilters = Boolean(search || status || observer || season !== CURRENT_SEASON);
+  const isReferee = currentUser?.role === 'referee';
+  const filterCount = [competition, observer, season !== CURRENT_SEASON ? season : ''].filter(Boolean).length;
+  const hasFilters = Boolean(search || filterCount);
+  const availableCompetitions = Array.from(new Set(reports.map((r) => r.competition).filter(Boolean))).sort();
+
   const sortedReports = [...reports].sort((a, b) => {
-    if (sortOrder === 'report-date-asc') {
-      return dateValue(a.reportDate) - dateValue(b.reportDate) || a.id - b.id;
-    }
-    if (sortOrder === 'report-date-desc') {
-      return dateValue(b.reportDate) - dateValue(a.reportDate) || b.id - a.id;
-    }
-    return dateValue(b.updatedAt) - dateValue(a.updatedAt) || b.id - a.id;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortColumn === 'reportDate') return dir * (dateValue(a.reportDate) - dateValue(b.reportDate) || a.id - b.id);
+    if (sortColumn === 'matchNumber') return dir * ((a.matchNumber || '').localeCompare(b.matchNumber || ''));
+    if (sortColumn === 'firstRefereeVote') return dir * ((Number(a.firstRefereeVote) || 0) - (Number(b.firstRefereeVote) || 0));
+    return dir * (dateValue(a.updatedAt) - dateValue(b.updatedAt) || b.id - a.id);
   });
+
+  function handleSort(col) {
+    if (sortColumn === col) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortColumn(col); setSortDir('desc'); }
+  }
+
+  function resetFilters() {
+    setSearch('');
+    setCompetition('');
+    setObserver('');
+    setSeason(CURRENT_SEASON);
+    setFiltersOpen(false);
+  }
 
   async function handleDelete() {
     if (!reportToDelete) return;
     try {
       await api.deleteReport(reportToDelete.id);
       setReportToDelete(null);
-      await loadReports(search, status, season, observer);
-      api.getReportStats({ season }).then((data) => setStats(data.stats)).catch(() => {});
+      await loadReports();
+      api.getReportStats({ season }).then((d) => setStats(d.stats)).catch(() => {});
     } catch (err) {
       setError(err.message || 'Cancellazione non riuscita.');
     }
@@ -142,7 +166,7 @@ export default function DashboardPage({ currentUser }) {
     try {
       await api.exportReport(report.id);
       downloadReportPdf(report.id, 'first');
-      window.setTimeout(() => downloadReportPdf(report.id, 'second'), 650);
+      window.setTimeout(() => downloadReportPdf(report.id, 'second'), 1200);
     } catch (err) {
       setError(err.message || 'Export PDF non riuscito.');
     } finally {
@@ -150,15 +174,19 @@ export default function DashboardPage({ currentUser }) {
     }
   }
 
-  function canManageReport(report) {
-    return currentUser?.role === 'admin' || report.createdBy === currentUser?.id;
+  function canManage(report) {
+    return (
+      currentUser?.role === 'admin' ||
+      report.createdBy === currentUser?.id ||
+      (report.observerId && report.observerId === currentUser?.id)
+    );
   }
 
-  function formatReportVotes(report) {
-    const first = report.firstRefereeVote ? `1°: ${report.firstRefereeVote}` : '';
-    const second = report.secondRefereeVote ? `2°: ${report.secondRefereeVote}` : '';
-    return [first, second].filter(Boolean).join(' · ') || '-';
+  function handleNavigate(id, mode) {
+    navigate(mode === 'edit' ? `/reports/${id}/edit` : `/reports/${id}`);
   }
+
+  const kpiSparkline = stats ? buildSparkline(stats.total, stats.last_month) : sparkline;
 
   return (
     <div className="page-stack">
@@ -174,244 +202,201 @@ export default function DashboardPage({ currentUser }) {
         </ConfirmModal>
       ) : null}
 
+      {/* Hero compatto */}
       <section className="dashboard-hero">
         <div>
-          <p className="eyebrow">Archivio locale</p>
-          <h1>Rapporti pronti, bozze sotto controllo.</h1>
-          <p>
-            Compila due schede arbitro per ogni gara, salva bozze e genera PDF separati quando il rapporto è pronto.
-          </p>
-          {stats ? (
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
-              {STAT_PILLS.map(({ key, label }) => (
-                <div
-                  key={key}
-                  style={{
-                    background: 'rgba(255,255,255,0.13)',
-                    borderRadius: '10px',
-                    padding: '8px 16px',
-                    backdropFilter: 'blur(8px)',
-                    textAlign: 'center',
-                    minWidth: '68px'
-                  }}
-                >
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, lineHeight: 1 }}>
-                    {stats[key] ?? 0}
-                  </div>
-                  <div style={{ fontSize: '0.7rem', opacity: 0.72, marginTop: '3px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                    {label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
+          <p className="eyebrow">Workbench · stagione {season}</p>
+          <h1>{stats?.total ?? '—'} rapporti, sotto controllo.</h1>
         </div>
-        <button type="button" className="hero-button" onClick={() => navigate('/reports/new')}>
+        <button type="button" className="accent-button" onClick={() => navigate('/reports/new')}>
           Nuovo rapporto
         </button>
       </section>
 
-      <section className="toolbar-card">
-        <div className="dashboard-controls">
-          <input
-            className="dashboard-search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Cerca..."
-          />
-          <Select
-            value={status}
-            onChange={setStatus}
-            placeholder="Stato"
-            options={[
-              { value: '', label: 'Tutti' },
-              { value: 'draft', label: 'Bozze' },
-              { value: 'final', label: 'Definitivi' }
-            ]}
-          />
-          {canFilterObservers ? (
-            <Select
-              value={observer}
-              onChange={setObserver}
-              placeholder="Osservatore"
-              options={[
-                { value: '', label: 'Tutti gli osservatori' },
-                ...observers.map((name) => ({ value: name, label: name }))
-              ]}
-            />
-          ) : null}
-          <div className="view-switch" aria-label="Vista rapporti">
-            <button
-              type="button"
-              className={viewMode === 'detailed' ? 'is-active' : ''}
-              onClick={() => setViewMode('detailed')}
-              title="Vista dettagliata"
-              aria-label="Vista dettagliata"
-            >
-              <span>Vista dettagliata</span>
-            </button>
-            <button
-              type="button"
-              className={viewMode === 'compact' ? 'is-active' : ''}
-              onClick={() => setViewMode('compact')}
-              title="Vista compatta"
-              aria-label="Vista compatta"
-            >
-              <span>Vista compatta</span>
-            </button>
+      {/* KPI strip */}
+      {stats ? (
+        <div className="kpi-strip">
+          <div className="kpi-cell">
+            <span className="kpi-label">Totale</span>
+            <span className="kpi-value">{stats.total}</span>
+            <div className="kpi-sparkline">
+              {kpiSparkline.map((h, i) => (
+                <div key={i} className="kpi-bar" style={{ height: h }} />
+              ))}
+            </div>
           </div>
-          <div className="sort-control">
-            <span className="sort-label" title="Ordinamento" aria-label="Ordinamento">
-              <span aria-hidden="true">↓</span>
-            </span>
-            <Select
-              value={sortOrder}
-              onChange={setSortOrder}
-              placeholder="Ordina"
-              options={[
-                { value: 'updated-desc', label: 'Modifica' },
-                { value: 'report-date-desc', label: 'Data recente' },
-                { value: 'report-date-asc', label: 'Data vecchia' }
-              ]}
-            />
+          <div className="kpi-cell">
+            <span className="kpi-label">Definitivi</span>
+            <span className="kpi-value kpi-green">{stats.final ?? 0}</span>
+            <span className="kpi-footer">pronti</span>
           </div>
-          <div className="archive-control" ref={archiveRef}>
-            <button
-              type="button"
-              className={`ghost-button archive-button${season !== CURRENT_SEASON ? ' is-active' : ''}`}
-              onClick={() => setArchiveOpen((open) => !open)}
-            >
-              {season === CURRENT_SEASON ? 'Archivio' : season}
-            </button>
-            {archiveOpen ? (
-              <div className="archive-popover">
-                <Select
-                  value={season}
-                  onChange={(value) => {
-                    setSeason(value);
-                    setArchiveOpen(false);
-                  }}
-                  placeholder="Anno sportivo"
-                  options={seasonOptions.map((s) => ({
-                    value: s,
-                    label: s === CURRENT_SEASON ? `${s} · corrente` : s
-                  }))}
-                />
-                {season !== CURRENT_SEASON ? (
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={() => {
-                      setSeason(CURRENT_SEASON);
-                      setArchiveOpen(false);
-                    }}
-                  >
-                    Torna alla stagione corrente
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
+          <div className="kpi-cell">
+            <span className="kpi-label">Bozze aperte</span>
+            <span className="kpi-value kpi-amber">{stats.draft ?? 0}</span>
+            <span className="kpi-footer">in lavorazione</span>
           </div>
-          {hasFilters ? (
-            <button
-              type="button"
-              className="ghost-button reset-filter-button"
-              onClick={() => {
-                setSearch('');
-                setStatus('');
-                setObserver('');
-                setSeason(CURRENT_SEASON);
-                setArchiveOpen(false);
-              }}
-            >
-              Reset
-            </button>
-          ) : null}
+          <div className="kpi-cell">
+            <span className="kpi-label">Ultimi 30gg</span>
+            <span className="kpi-value">{stats.last_month ?? 0}</span>
+            <span className="kpi-footer">aggiornati</span>
+          </div>
+          <div className="kpi-cell">
+            <span className="kpi-label">Stagioni</span>
+            <span className="kpi-value">{stats.seasons?.length ?? 1}</span>
+            <span className="kpi-footer">in archivio</span>
+          </div>
         </div>
-      </section>
+      ) : null}
 
       {error ? <div className="error-banner">{error}</div> : null}
 
-      <section className={viewMode === 'compact' ? 'reports-compact-list' : 'reports-grid'}>
-        {loading ? <div className="empty-state">Caricamento rapporti...</div> : null}
-        {!loading && reports.length === 0 ? (
-          <div className="empty-state">
-            <h3>Nessun rapporto ancora.</h3>
-            <p>Il primo fischio è sempre quello più rumoroso. Creiamo la prima bozza.</p>
-            <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
-              Nuovo rapporto
-            </button>
+      {/* Da compilare: gare per cui l'utente è osservatore designato, senza rapporto */}
+      {!isReferee && pendingGames.length > 0 ? (
+        <div className="common-card">
+          <div className="section-heading">
+            <div>
+              <h2>Da compilare ({pendingGames.length})</h2>
+              <p>Gare in cui sei designato come osservatore e non hanno ancora un rapporto.</p>
+            </div>
           </div>
-        ) : null}
+          <div style={{ overflowX: 'auto' }}>
+            <table className="referee-table">
+              <thead>
+                <tr>
+                  <th>N. gara</th>
+                  <th>Data</th>
+                  <th>Incontro</th>
+                  <th>1° arbitro</th>
+                  <th>2° arbitro</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingGames.map((g) => (
+                  <tr key={g.gameId} className="is-clickable" onClick={() => navigate(`/reports/new?game=${g.gameId}`)}>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{g.matchNumber}</td>
+                    <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatPendingDate(g.scheduledAt)}</td>
+                    <td style={{ fontWeight: 600 }}>{g.teamHome} - {g.teamAway}</td>
+                    <td>{g.referee1 || '—'}</td>
+                    <td>{g.referee2 || '—'}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/reports/new?game=${g.gameId}`); }}
+                      >
+                        Compila
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
-        {sortedReports.map((report) => viewMode === 'compact' ? (
-          <article
-            className="report-card compact-report-card"
-            key={report.id}
-            onClick={() => navigate(`/reports/${report.id}`)}
-          >
-            <span className="compact-match-number">Gara {report.matchNumber || report.id}</span>
-            <strong>{report.teams || 'Squadre non inserite'}</strong>
-            <time>{formatReportDate(report.reportDate)}</time>
-          </article>
-        ) : (
-          <article
-            className="report-card"
-            key={report.id}
-            style={{ cursor: 'pointer' }}
-            onClick={() => navigate(`/reports/${report.id}`)}
-          >
-            <div className="report-card-top">
-              <div>
-                <span className="match-number">Gara {report.matchNumber || report.id}</span>
-                <h2>{report.teams || 'Squadre non inserite'}</h2>
-              </div>
-              <StatusBadge status={report.status} />
-            </div>
-            <dl>
-              <div>
-                <dt>Campionato</dt>
-                <dd>{report.competition || '-'}</dd>
-              </div>
-              <div>
-                <dt>Osservatore</dt>
-                <dd>{report.observerName || '-'}</dd>
-              </div>
-              <div>
-                <dt>Risultato</dt>
-                <dd>{report.result || '-'}</dd>
-              </div>
-              <div>
-                <dt>Arbitri</dt>
-                <dd>{report.firstRefereeName || '-'} / {report.secondRefereeName || '-'}</dd>
-              </div>
-              <div>
-                <dt>Voti</dt>
-                <dd>{formatReportVotes(report)}</dd>
-              </div>
-              <div>
-                <dt>Aggiornato</dt>
-                <dd>{new Date(report.updatedAt).toLocaleString('it-IT')}</dd>
-              </div>
-            </dl>
-            <div className="card-actions" onClick={(e) => e.stopPropagation()}>
-              {canManageReport(report) ? (
-                <button type="button" className="ghost-button" onClick={() => navigate(`/reports/${report.id}/edit`)}>
-                  Modifica
-                </button>
-              ) : null}
-              <button type="button" className="ghost-button" onClick={() => handleExport(report)} disabled={exportingId === report.id}>
-                {exportingId === report.id ? 'Genero...' : 'PDF'}
+      {/* Tabella workbench */}
+      <div className="workbench-card">
+        <div className="workbench-card-header">
+          <span className="workbench-card-title">
+            Tutti i rapporti · <strong>{sortedReports.filter((r) => !competition || r.competition === competition).length}</strong> risultati
+          </span>
+          <input
+            className="workbench-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cerca gara, squadra, arbitro…"
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {hasFilters && (
+              <button type="button" className="filter-reset-btn" onClick={resetFilters} title="Azzera filtri">
+                × Reset
               </button>
-              {canManageReport(report) ? (
-                <button type="button" className="danger-button" onClick={() => setReportToDelete(report)}>
-                  Cancella
-                </button>
-              ) : null}
+            )}
+            <div className="filter-drawer-wrap" ref={filterRef}>
+              <button
+                type="button"
+                className={`filter-chip${filterCount > 0 ? ' has-filters' : ''}`}
+                onClick={() => setFiltersOpen((o) => !o)}
+              >
+                {filterCount > 0 && <span className="filter-dot" />}
+                Filtri{filterCount > 0 ? ` · ${filterCount}` : ''}
+              </button>
+              {filtersOpen && (
+                <div className="filter-drawer">
+                  <p className="filter-drawer-title">Filtra rapporti</p>
+                  {availableCompetitions.length > 0 && (
+                    <Select
+                      value={competition}
+                      onChange={setCompetition}
+                      placeholder="Campionato"
+                      options={[
+                        { value: '', label: 'Tutti i campionati' },
+                        ...availableCompetitions.map((c) => ({ value: c, label: c }))
+                      ]}
+                    />
+                  )}
+                  {canFilterObservers && (
+                    <Select
+                      value={observer}
+                      onChange={setObserver}
+                      placeholder="Osservatore"
+                      options={[
+                        { value: '', label: 'Tutti gli osservatori' },
+                        ...observers.map((n) => ({ value: n, label: n }))
+                      ]}
+                    />
+                  )}
+                  <Select
+                    value={season}
+                    onChange={setSeason}
+                    placeholder="Anno sportivo"
+                    options={seasonOptions.map((s) => ({ value: s, label: s === CURRENT_SEASON ? `${s} · corrente` : s }))}
+                  />
+                  <div className="filter-drawer-actions">
+                    {hasFilters && (
+                      <button type="button" className="ghost-button" onClick={resetFilters}>
+                        Reset filtri
+                      </button>
+                    )}
+                    <button type="button" className="primary-button" onClick={() => setFiltersOpen(false)}>
+                      Chiudi
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </article>
-        ))}
-      </section>
+          </div>
+        </div>
+
+        <div className="workbench-body">
+          {loading ? (
+            <div className="empty-state">Caricamento rapporti…</div>
+          ) : sortedReports.length === 0 ? (
+            <div className="empty-state">
+              <h3>Nessun rapporto ancora.</h3>
+              <p>Il primo fischio è sempre quello più rumoroso. Creiamo la prima bozza.</p>
+              <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
+                Nuovo rapporto
+              </button>
+            </div>
+          ) : (
+            <WorkbenchTable
+              reports={sortedReports.filter((r) => !competition || r.competition === competition)}
+              sortColumn={sortColumn}
+              sortDir={sortDir}
+              onSort={handleSort}
+              onNavigate={handleNavigate}
+              onExport={handleExport}
+              onDelete={(r) => setReportToDelete(r)}
+              exportingId={exportingId}
+              canManage={canManage}
+              currentUser={currentUser}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

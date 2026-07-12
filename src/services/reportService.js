@@ -9,7 +9,7 @@ import {
   deriveSeason
 } from '../../shared/reportTemplate.js';
 import { config } from '../config.js';
-import { getDb } from '../database/connection.js';
+import { dbGet, dbAll, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 
 const REPORT_ROLES = ['first', 'second'];
@@ -104,6 +104,22 @@ function isRestrictedUser(user) {
   return Boolean(user) && !isAdmin(user);
 }
 
+// L'osservatore "designato" del rapporto: chi può vederlo/modificarlo perché è
+// l'osservatore della gara, anche se il rapporto è stato creato per suo conto
+// (es. da un admin). Vale sia via observer_id sia via designazione sulla gara.
+async function isDesignatedObserver(report, user) {
+  if (!user || !report) return false;
+  if (report.observerId && report.observerId === user.id) return true;
+  if (report.gameId) {
+    const row = await dbGet(
+      `SELECT 1 FROM game_officials WHERE game_id = ? AND role = 'observer' AND user_id = ?`,
+      [report.gameId, user.id]
+    );
+    if (row) return true;
+  }
+  return false;
+}
+
 function appendUserVisibilityClause(clauses, params, user) {
   if (!user || isAdmin(user)) return;
   if (isReferee(user)) {
@@ -121,11 +137,18 @@ function appendUserVisibilityClause(clauses, params, user) {
     params.push(...competitions);
     return;
   }
-  clauses.push('created_by = ?');
-  params.push(user.id);
+  // Osservatore: i rapporti creati da lui + quelli di cui è l'osservatore
+  // designato (via observer_id o designazione sulla gara collegata).
+  clauses.push(
+    `(created_by = ? OR observer_id = ? OR EXISTS (
+        SELECT 1 FROM game_officials go
+         WHERE go.game_id = reports.game_id AND go.role = 'observer' AND go.user_id = ?
+      ))`
+  );
+  params.push(user.id, user.id, user.id);
 }
 
-function assertReportAccess(report, user) {
+async function assertReportAccess(report, user) {
   if (!user || isAdmin(user)) return;
   if (isReferee(user)) {
     const myId = user.refereeId;
@@ -134,9 +157,9 @@ function assertReportAccess(report, user) {
   }
   const competitions = instructorCompetitionsForUser(user);
   if (isInstructor(user) && competitions.includes(report.competition)) return;
-  if (report.createdBy !== user.id) {
-    throw new HttpError(403, 'Non puoi accedere a questo rapporto.');
-  }
+  if (report.createdBy === user.id) return;
+  if (await isDesignatedObserver(report, user)) return;
+  throw new HttpError(403, 'Non puoi accedere a questo rapporto.');
 }
 
 function stripSensitiveForReferee(report, user) {
@@ -191,14 +214,16 @@ function stripListRowForReferee(row, user) {
   return cleaned;
 }
 
-function assertReportMutationAccess(report, user) {
+async function assertReportMutationAccess(report, user) {
   if (isReferee(user)) {
     throw new HttpError(403, 'Gli arbitri hanno accesso in sola lettura.');
   }
   if (!user || isAdmin(user)) return;
-  if (report.createdBy !== user.id) {
-    throw new HttpError(403, 'Puoi modificare solo i rapporti creati da te.');
-  }
+  // Osservatori e formatori possono modificare i rapporti che hanno creato o
+  // quelli di cui sono l'osservatore designato della gara.
+  if (report.createdBy === user.id) return;
+  if (await isDesignatedObserver(report, user)) return;
+  throw new HttpError(403, 'Puoi modificare solo i rapporti di cui sei l\'osservatore designato.');
 }
 
 function assertReportCreationAccess(user) {
@@ -286,6 +311,8 @@ export function normalizeReportPayload(input = {}) {
     empty.matchCharacteristics;
   const payload = {
     ...empty,
+    gameId: asNullableInteger(input.gameId),
+    observerUserId: asNullableInteger(input.observerUserId),
     observerName: asText(input.observerName),
     reportDate: asText(input.reportDate) || empty.reportDate,
     matchNumber: asText(input.matchNumber),
@@ -354,11 +381,43 @@ export function collectFinalValidationErrors(payload) {
   return errors;
 }
 
+// observer_id: chi ha osservato la gara (distinto da created_by, chi ha
+// inserito il rapporto). Per gli utenti osservatori coincide con l'autore;
+// per admin/formatori si risolve dal nome solo se univoco.
+async function resolveObserverId(payload, user) {
+  const explicit = asNullableInteger(payload.observerUserId);
+  if (explicit) return explicit;
+  if (isRestrictedUser(user) && !isInstructor(user)) return user?.id || null;
+  const name = asText(payload.observerName);
+  if (!name) return user?.id || null;
+  const matches = await dbAll('SELECT id FROM users WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?))', [name]);
+  if (matches.length === 1) return matches[0].id;
+  return null;
+}
+
+async function assertGameLink(payload, { existingReportId = null, allowDuplicate = false } = {}) {
+  if (!payload.gameId) return;
+  const game = await dbGet('SELECT id FROM games WHERE id = ?', [payload.gameId]);
+  if (!game) throw new HttpError(400, 'La gara collegata non esiste più.');
+  const other = await dbGet('SELECT id, status FROM reports WHERE game_id = ? AND id != COALESCE(?, -1)', [
+    payload.gameId,
+    existingReportId
+  ]);
+  if (other && !allowDuplicate) {
+    throw new HttpError(409, 'Esiste già un rapporto per questa gara.', {
+      existingReportId: other.id,
+      existingReportStatus: other.status,
+      requiresConfirmation: true
+    });
+  }
+}
+
 function rowToReport(row) {
   if (!row) return null;
   const data = normalizeReportPayload(JSON.parse(row.payload_json));
   const dataWithDbLinks = {
     ...data,
+    gameId: row.game_id || data.gameId || null,
     firstRefereeId: row.first_referee_id || data.firstRefereeId || null,
     secondRefereeId: row.second_referee_id || data.secondRefereeId || null,
     evaluations: {
@@ -388,6 +447,8 @@ function rowToReport(row) {
     secondRefereeName: row.second_referee_name,
     secondRefereeId: row.second_referee_id || null,
     sportSeason: row.sport_season || null,
+    gameId: row.game_id || null,
+    observerId: row.observer_id || null,
     data: { ...dataWithDbLinks, observerName: row.observer_name, status: row.status },
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -398,7 +459,7 @@ function rowToReport(row) {
   };
 }
 
-export function listReports({ search = '', status = '', season = '', observer = '', user = null } = {}) {
+export async function listReports({ search = '', status = '', season = '', observer = '', user = null } = {}) {
   const clauses = [];
   const params = [];
 
@@ -421,47 +482,48 @@ export function listReports({ search = '', status = '', season = '', observer = 
 
   if (search) {
     clauses.push(
-      `(match_number LIKE ?
-        OR competition LIKE ?
-        OR team_home LIKE ?
-        OR team_away LIKE ?
-        OR observer_name LIKE ?
-        OR first_referee_name LIKE ?
-        OR second_referee_name LIKE ?)`
+      `(match_number ILIKE ?
+        OR competition ILIKE ?
+        OR team_home ILIKE ?
+        OR team_away ILIKE ?
+        OR observer_name ILIKE ?
+        OR first_referee_name ILIKE ?
+        OR second_referee_name ILIKE ?)`
     );
     const like = `%${search}%`;
     params.push(like, like, like, like, like, like, like);
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  return getDb()
-    .prepare(
-      `SELECT id,
-              status,
-              observer_name,
-              report_date,
-              match_number,
-              competition,
-              team_home,
-              team_away,
-              score_home,
-              score_away,
-              first_referee_id,
-              first_referee_name,
-              second_referee_id,
-              second_referee_name,
-              first_referee_vote,
-              second_referee_vote,
-              created_by,
-              created_at,
-              updated_at,
-              finalized_at
-         FROM reports
-         ${where}
-        ORDER BY updated_at DESC, id DESC`
-    )
-    .all(...params)
-    .map((row) => {
+  const rows = await dbAll(
+    `SELECT id,
+            status,
+            observer_name,
+            report_date,
+            match_number,
+            competition,
+            team_home,
+            team_away,
+            score_home,
+            score_away,
+            first_referee_id,
+            first_referee_name,
+            second_referee_id,
+            second_referee_name,
+            first_referee_vote,
+            second_referee_vote,
+            created_by,
+            observer_id,
+            game_id,
+            created_at,
+            updated_at,
+            finalized_at
+       FROM reports
+       ${where}
+      ORDER BY updated_at DESC, id DESC`,
+    params
+  );
+  return rows.map((row) => {
       const base = {
         id: row.id,
         status: row.status,
@@ -478,6 +540,8 @@ export function listReports({ search = '', status = '', season = '', observer = 
         firstRefereeVote: row.first_referee_vote || '',
         secondRefereeVote: row.second_referee_vote || '',
         createdBy: row.created_by,
+        observerId: isReferee(user) ? null : (row.observer_id || null),
+        gameId: row.game_id || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         finalizedAt: row.finalized_at
@@ -486,7 +550,7 @@ export function listReports({ search = '', status = '', season = '', observer = 
     });
 }
 
-export function listObservers({ season = '', user = null } = {}) {
+export async function listObservers({ season = '', user = null } = {}) {
   if (isReferee(user)) return [];
   const clauses = ["observer_name IS NOT NULL", "observer_name != ''"];
   const params = [];
@@ -498,48 +562,49 @@ export function listObservers({ season = '', user = null } = {}) {
     params.push(season);
   }
 
-  return getDb()
-    .prepare(
-      `SELECT DISTINCT observer_name AS name
-         FROM reports
-        WHERE ${clauses.join(' AND ')}
-        ORDER BY observer_name`
-    )
-    .all(...params)
-    .map((row) => row.name);
+  const rows = await dbAll(
+    `SELECT DISTINCT observer_name AS name
+       FROM reports
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY observer_name`,
+    params
+  );
+  return rows.map((row) => row.name);
 }
 
-export function getReport(id, user = null) {
-  const row = getDb().prepare('SELECT * FROM reports WHERE id = ?').get(id);
+export async function getReport(id, user = null) {
+  const row = await dbGet('SELECT * FROM reports WHERE id = ?', [id]);
   const report = rowToReport(row);
   if (!report) throw new HttpError(404, 'Rapporto non trovato.');
-  assertReportAccess(report, user);
+  await assertReportAccess(report, user);
   const viewed = applyUserViewRules(report, user);
   return stripSensitiveForReferee(viewed, user);
 }
 
-export function createReport({ payload, status = 'draft', user }) {
+export async function createReport({ payload, status = 'draft', user, allowDuplicate = false }) {
   assertReportCreationAccess(user);
   const normalizedStatus = status === 'final' ? 'final' : 'draft';
   const normalizedPayload = applyUserReportRules(normalizeReportPayload(payload), user);
   assertIsoDate(normalizedPayload.reportDate, 'Data');
+  await assertGameLink(normalizedPayload, { allowDuplicate });
   const validationErrors = normalizedStatus === 'final' ? collectFinalValidationErrors(normalizedPayload) : [];
   if (validationErrors.length) {
     throw new HttpError(422, 'Completa i campi obbligatori prima del salvataggio definitivo.', validationErrors);
   }
 
   const sportSeason = deriveSeason(normalizedPayload.reportDate);
-  const result = getDb()
-    .prepare(
-      `INSERT INTO reports (
-         status, observer_name, report_date, match_number, competition,
-         team_home, team_away, score_home, score_away,
-         first_referee_id, first_referee_name, second_referee_id, second_referee_name,
-         first_referee_vote, second_referee_vote, payload_json, created_by, sport_season, finalized_at
-       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'final' THEN CURRENT_TIMESTAMP ELSE NULL END)`
-    )
-    .run(
+  const observerId = await resolveObserverId(normalizedPayload, user);
+  const result = await dbRun(
+    `INSERT INTO reports (
+       status, observer_name, report_date, match_number, competition,
+       team_home, team_away, score_home, score_away,
+       first_referee_id, first_referee_name, second_referee_id, second_referee_name,
+       first_referee_vote, second_referee_vote, payload_json, created_by, sport_season,
+       game_id, observer_id, finalized_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'final' THEN ts_now() ELSE NULL END)
+     RETURNING id`,
+    [
       normalizedStatus,
       normalizedPayload.observerName,
       normalizedPayload.reportDate,
@@ -558,54 +623,61 @@ export function createReport({ payload, status = 'draft', user }) {
       JSON.stringify({ ...normalizedPayload, status: normalizedStatus }),
       user?.id,
       sportSeason,
+      normalizedPayload.gameId,
+      observerId,
       normalizedStatus
-    );
+    ]
+  );
 
-  return getReport(result.lastInsertRowid, user);
+  return getReport(result.rows[0].id, user);
 }
 
-export function updateReport({ id, payload, status = 'draft', user }) {
-  const existingReport = getReport(id, user);
-  assertReportMutationAccess(existingReport, user);
+export async function updateReport({ id, payload, status = 'draft', user }) {
+  const existingReport = await getReport(id, user);
+  await assertReportMutationAccess(existingReport, user);
   const requestedStatus = status === 'final' ? 'final' : 'draft';
   const normalizedStatus = existingReport.status === 'final' ? 'final' : requestedStatus;
   const normalizedPayload = applyUserReportRules(normalizeReportPayload(payload), user);
+  // Il collegamento alla gara non si cambia in modifica: resta quello esistente.
+  normalizedPayload.gameId = existingReport.gameId || normalizedPayload.gameId;
   assertIsoDate(normalizedPayload.reportDate, 'Data');
+  await assertGameLink(normalizedPayload, { existingReportId: id, allowDuplicate: true });
   const validationErrors = normalizedStatus === 'final' ? collectFinalValidationErrors(normalizedPayload) : [];
   if (validationErrors.length) {
     throw new HttpError(422, 'Completa i campi obbligatori prima del salvataggio definitivo.', validationErrors);
   }
 
   const sportSeason = deriveSeason(normalizedPayload.reportDate);
-  getDb()
-    .prepare(
-      `UPDATE reports
-          SET status = ?,
-              observer_name = ?,
-              report_date = ?,
-              match_number = ?,
-              competition = ?,
-              team_home = ?,
-              team_away = ?,
-              score_home = ?,
-              score_away = ?,
-              first_referee_id = ?,
-              first_referee_name = ?,
-              second_referee_id = ?,
-              second_referee_name = ?,
-              first_referee_vote = ?,
-              second_referee_vote = ?,
-              payload_json = ?,
-              sport_season = ?,
-              updated_at = CURRENT_TIMESTAMP,
-              finalized_at = CASE
-                WHEN ? = 'final' AND finalized_at IS NULL THEN CURRENT_TIMESTAMP
-                WHEN ? = 'draft' THEN NULL
-                ELSE finalized_at
-              END
-        WHERE id = ?`
-    )
-    .run(
+  const observerId = await resolveObserverId(normalizedPayload, user);
+  await dbRun(
+    `UPDATE reports
+        SET status = ?,
+            observer_name = ?,
+            report_date = ?,
+            match_number = ?,
+            competition = ?,
+            team_home = ?,
+            team_away = ?,
+            score_home = ?,
+            score_away = ?,
+            first_referee_id = ?,
+            first_referee_name = ?,
+            second_referee_id = ?,
+            second_referee_name = ?,
+            first_referee_vote = ?,
+            second_referee_vote = ?,
+            payload_json = ?,
+            sport_season = ?,
+            game_id = ?,
+            observer_id = COALESCE(observer_id, ?),
+            updated_at = ts_now(),
+            finalized_at = CASE
+              WHEN ? = 'final' AND finalized_at IS NULL THEN ts_now()
+              WHEN ? = 'draft' THEN NULL
+              ELSE finalized_at
+            END
+      WHERE id = ?`,
+    [
       normalizedStatus,
       normalizedPayload.observerName,
       normalizedPayload.reportDate,
@@ -623,16 +695,18 @@ export function updateReport({ id, payload, status = 'draft', user }) {
       normalizedPayload.evaluations.second.vote,
       JSON.stringify({ ...normalizedPayload, status: normalizedStatus }),
       sportSeason,
+      normalizedPayload.gameId,
+      observerId,
       normalizedStatus,
       normalizedStatus,
       id
-    );
+    ]
+  );
 
   return getReport(id, user);
 }
 
-export function getStats(user = null, { season = '' } = {}) {
-  const db = getDb();
+export async function getStats(user = null, { season = '' } = {}) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const sportSeason = season || currentSportSeason();
   const clauses = ['sport_season = ?'];
@@ -640,30 +714,28 @@ export function getStats(user = null, { season = '' } = {}) {
   appendUserVisibilityClause(clauses, userParams, user);
   const userClause = `WHERE ${clauses.join(' AND ')}`;
 
-  const counts = db
-    .prepare(
-      `SELECT
-         COUNT(*) AS total,
-         SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft,
-         SUM(CASE WHEN status = 'final' THEN 1 ELSE 0 END) AS final,
-         SUM(CASE WHEN updated_at >= ? THEN 1 ELSE 0 END) AS last_month
-       FROM reports
-       ${userClause}`
-    )
-    .get(thirtyDaysAgo, ...userParams);
+  const counts = await dbGet(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft,
+       SUM(CASE WHEN status = 'final' THEN 1 ELSE 0 END) AS final,
+       SUM(CASE WHEN updated_at >= ? THEN 1 ELSE 0 END) AS last_month
+     FROM reports
+     ${userClause}`,
+    [thirtyDaysAgo, ...userParams]
+  );
 
   const seasonClauses = ['sport_season IS NOT NULL'];
   const seasonsParams = [];
   appendUserVisibilityClause(seasonClauses, seasonsParams, user);
-  const seasons = db
-    .prepare(
-      `SELECT DISTINCT sport_season
-       FROM reports
-       WHERE ${seasonClauses.join(' AND ')}
-       ORDER BY sport_season DESC`
-    )
-    .all(...seasonsParams)
-    .map((r) => r.sport_season);
+  const seasonRows = await dbAll(
+    `SELECT DISTINCT sport_season
+     FROM reports
+     WHERE ${seasonClauses.join(' AND ')}
+     ORDER BY sport_season DESC`,
+    seasonsParams
+  );
+  const seasons = seasonRows.map((r) => r.sport_season);
 
   if (isReferee(user)) {
     return { total: counts.total || 0 };
@@ -672,31 +744,34 @@ export function getStats(user = null, { season = '' } = {}) {
   return { ...counts, seasons };
 }
 
-export function listRefereeNames(user) {
+export async function listRefereeNames(user) {
   if (isReferee(user)) return [];
   const clauses = [];
   const clauseParams = [];
   appendUserVisibilityClause(clauses, clauseParams, user);
   const userClause = clauses.length ? `AND ${clauses.join(' AND ')}` : '';
   const params = [...clauseParams, ...clauseParams];
-  const rows = getDb()
-    .prepare(
-      `SELECT first_referee_name AS name FROM reports WHERE first_referee_name != '' ${userClause}
-       UNION
-       SELECT second_referee_name AS name FROM reports WHERE second_referee_name != '' ${userClause}
-       ORDER BY name`
-    )
-    .all(...params);
+  const rows = await dbAll(
+    `SELECT first_referee_name AS name FROM reports WHERE first_referee_name != '' ${userClause}
+     UNION
+     SELECT second_referee_name AS name FROM reports WHERE second_referee_name != '' ${userClause}
+     ORDER BY name`,
+    params
+  );
   return rows.map((r) => r.name);
 }
 
-export function deleteReport(id, user = null) {
-  const report = getReport(id, user);
-  assertReportMutationAccess(report, user);
-  getDb().prepare('DELETE FROM reports WHERE id = ?').run(id);
-  const exportDir = path.join(config.outputDir, `report-${id}`);
-  fs.rmSync(exportDir, { recursive: true, force: true });
-  const season = report.sportSeason || deriveSeason(report.data?.reportDate || report.reportDate);
-  const seasonExportDir = path.join(config.outputDir, safeSeasonSegment(season), `report-${id}`);
-  fs.rmSync(seasonExportDir, { recursive: true, force: true });
+export async function deleteReport(id, user = null) {
+  const report = await getReport(id, user);
+  await assertReportMutationAccess(report, user);
+  await dbRun('DELETE FROM reports WHERE id = ?', [id]);
+  // Pulizia PDF: solo col driver locale (in cloud i PDF si rigenerano dal payload,
+  // gli eventuali orfani su Storage sono innocui).
+  if (config.storageDriver === 'local') {
+    const exportDir = path.join(config.outputDir, `report-${id}`);
+    fs.rmSync(exportDir, { recursive: true, force: true });
+    const season = report.sportSeason || deriveSeason(report.data?.reportDate || report.reportDate);
+    const seasonExportDir = path.join(config.outputDir, safeSeasonSegment(season), `report-${id}`);
+    fs.rmSync(seasonExportDir, { recursive: true, force: true });
+  }
 }

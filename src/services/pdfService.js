@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import { config } from '../config.js';
-import { getDb } from '../database/connection.js';
+import { dbGet, dbRun } from '../database/db.js';
+import { putObject } from './storageService.js';
 import {
   COMMON_MATCH_CHARACTERISTICS,
   EVALUATION_SECTIONS,
@@ -80,12 +81,12 @@ function extractSurname(fullName) {
   return firstLooksLikeSurname ? first : tokens[tokens.length - 1];
 }
 
-function refereeSurnameForRole(report, role) {
+async function refereeSurnameForRole(report, role) {
   const refereeId = role === 'first'
     ? report.data?.firstRefereeId || report.firstRefereeId
     : report.data?.secondRefereeId || report.secondRefereeId;
   if (refereeId) {
-    const row = getDb().prepare('SELECT last_name FROM referees WHERE id = ?').get(refereeId);
+    const row = await dbGet('SELECT last_name FROM referees WHERE id = ?', [refereeId]);
     if (row?.last_name) return row.last_name;
   }
   const refereeName = role === 'first' ? report.data.firstRefereeName : report.data.secondRefereeName;
@@ -439,23 +440,18 @@ function addFooter(doc, report, role) {
   }
 }
 
-export function getPdfFileInfo(report, role) {
+export async function getPdfFileInfo(report, role) {
   const matchPart = safeFilePart(report.data.matchNumber || report.matchNumber || report.id);
-  const surnamePart = safeFilePart(refereeSurnameForRole(report, role) || `arbitro${getRefereeNumber(role)}`);
+  const surnamePart = safeFilePart((await refereeSurnameForRole(report, role)) || `arbitro${getRefereeNumber(role)}`);
   const fileName = `${matchPart}_${surnamePart}.pdf`;
   const season = report.sportSeason || deriveSeason(report.data?.reportDate || report.reportDate);
-  const dir = path.join(config.outputDir, safeSeasonSegment(season), `report-${report.id}`);
-  return {
-    dir,
-    fileName,
-    filePath: path.join(dir, fileName)
-  };
+  const key = `output/${safeSeasonSegment(season)}/report-${report.id}/${fileName}`;
+  return { key, fileName };
 }
 
-export function generatePdfForRole(report, role) {
+// Rende il PDF in memoria e restituisce un Buffer (nessuna scrittura su disco).
+export function buildReportPdf(report, role) {
   const evaluation = report.data.evaluations?.[role];
-  const { dir, fileName, filePath } = getPdfFileInfo(report, role);
-  fs.mkdirSync(dir, { recursive: true });
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -468,21 +464,12 @@ export function generatePdfForRole(report, role) {
         Author: report.data.observerName || 'Rapporti Arbitrali'
       }
     });
-    const stream = fs.createWriteStream(filePath);
 
-    stream.on('finish', () => {
-      getDb()
-        .prepare(
-          `INSERT INTO exports (report_id, referee_role, file_name, file_path)
-           VALUES (?, ?, ?, ?)`
-        )
-        .run(report.id, role, fileName, filePath);
-      resolve({ role, fileName, filePath });
-    });
-    stream.on('error', reject);
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.pipe(stream);
     registerFonts(doc);
     drawPageBackground(doc);
     addHeader(doc, report, role);
@@ -499,6 +486,19 @@ export function generatePdfForRole(report, role) {
     addFooter(doc, report, role);
     doc.end();
   });
+}
+
+// Genera il PDF, lo carica su Storage e registra l'export. Restituisce anche il
+// buffer, così il chiamante può servirlo/allegarlo senza rileggerlo da Storage.
+export async function generatePdfForRole(report, role) {
+  const { key, fileName } = await getPdfFileInfo(report, role);
+  const buffer = await buildReportPdf(report, role);
+  await putObject(key, buffer, 'application/pdf');
+  await dbRun(
+    `INSERT INTO exports (report_id, referee_role, file_name, file_path) VALUES (?, ?, ?, ?)`,
+    [report.id, role, fileName, key]
+  );
+  return { role, fileName, key, buffer };
 }
 
 export async function generateReportPdfs(report) {

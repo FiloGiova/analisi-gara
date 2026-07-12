@@ -3,6 +3,7 @@ import { EVALUATION_SECTIONS, POTENTIAL_OPTIONS, getRefereeLabel } from '../../.
 import SegmentedChoice from './SegmentedChoice.jsx';
 import { Field, TextArea, TextInput } from './Field.jsx';
 import ConfirmModal from './ConfirmModal.jsx';
+import JudgmentAIHelper from './JudgmentAIHelper.jsx';
 
 function groupTechniqueItems(groups) {
   return groups.reduce((acc, group) => {
@@ -70,7 +71,7 @@ function CopyConfirmModal({ fromRole, onConfirm, onCancel }) {
   );
 }
 
-export default function EvaluationEditor({ role, refereeName, value, onChange, otherRole, onCopyFromOther }) {
+export default function EvaluationEditor({ role, refereeName, value, onChange, otherRole, onCopyFromOther, report, aiEnabled = false }) {
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
 
   function updateSection(sectionId, updater) {
@@ -204,14 +205,32 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
       })}
 
       <section className="evaluation-card closing-card">
-        <Field label="Giudizio globale">
-          <TextArea
-            rows={5}
-            value={value.globalJudgement}
-            onChange={(event) => onChange({ ...value, globalJudgement: event.target.value })}
-            placeholder="Punti di forza, aree di miglioramento, sintesi finale..."
+        {aiEnabled ? (
+          <JudgmentAIHelper
+            reportData={{
+              competition: report?.competition || '',
+              teamHome: report?.teamHome || '',
+              teamAway: report?.teamAway || '',
+              scoreHome: report?.scoreHome || '',
+              scoreAway: report?.scoreAway || '',
+              matchCharacteristics: report?.matchCharacteristics,
+              refereeName: refereeName || '',
+              refereePosition: role === 'first' ? '1°' : '2°',
+              evaluation: value
+            }}
+            value={value.globalJudgement || ''}
+            onChange={(text) => onChange({ ...value, globalJudgement: text })}
           />
-        </Field>
+        ) : (
+          <Field label="Giudizio globale">
+            <TextArea
+              rows={5}
+              value={value.globalJudgement}
+              onChange={(event) => onChange({ ...value, globalJudgement: event.target.value })}
+              placeholder="Punti di forza, aree di miglioramento, sintesi finale..."
+            />
+          </Field>
+        )}
 
         <Field label="Eventuali errori tecnici">
           <TextArea

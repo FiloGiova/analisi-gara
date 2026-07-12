@@ -1,4 +1,4 @@
-import { getDb } from '../database/connection.js';
+import { dbGet, dbAll, dbRun } from '../database/db.js';
 import { COMPETITIONS } from '../../shared/reportTemplate.js';
 import { hashPassword, verifyPassword } from '../utils/passwords.js';
 import { HttpError } from '../utils/httpError.js';
@@ -85,17 +85,17 @@ function normalizeRefereeId(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-function validateRefereeConfiguration({ role, refereeId, exceptUserId = null }) {
+async function validateRefereeConfiguration({ role, refereeId, exceptUserId = null }) {
   if (role !== 'referee') return null;
   const cleanRefereeId = normalizeRefereeId(refereeId);
   if (!cleanRefereeId) {
     throw new HttpError(400, 'Collega un arbitro anagrafico all’utente referee.');
   }
-  const referee = getDb().prepare('SELECT id FROM referees WHERE id = ?').get(cleanRefereeId);
+  const referee = await dbGet('SELECT id FROM referees WHERE id = ?', [cleanRefereeId]);
   if (!referee) throw new HttpError(404, 'Arbitro collegato non trovato.');
   const existing = exceptUserId
-    ? getDb().prepare("SELECT id FROM users WHERE referee_id = ? AND role = 'referee' AND id <> ?").get(cleanRefereeId, exceptUserId)
-    : getDb().prepare("SELECT id FROM users WHERE referee_id = ? AND role = 'referee'").get(cleanRefereeId);
+    ? await dbGet("SELECT id FROM users WHERE referee_id = ? AND role = 'referee' AND id <> ?", [cleanRefereeId, exceptUserId])
+    : await dbGet("SELECT id FROM users WHERE referee_id = ? AND role = 'referee'", [cleanRefereeId]);
   if (existing) throw new HttpError(409, 'Esiste già un utente collegato a questo arbitro.');
   return cleanRefereeId;
 }
@@ -134,32 +134,32 @@ function publicUser(row) {
   };
 }
 
-function activeAdminCount(exceptUserId = null) {
+async function activeAdminCount(exceptUserId = null) {
   if (exceptUserId) {
-    return getDb()
-      .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1 AND id <> ?")
-      .get(exceptUserId).count;
+    return (
+      await dbGet("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1 AND id <> ?", [exceptUserId])
+    ).count;
   }
 
-  return getDb().prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1").get().count;
+  return (await dbGet("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1")).count;
 }
 
-function ensureCanChangeAdminState({ id, nextRole, nextActive }) {
-  const current = getDb().prepare('SELECT id, role, active FROM users WHERE id = ?').get(id);
+async function ensureCanChangeAdminState({ id, nextRole, nextActive }) {
+  const current = await dbGet('SELECT id, role, active FROM users WHERE id = ?', [id]);
   if (!current) throw new HttpError(404, 'Utente non trovato.');
 
   const wasActiveAdmin = current.role === 'admin' && Boolean(current.active);
   const remainsActiveAdmin = nextRole === 'admin' && Boolean(nextActive);
-  if (wasActiveAdmin && !remainsActiveAdmin && activeAdminCount(id) === 0) {
+  if (wasActiveAdmin && !remainsActiveAdmin && (await activeAdminCount(id)) === 0) {
     throw new HttpError(400, "Non puoi rimuovere l'ultimo amministratore attivo.");
   }
 }
 
-export function countUsers() {
-  return getDb().prepare('SELECT COUNT(*) AS count FROM users').get().count;
+export async function countUsers() {
+  return (await dbGet('SELECT COUNT(*) AS count FROM users')).count;
 }
 
-export function upsertUser({
+export async function upsertUser({
   username,
   password,
   displayName = username,
@@ -177,8 +177,8 @@ export function upsertUser({
   const instructorCompetitions = cleanRole === 'instructor' ? normalizeInstructorCompetitions(competitionInput) : [];
   validateRoleConfiguration(cleanRole, instructorCompetitions);
   const cleanInstructorCompetition = instructorCompetitions.length ? JSON.stringify(instructorCompetitions) : null;
-  const existing = getDb().prepare('SELECT id FROM users WHERE username = ?').get(cleanUsername);
-  const cleanRefereeId = validateRefereeConfiguration({
+  const existing = await dbGet('SELECT id FROM users WHERE username = ?', [cleanUsername]);
+  const cleanRefereeId = await validateRefereeConfiguration({
     role: cleanRole,
     refereeId,
     exceptUserId: existing?.id || null
@@ -186,44 +186,40 @@ export function upsertUser({
   const passwordHash = hashPassword(password);
 
   if (existing) {
-    ensureCanChangeAdminState({ id: existing.id, nextRole: cleanRole, nextActive: true });
-    getDb()
-      .prepare(
-        `UPDATE users
-            SET password_hash = ?,
-                display_name = ?,
-                role = ?,
-                formatter_competition = ?,
-                referee_id = ?,
-                active = 1,
-                updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`
-      )
-      .run(passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId, existing.id);
+    await ensureCanChangeAdminState({ id: existing.id, nextRole: cleanRole, nextActive: true });
+    await dbRun(
+      `UPDATE users
+          SET password_hash = ?,
+              display_name = ?,
+              role = ?,
+              formatter_competition = ?,
+              referee_id = ?,
+              active = 1,
+              updated_at = ts_now()
+        WHERE id = ?`,
+      [passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId, existing.id]
+    );
     return existing.id;
   }
 
-  const result = getDb()
-    .prepare(
-      `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(cleanUsername, passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId);
-  return result.lastInsertRowid;
+  const result = await dbRun(
+    `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id)
+     VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+    [cleanUsername, passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId]
+  );
+  return result.rows[0].id;
 }
 
-export function listUsers() {
-  return getDb()
-    .prepare(
-      `SELECT id, username, display_name, role, formatter_competition, photo_path, referee_id, active, created_at, updated_at
-         FROM users
-        ORDER BY active DESC, role ASC, display_name COLLATE NOCASE ASC`
-    )
-    .all()
-    .map(publicUser);
+export async function listUsers() {
+  const rows = await dbAll(
+    `SELECT id, username, display_name, role, formatter_competition, photo_path, referee_id, active, created_at, updated_at
+       FROM users
+      ORDER BY active DESC, role ASC, LOWER(display_name) ASC`
+  );
+  return rows.map(publicUser);
 }
 
-export function createUser({
+export async function createUser({
   username,
   password,
   displayName,
@@ -236,42 +232,42 @@ export function createUser({
   validateUsername(cleanUsername);
   validatePassword(password);
 
-  const existing = getDb().prepare('SELECT id FROM users WHERE username = ?').get(cleanUsername);
+  const existing = await dbGet('SELECT id FROM users WHERE username = ?', [cleanUsername]);
   if (existing) throw new HttpError(409, 'Username già presente.');
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
   const cleanRole = normalizeRole(role, competitionInput);
   const instructorCompetitions = cleanRole === 'instructor' ? normalizeInstructorCompetitions(competitionInput) : [];
   validateRoleConfiguration(cleanRole, instructorCompetitions);
-  const cleanRefereeId = validateRefereeConfiguration({ role: cleanRole, refereeId });
+  const cleanRefereeId = await validateRefereeConfiguration({ role: cleanRole, refereeId });
 
-  const result = getDb()
-    .prepare(
-      `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id, active)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`
-    )
-    .run(
+  const result = await dbRun(
+    `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id, active)
+     VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
+    [
       cleanUsername,
       hashPassword(password),
       String(displayName || cleanUsername).trim(),
       cleanRole,
       instructorCompetitions.length ? JSON.stringify(instructorCompetitions) : null,
       cleanRefereeId
-    );
+    ]
+  );
 
-  return getUser(result.lastInsertRowid);
+  return getUser(result.rows[0].id);
 }
 
-export function getUser(id) {
-  const row = getDb()
-    .prepare('SELECT id, username, display_name, role, formatter_competition, photo_path, referee_id, active, created_at, updated_at FROM users WHERE id = ?')
-    .get(id);
+export async function getUser(id) {
+  const row = await dbGet(
+    'SELECT id, username, display_name, role, formatter_competition, photo_path, referee_id, active, created_at, updated_at FROM users WHERE id = ?',
+    [id]
+  );
   if (!row) throw new HttpError(404, 'Utente non trovato.');
   return publicUser(row);
 }
 
-export function updateUser({ id, displayName, role, active, instructorCompetition, formatterCompetition, refereeId }) {
-  const current = getDb().prepare('SELECT id, display_name, role, formatter_competition, referee_id, active FROM users WHERE id = ?').get(id);
+export async function updateUser({ id, displayName, role, active, instructorCompetition, formatterCompetition, refereeId }) {
+  const current = await dbGet('SELECT id, display_name, role, formatter_competition, referee_id, active FROM users WHERE id = ?', [id]);
   if (!current) throw new HttpError(404, 'Utente non trovato.');
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
@@ -284,72 +280,65 @@ export function updateUser({ id, displayName, role, active, instructorCompetitio
       : serializeInstructorCompetitions(competitionInput);
   validateRoleConfiguration(nextRole, normalizeStoredInstructorCompetitions(nextInstructorCompetition));
   const nextRefereeId = nextRole === 'referee'
-    ? validateRefereeConfiguration({
+    ? await validateRefereeConfiguration({
         role: nextRole,
         refereeId: refereeId === undefined ? current.referee_id : refereeId,
         exceptUserId: id
       })
     : null;
-  ensureCanChangeAdminState({ id, nextRole, nextActive });
+  await ensureCanChangeAdminState({ id, nextRole, nextActive });
 
-  getDb()
-    .prepare(
-      `UPDATE users
-          SET display_name = ?,
-              role = ?,
-              formatter_competition = ?,
-              referee_id = ?,
-              active = ?,
-              updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?`
-    )
-    .run(String(displayName || current.display_name).trim(), nextRole, nextInstructorCompetition, nextRefereeId, nextActive ? 1 : 0, id);
+  await dbRun(
+    `UPDATE users
+        SET display_name = ?,
+            role = ?,
+            formatter_competition = ?,
+            referee_id = ?,
+            active = ?,
+            updated_at = ts_now()
+      WHERE id = ?`,
+    [String(displayName || current.display_name).trim(), nextRole, nextInstructorCompetition, nextRefereeId, nextActive ? 1 : 0, id]
+  );
 
   if (!nextActive) {
-    getDb().prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+    await dbRun('DELETE FROM sessions WHERE user_id = ?', [id]);
   }
 
   return getUser(id);
 }
 
-export function resetUserPassword({ id, password }) {
+export async function resetUserPassword({ id, password }) {
   validatePassword(password);
-  const existing = getDb().prepare('SELECT id FROM users WHERE id = ?').get(id);
+  const existing = await dbGet('SELECT id FROM users WHERE id = ?', [id]);
   if (!existing) throw new HttpError(404, 'Utente non trovato.');
 
-  getDb()
-    .prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(hashPassword(password), id);
+  await dbRun('UPDATE users SET password_hash = ?, updated_at = ts_now() WHERE id = ?', [hashPassword(password), id]);
 
-  getDb().prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+  await dbRun('DELETE FROM sessions WHERE user_id = ?', [id]);
   return getUser(id);
 }
 
-export function changeOwnPassword({ userId, currentPassword, newPassword }) {
+export async function changeOwnPassword({ userId, currentPassword, newPassword }) {
   validatePassword(newPassword);
-  const user = getDb().prepare('SELECT id, password_hash FROM users WHERE id = ? AND active = 1').get(userId);
+  const user = await dbGet('SELECT id, password_hash FROM users WHERE id = ? AND active = 1', [userId]);
   if (!user) throw new HttpError(404, 'Utente non trovato.');
   if (!verifyPassword(String(currentPassword || ''), user.password_hash)) {
     throw new HttpError(400, 'Password attuale non corretta.');
   }
 
-  getDb()
-    .prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(hashPassword(newPassword), userId);
+  await dbRun('UPDATE users SET password_hash = ?, updated_at = ts_now() WHERE id = ?', [hashPassword(newPassword), userId]);
 
-  getDb().prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  await dbRun('DELETE FROM sessions WHERE user_id = ?', [userId]);
 }
 
-export function updateOwnProfile({ userId, displayName }) {
+export async function updateOwnProfile({ userId, displayName }) {
   const cleanDisplayName = String(displayName || '').trim();
   if (!cleanDisplayName) throw new HttpError(400, 'Nome visualizzato obbligatorio.');
 
-  const existing = getDb().prepare('SELECT id FROM users WHERE id = ? AND active = 1').get(userId);
+  const existing = await dbGet('SELECT id FROM users WHERE id = ? AND active = 1', [userId]);
   if (!existing) throw new HttpError(404, 'Utente non trovato.');
 
-  getDb()
-    .prepare('UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(cleanDisplayName, userId);
+  await dbRun('UPDATE users SET display_name = ?, updated_at = ts_now() WHERE id = ?', [cleanDisplayName, userId]);
 
   return getUser(userId);
 }

@@ -3,8 +3,9 @@ import helmet from 'helmet';
 import path from 'node:path';
 import fs from 'node:fs';
 import { config } from './src/config.js';
-import { initializeDatabase, getDb } from './src/database/connection.js';
-import { attachUser, requireAdmin, requireAuth } from './src/middleware/auth.js';
+import { initializeDatabase } from './src/database/connection.js';
+import { dbRun } from './src/database/db.js';
+import { attachUser, requireAdmin, requireAdminOrInstructor, requireAuth, requireReportAuthors } from './src/middleware/auth.js';
 import { authRouter } from './src/routes/auth.routes.js';
 import { reportsRouter } from './src/routes/reports.routes.js';
 import { usersRouter } from './src/routes/users.routes.js';
@@ -12,9 +13,11 @@ import { accessLogsRouter } from './src/routes/accessLogs.routes.js';
 import { refereesRouter } from './src/routes/referees.routes.js';
 import { photosRouter, refereePhotosRouter } from './src/routes/photos.routes.js';
 import { meRouter } from './src/routes/me.routes.js';
-
-initializeDatabase();
-getDb().prepare('DELETE FROM sessions WHERE expires_at <= ?').run(new Date().toISOString());
+import { aiRouter } from './src/routes/ai.routes.js';
+import { gamesRouter } from './src/routes/games.routes.js';
+import { sourcesRouter } from './src/routes/sources.routes.js';
+import { importsRouter } from './src/routes/imports.routes.js';
+import { statsRouter } from './src/routes/stats.routes.js';
 
 const app = express();
 const clientDist = path.join(config.rootDir, 'dist', 'client');
@@ -41,6 +44,13 @@ app.use('/api/me', requireAuth, meRouter);
 app.use('/api/photos', photosRouter);
 app.use('/api/referees', requireAuth, refereePhotosRouter);
 app.use('/api/referees', requireAuth, refereesRouter);
+app.use('/api/games', requireAuth, gamesRouter);
+app.use('/api/sources', requireAuth, requireAdmin, sourcesRouter);
+app.use('/api/imports', requireAuth, requireAdmin, importsRouter);
+app.use('/api/stats', requireAuth, requireAdminOrInstructor, statsRouter);
+if (config.aiEnabled) {
+  app.use('/api/ai', requireAuth, requireReportAuthors, aiRouter);
+}
 app.use('/api', (_req, res) => {
   res.status(404).json({ message: 'Endpoint non trovato.' });
 });
@@ -72,7 +82,16 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-app.listen(config.port, config.host, () => {
-  console.log(`Rapporti Arbitrali in ascolto su http://${config.host}:${config.port}`);
-  console.log(`Storage: ${config.storageDir}`);
+async function start() {
+  await initializeDatabase();
+  await dbRun('DELETE FROM sessions WHERE expires_at <= ?', [new Date().toISOString()]);
+  app.listen(config.port, config.host, () => {
+    console.log(`Rapporti Arbitrali in ascolto su http://${config.host}:${config.port}`);
+    console.log(`Storage: ${config.storageDriver} | DB: Postgres`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Avvio fallito:', err);
+  process.exit(1);
 });

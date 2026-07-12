@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDb } from '../database/connection.js';
+import { dbGet, dbRun } from '../database/db.js';
 import { getSessionMaxAgeMs } from '../config.js';
 import { buildClearSessionCookie, buildSessionCookie, getCookie } from '../utils/cookies.js';
 import { createSessionToken, hashSessionToken, verifyPassword } from '../utils/passwords.js';
@@ -56,7 +56,10 @@ function publicUser(user) {
 }
 
 authRouter.get('/me', (req, res) => {
-  res.json({ user: req.user || null });
+  res.json({
+    user: req.user || null,
+    features: { aiEnabled: config.aiEnabled }
+  });
 });
 
 authRouter.post(
@@ -68,9 +71,7 @@ authRouter.post(
       throw new HttpError(400, 'Inserisci username e password.');
     }
 
-    const user = getDb()
-      .prepare('SELECT * FROM users WHERE username = ? AND active = 1')
-      .get(username);
+    const user = await dbGet('SELECT * FROM users WHERE username = ? AND active = 1', [username]);
     if (!user || !verifyPassword(password, user.password_hash)) {
       throw new HttpError(401, 'Credenziali non valide.');
     }
@@ -78,25 +79,26 @@ authRouter.post(
     const token = createSessionToken();
     const tokenHash = hashSessionToken(token);
     const expiresAt = new Date(Date.now() + getSessionMaxAgeMs()).toISOString();
-    getDb()
-      .prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
-      .run(tokenHash, user.id, expiresAt);
+    await dbRun('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', [tokenHash, user.id, expiresAt]);
 
-    logAccess(user.id, req.ip, req.headers['user-agent']);
+    await logAccess(user.id, req.ip, req.headers['user-agent']);
 
     res.setHeader('Set-Cookie', buildSessionCookie(token));
     res.json({ user: publicUser(user) });
   })
 );
 
-authRouter.post('/logout', (req, res) => {
-  const token = getCookie(req, config.sessionCookieName);
-  if (token) {
-    getDb().prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashSessionToken(token));
-  }
-  res.setHeader('Set-Cookie', buildClearSessionCookie());
-  res.json({ ok: true });
-});
+authRouter.post(
+  '/logout',
+  asyncHandler(async (req, res) => {
+    const token = getCookie(req, config.sessionCookieName);
+    if (token) {
+      await dbRun('DELETE FROM sessions WHERE token_hash = ?', [hashSessionToken(token)]);
+    }
+    res.setHeader('Set-Cookie', buildClearSessionCookie());
+    res.json({ ok: true });
+  })
+);
 
 authRouter.post(
   '/change-password',
@@ -105,7 +107,7 @@ authRouter.post(
       throw new HttpError(401, 'Accesso richiesto.');
     }
 
-    changeOwnPassword({
+    await changeOwnPassword({
       userId: req.user.id,
       currentPassword: req.body?.currentPassword,
       newPassword: req.body?.newPassword

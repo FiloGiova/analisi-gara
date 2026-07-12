@@ -88,10 +88,15 @@ export const api = {
     if (season) params.set('season', season);
     return request(`/api/reports/observers${params.toString() ? `?${params}` : ''}`);
   },
+  getPendingGames: ({ season = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (season) params.set('season', season);
+    return request(`/api/reports/pending-games${params.toString() ? `?${params}` : ''}`);
+  },
   getReport: (id) => request(`/api/reports/${id}`),
-  createReport: (report, status) => request('/api/reports', {
+  createReport: (report, status, { allowDuplicate = false } = {}) => request('/api/reports', {
     method: 'POST',
-    body: JSON.stringify({ report, status })
+    body: JSON.stringify({ report, status, allowDuplicate })
   }),
   updateReport: (id, report, status) => request(`/api/reports/${id}`, {
     method: 'PUT',
@@ -136,6 +141,16 @@ export const api = {
   addRefereeRoster: (id, data) => request(`/api/referees/${id}/rosters`, { method: 'POST', body: JSON.stringify(data) }),
   removeRefereeRoster: (refereeId, rosterId) =>
     request(`/api/referees/${refereeId}/rosters/${rosterId}`, { method: 'DELETE' }),
+  listRefereeBands: ({ competition = '', season = '', band = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (competition) params.set('competition', competition);
+    if (season) params.set('season', season);
+    if (band) params.set('band', band);
+    return request(`/api/referees/bands${params.toString() ? `?${params}` : ''}`);
+  },
+  addRefereeBand: (refereeId, data) =>
+    request(`/api/referees/${refereeId}/bands`, { method: 'POST', body: JSON.stringify(data) }),
+  removeRefereeBand: (bandId) => request(`/api/referees/bands/${bandId}`, { method: 'DELETE' }),
   uploadMyPhoto: async (file) => {
     const form = new FormData();
     form.append('photo', file);
@@ -162,14 +177,115 @@ export const api = {
     return data;
   },
   deleteRefereePhoto: (refereeId) =>
-    request(`/api/referees/${refereeId}/photo`, { method: 'DELETE' })
+    request(`/api/referees/${refereeId}/photo`, { method: 'DELETE' }),
+  listGames: ({ season = '', matchday = '', status = '', search = '', refereeId = '', observerUserId = '', uncovered = false, sourceId = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (season) params.set('season', season);
+    if (matchday) params.set('matchday', matchday);
+    if (status) params.set('status', status);
+    if (search) params.set('search', search);
+    if (refereeId) params.set('refereeId', refereeId);
+    if (observerUserId) params.set('observerUserId', observerUserId);
+    if (uncovered) params.set('uncovered', 'true');
+    if (sourceId) params.set('sourceId', sourceId);
+    return request(`/api/games${params.toString() ? `?${params}` : ''}`);
+  },
+  listGameSeasons: () => request('/api/games/seasons'),
+  listGameObservers: () => request('/api/games/observers'),
+  getGame: (id) => request(`/api/games/${id}`),
+  getGameReportPrefill: (id) => request(`/api/games/${id}/report-prefill`),
+  createGame: (data) => request('/api/games', { method: 'POST', body: JSON.stringify(data) }),
+  updateGame: (id, data) => request(`/api/games/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteGame: (id) => request(`/api/games/${id}`, { method: 'DELETE' }),
+  setGameOfficial: (gameId, role, data) =>
+    request(`/api/games/${gameId}/officials/${role}`, { method: 'PUT', body: JSON.stringify(data) }),
+  removeGameOfficial: (gameId, role) =>
+    request(`/api/games/${gameId}/officials/${role}`, { method: 'DELETE' }),
+  saveGameAlias: ({ source, externalName, refereeId, userId }) =>
+    request('/api/games/aliases', { method: 'POST', body: JSON.stringify({ source, externalName, refereeId, userId }) }),
+  getAliasCandidates: (name, type = 'referee') =>
+    request(`/api/games/alias-candidates?name=${encodeURIComponent(name)}&type=${type}`),
+  getObserverSuggestions: (gameId) =>
+    request(`/api/games/${gameId}/observer-suggestions`),
+  getCoverage: ({ season = '', competition = '', band = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (season) params.set('season', season);
+    if (competition) params.set('competition', competition);
+    if (band) params.set('band', band);
+    return request(`/api/stats/coverage${params.toString() ? `?${params}` : ''}`);
+  },
+  getEmployment: ({ season = '', competition = '', band = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (season) params.set('season', season);
+    if (competition) params.set('competition', competition);
+    if (band) params.set('band', band);
+    return request(`/api/stats/employment${params.toString() ? `?${params}` : ''}`);
+  },
+  getMatrix: ({ season = '', competition = '', band = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (season) params.set('season', season);
+    if (competition) params.set('competition', competition);
+    if (band) params.set('band', band);
+    return request(`/api/stats/matrix${params.toString() ? `?${params}` : ''}`);
+  },
+  getMatrixDetail: ({ season = '', competition = '', observerKey, refereeId }) => {
+    const params = new URLSearchParams({ observerKey, refereeId: String(refereeId) });
+    if (season) params.set('season', season);
+    if (competition) params.set('competition', competition);
+    return request(`/api/stats/matrix-detail?${params}`);
+  },
+  previewDesignationsImport: async (file, season) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`/api/imports/preview?season=${encodeURIComponent(season)}`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include'
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(data?.message || 'Anteprima non riuscita.', data?.details, response.status);
+    return data;
+  },
+  applyDesignationsImport: ({ sportSeason, rows }) =>
+    request('/api/imports/apply', { method: 'POST', body: JSON.stringify({ sportSeason, rows }) }),
+  listSources: ({ season = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (season) params.set('season', season);
+    return request(`/api/sources${params.toString() ? `?${params}` : ''}`);
+  },
+  createSource: (data) => request('/api/sources', { method: 'POST', body: JSON.stringify(data) }),
+  updateSource: (id, data) => request(`/api/sources/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSource: (id) => request(`/api/sources/${id}`, { method: 'DELETE' }),
+  syncSource: (id) => request(`/api/sources/${id}/sync`, { method: 'POST' }),
+  listSourceRuns: (id) => request(`/api/sources/${id}/runs`),
+  generateJudgment: (reportData) =>
+    request('/api/ai/generate-judgment', {
+      method: 'POST',
+      body: JSON.stringify({ reportData })
+    }),
+  reviseJudgment: ({ currentJudgment, observerFeedback }) =>
+    request('/api/ai/revise-judgment', {
+      method: 'POST',
+      body: JSON.stringify({ currentJudgment, observerFeedback })
+    })
 };
+
+export function downloadDesignationsTemplate(season) {
+  const link = document.createElement('a');
+  link.href = `/api/imports/template?season=${encodeURIComponent(season)}`;
+  link.setAttribute('download', '');
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 200);
+}
 
 export function downloadReportPdf(reportId, role) {
   const link = document.createElement('a');
   link.href = `/api/reports/${reportId}/export/${role}/download`;
+  link.setAttribute('download', '');
   link.rel = 'noopener';
   document.body.appendChild(link);
   link.click();
-  link.remove();
+  setTimeout(() => link.remove(), 200);
 }

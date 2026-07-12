@@ -1,5 +1,4 @@
 import express from 'express';
-import fs from 'node:fs';
 import {
   createReport,
   deleteReport,
@@ -10,7 +9,8 @@ import {
   listReports,
   updateReport
 } from '../services/reportService.js';
-import { generateReportPdfs, getPdfFileInfo, generatePdfForRole } from '../services/pdfService.js';
+import { generateReportPdfs, getPdfFileInfo, generatePdfForRole, buildReportPdf } from '../services/pdfService.js';
+import { listPendingAssignmentsForUser } from '../services/gameService.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 import { sendReportToReferee, isEmailEnabled } from '../services/emailService.js';
 
@@ -20,7 +20,7 @@ reportsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     res.json({
-      reports: listReports({
+      reports: await listReports({
         search: String(req.query.search || '').trim(),
         status: String(req.query.status || '').trim(),
         season: String(req.query.season || '').trim(),
@@ -34,22 +34,26 @@ reportsRouter.get(
 reportsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
-    const report = createReport({
+    const report = await createReport({
       payload: req.body?.report,
       status: req.body?.status,
-      user: req.user
+      user: req.user,
+      allowDuplicate: req.body?.allowDuplicate === true
     });
     res.status(201).json({ report });
   })
 );
 
-reportsRouter.get('/stats', (req, res) => {
-  res.json({
-    stats: getStats(req.user, {
-      season: String(req.query.season || '').trim()
-    })
-  });
-});
+reportsRouter.get(
+  '/stats',
+  asyncHandler(async (req, res) => {
+    res.json({
+      stats: await getStats(req.user, {
+        season: String(req.query.season || '').trim()
+      })
+    });
+  })
+);
 
 reportsRouter.get('/email-enabled', (_req, res) => {
   res.json({ enabled: isEmailEnabled() });
@@ -59,7 +63,7 @@ reportsRouter.get(
   '/observers',
   asyncHandler(async (req, res) => {
     res.json({
-      observers: listObservers({
+      observers: await listObservers({
         season: String(req.query.season || '').trim(),
         user: req.user
       })
@@ -70,21 +74,32 @@ reportsRouter.get(
 reportsRouter.get(
   '/referee-names',
   asyncHandler(async (req, res) => {
-    res.json({ names: listRefereeNames(req.user) });
+    res.json({ names: await listRefereeNames(req.user) });
+  })
+);
+
+// Coda "da compilare" per l'utente corrente: gare dove è osservatore designato
+// e non c'è ancora un rapporto. Vale per osservatori, formatori e admin.
+reportsRouter.get(
+  '/pending-games',
+  asyncHandler(async (req, res) => {
+    res.json({
+      games: await listPendingAssignmentsForUser(req.user?.id, String(req.query.season || '').trim())
+    });
   })
 );
 
 reportsRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    res.json({ report: getReport(Number(req.params.id), req.user) });
+    res.json({ report: await getReport(Number(req.params.id), req.user) });
   })
 );
 
 reportsRouter.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const report = updateReport({
+    const report = await updateReport({
       id: Number(req.params.id),
       payload: req.body?.report,
       status: req.body?.status,
@@ -97,7 +112,7 @@ reportsRouter.put(
 reportsRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    deleteReport(Number(req.params.id), req.user);
+    await deleteReport(Number(req.params.id), req.user);
     res.json({ ok: true });
   })
 );
@@ -105,7 +120,7 @@ reportsRouter.delete(
 reportsRouter.post(
   '/:id/export',
   asyncHandler(async (req, res) => {
-    const report = getReport(Number(req.params.id), req.user);
+    const report = await getReport(Number(req.params.id), req.user);
     if (req.user?.role === 'referee') {
       const role = report.firstRefereeId === req.user.refereeId ? 'first'
         : report.secondRefereeId === req.user.refereeId ? 'second'
@@ -140,7 +155,7 @@ reportsRouter.get(
       throw new HttpError(404, 'Export non trovato.');
     }
 
-    const report = getReport(Number(req.params.id), req.user);
+    const report = await getReport(Number(req.params.id), req.user);
 
     if (req.user?.role === 'referee') {
       const myRefereeId = req.user.refereeId;
@@ -150,20 +165,13 @@ reportsRouter.get(
       }
     }
 
-    let fileInfo = getPdfFileInfo(report, role);
-    if (!fs.existsSync(fileInfo.filePath)) {
-      await generatePdfForRole(report, role);
-      fileInfo = getPdfFileInfo(report, role);
-    }
+    const { fileName } = await getPdfFileInfo(report, role);
+    const buffer = await buildReportPdf(report, role);
 
     const inline = req.query.inline === '1' || req.query.inline === 'true';
-    if (inline) {
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${fileInfo.fileName}"`);
-      fs.createReadStream(fileInfo.filePath).pipe(res);
-    } else {
-      res.download(fileInfo.filePath, fileInfo.fileName);
-    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${fileName}"`);
+    res.end(buffer);
   })
 );
 

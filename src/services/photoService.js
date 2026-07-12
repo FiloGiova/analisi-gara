@@ -1,9 +1,7 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { config } from '../config.js';
-import { getDb } from '../database/connection.js';
+import { dbGet, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
+import { putObject, getObject, objectExists, removeObject } from './storageService.js';
 
 const ALLOWED_KIND = new Set(['user', 'referee']);
 const FILENAME_RE = /^(user|referee)-\d+-[a-f0-9]{8}\.(jpe?g|png|webp)$/;
@@ -16,6 +14,12 @@ const MAGIC = [
       b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
   }
 ];
+
+// Chiave storage: mantiene la struttura 'uploads/profiles/<filename>' (compatibile
+// col filesystem locale esistente e col bucket Supabase).
+function photoKey(filename) {
+  return `uploads/profiles/${filename}`;
+}
 
 function detectImage(buffer) {
   if (!buffer || buffer.length < 12) return null;
@@ -30,65 +34,59 @@ function buildFileName(kind, entityId, ext) {
   return `${kind}-${entityId}-${rand}.${ext}`;
 }
 
-function deletePhotoFile(filename) {
+async function deletePhotoFile(filename) {
   if (!filename || !FILENAME_RE.test(filename)) return;
-  const filePath = path.join(config.profilePhotosDir, filename);
-  fs.rm(filePath, { force: true }, () => {});
+  await removeObject(photoKey(filename));
 }
 
-function persistPhoto(kind, entityId, buffer) {
+async function persistPhoto(kind, entityId, buffer) {
   if (!ALLOWED_KIND.has(kind)) throw new HttpError(400, 'Tipo foto non valido.');
   const detected = detectImage(buffer);
   if (!detected) throw new HttpError(400, 'Formato immagine non riconosciuto. Usa JPEG, PNG o WEBP.');
   const fileName = buildFileName(kind, entityId, detected.ext);
-  const filePath = path.join(config.profilePhotosDir, fileName);
-  fs.writeFileSync(filePath, buffer);
+  await putObject(photoKey(fileName), buffer, detected.mime);
   return fileName;
 }
 
-export function savePhotoForUser(userId, buffer) {
-  const db = getDb();
-  const existing = db.prepare('SELECT photo_path FROM users WHERE id = ?').get(userId);
+export async function savePhotoForUser(userId, buffer) {
+  const existing = await dbGet('SELECT photo_path FROM users WHERE id = ?', [userId]);
   if (!existing) throw new HttpError(404, 'Utente non trovato.');
-  const fileName = persistPhoto('user', userId, buffer);
-  db.prepare('UPDATE users SET photo_path = ? WHERE id = ?').run(fileName, userId);
-  if (existing.photo_path && existing.photo_path !== fileName) deletePhotoFile(existing.photo_path);
+  const fileName = await persistPhoto('user', userId, buffer);
+  await dbRun('UPDATE users SET photo_path = ? WHERE id = ?', [fileName, userId]);
+  if (existing.photo_path && existing.photo_path !== fileName) await deletePhotoFile(existing.photo_path);
   return fileName;
 }
 
-export function deletePhotoForUser(userId) {
-  const db = getDb();
-  const existing = db.prepare('SELECT photo_path FROM users WHERE id = ?').get(userId);
+export async function deletePhotoForUser(userId) {
+  const existing = await dbGet('SELECT photo_path FROM users WHERE id = ?', [userId]);
   if (!existing) throw new HttpError(404, 'Utente non trovato.');
-  if (existing.photo_path) deletePhotoFile(existing.photo_path);
-  db.prepare('UPDATE users SET photo_path = NULL WHERE id = ?').run(userId);
+  if (existing.photo_path) await deletePhotoFile(existing.photo_path);
+  await dbRun('UPDATE users SET photo_path = NULL WHERE id = ?', [userId]);
 }
 
-export function savePhotoForReferee(refereeId, buffer) {
-  const db = getDb();
-  const existing = db.prepare('SELECT photo_path FROM referees WHERE id = ?').get(refereeId);
+export async function savePhotoForReferee(refereeId, buffer) {
+  const existing = await dbGet('SELECT photo_path FROM referees WHERE id = ?', [refereeId]);
   if (!existing) throw new HttpError(404, 'Arbitro non trovato.');
-  const fileName = persistPhoto('referee', refereeId, buffer);
-  db.prepare('UPDATE referees SET photo_path = ? WHERE id = ?').run(fileName, refereeId);
-  if (existing.photo_path && existing.photo_path !== fileName) deletePhotoFile(existing.photo_path);
+  const fileName = await persistPhoto('referee', refereeId, buffer);
+  await dbRun('UPDATE referees SET photo_path = ? WHERE id = ?', [fileName, refereeId]);
+  if (existing.photo_path && existing.photo_path !== fileName) await deletePhotoFile(existing.photo_path);
   return fileName;
 }
 
-export function deletePhotoForReferee(refereeId) {
-  const db = getDb();
-  const existing = db.prepare('SELECT photo_path FROM referees WHERE id = ?').get(refereeId);
+export async function deletePhotoForReferee(refereeId) {
+  const existing = await dbGet('SELECT photo_path FROM referees WHERE id = ?', [refereeId]);
   if (!existing) throw new HttpError(404, 'Arbitro non trovato.');
-  if (existing.photo_path) deletePhotoFile(existing.photo_path);
-  db.prepare('UPDATE referees SET photo_path = NULL WHERE id = ?').run(refereeId);
+  if (existing.photo_path) await deletePhotoFile(existing.photo_path);
+  await dbRun('UPDATE referees SET photo_path = NULL WHERE id = ?', [refereeId]);
 }
 
-export function streamProfilePhoto(filename, res) {
+export async function streamProfilePhoto(filename, res) {
   if (!FILENAME_RE.test(filename)) throw new HttpError(404, 'Foto non trovata.');
-  const filePath = path.join(config.profilePhotosDir, filename);
-  if (!fs.existsSync(filePath)) throw new HttpError(404, 'Foto non trovata.');
+  if (!(await objectExists(photoKey(filename)))) throw new HttpError(404, 'Foto non trovata.');
+  const buffer = await getObject(photoKey(filename));
   const ext = filename.split('.').pop().toLowerCase();
   const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
   res.setHeader('Content-Type', mime);
   res.setHeader('Cache-Control', 'private, max-age=3600');
-  fs.createReadStream(filePath).pipe(res);
+  res.end(buffer);
 }

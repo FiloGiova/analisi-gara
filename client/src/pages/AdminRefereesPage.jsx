@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
 import DateInput from '../components/DateInput.jsx';
 import Select from '../components/Select.jsx';
+import MultiSelect from '../components/MultiSelect.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 
@@ -19,6 +20,12 @@ const EMPTY_FORM = {
   category: '',
   notes: ''
 };
+
+const BAND_OPTIONS = [
+  { value: 'esordiente', label: 'Esordienti' },
+  { value: 'playoff', label: 'Playoff' },
+  { value: 'playout', label: 'Playout' }
+];
 
 function formatDate(iso) {
   if (!iso) return '-';
@@ -61,6 +68,16 @@ export default function AdminRefereesPage({ currentUser }) {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterActive, setFilterActive] = useState('');
+  const [filterBand, setFilterBand] = useState(''); // filtro fascia nell'elenco
+  const [allBands, setAllBands] = useState([]); // tutte le appartenenze fascia della stagione
+  // Vista Fasce
+  const bandCompetitions = assignedCompetitions.length ? assignedCompetitions : COMPETITIONS.map((c) => c.value);
+  const [bandCompetition, setBandCompetition] = useState(bandCompetitions[0] || '');
+  const [bandFilter, setBandFilter] = useState('esordiente');
+  const [bandMembers, setBandMembers] = useState([]);
+  const [bandPool, setBandPool] = useState([]);
+  const [bandAddIds, setBandAddIds] = useState([]); // selezione multipla per inserimento in blocco
+  const [bandBusy, setBandBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -100,6 +117,59 @@ export default function AdminRefereesPage({ currentUser }) {
     }
   }
 
+  async function loadAllBands() {
+    try {
+      const data = await api.listRefereeBands({ season: selectedSeason });
+      setAllBands(data.members || []);
+    } catch {
+      setAllBands([]);
+    }
+  }
+
+  async function loadBands() {
+    if (!bandCompetition || !bandFilter) { setBandMembers([]); setBandPool([]); return; }
+    try {
+      const [membersRes, poolRes] = await Promise.all([
+        api.listRefereeBands({ competition: bandCompetition, season: selectedSeason, band: bandFilter }),
+        api.listReferees({ competition: bandCompetition, season: selectedSeason })
+      ]);
+      setBandMembers(membersRes.members || []);
+      setBandPool(poolRes.referees || []);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Impossibile caricare le fasce.');
+    }
+  }
+
+  async function addBand() {
+    if (!bandAddIds.length) return;
+    setBandBusy(true); setError(''); setSuccess('');
+    try {
+      let members = bandMembers;
+      for (const id of bandAddIds) {
+        const res = await api.addRefereeBand(Number(id), { competition: bandCompetition, sportSeason: selectedSeason, band: bandFilter });
+        members = res.members || members;
+      }
+      setBandMembers(members);
+      setSuccess(bandAddIds.length === 1 ? 'Arbitro aggiunto alla fascia.' : `${bandAddIds.length} arbitri aggiunti alla fascia.`);
+      setBandAddIds([]);
+      loadAllBands();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Aggiunta non riuscita.');
+    } finally { setBandBusy(false); }
+  }
+
+  async function removeBand(bandId) {
+    setBandBusy(true); setError(''); setSuccess('');
+    try {
+      await api.removeRefereeBand(bandId);
+      setBandMembers((prev) => prev.filter((m) => m.bandId !== bandId));
+      setSuccess('Arbitro rimosso dalla fascia.');
+      loadAllBands();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Rimozione non riuscita.');
+    } finally { setBandBusy(false); }
+  }
+
   useEffect(() => {
     if (!canAccess) {
       setLoading(false);
@@ -113,7 +183,13 @@ export default function AdminRefereesPage({ currentUser }) {
     if (selectedSeason !== CURRENT_SEASON) cancelForm();
     loadReferees(selectedSeason);
     loadRanking(selectedSeason);
+    loadAllBands();
   }, [canAccess, currentUser.instructorCompetition, currentUser.instructorCompetitions, selectedSeason]);
+
+  useEffect(() => {
+    if (!canAccess || view !== 'bands') return;
+    loadBands();
+  }, [canAccess, view, bandCompetition, bandFilter, selectedSeason]);
 
   function updateForm(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -204,6 +280,12 @@ export default function AdminRefereesPage({ currentUser }) {
     return <div className="empty-state"><h2>Area arbitri non associata</h2></div>;
   }
 
+  const bandsByReferee = new Map();
+  for (const m of allBands) {
+    if (!bandsByReferee.has(m.refereeId)) bandsByReferee.set(m.refereeId, new Set());
+    bandsByReferee.get(m.refereeId).add(m.band);
+  }
+
   const filtered = referees.filter((r) => {
     const q = search.toLowerCase();
     const nameMatch = !q ||
@@ -213,9 +295,12 @@ export default function AdminRefereesPage({ currentUser }) {
       (r.licenseNumber || '').toLowerCase().includes(q);
     const categoryMatch = assignedCompetitions.length ? assignedCompetitions.includes(r.category) : (!filterCategory || r.category === filterCategory);
     const activeMatch = filterActive === '' || String(activeForSeason(r, selectedSeason) ? '1' : '0') === filterActive;
-    return nameMatch && categoryMatch && activeMatch;
+    const bandMatch = !filterBand || Boolean(bandsByReferee.get(r.id)?.has(filterBand));
+    return nameMatch && categoryMatch && activeMatch && bandMatch;
   });
   const canManageCurrentSeason = currentUser.role === 'admin' && selectedSeason === CURRENT_SEASON;
+  // Le fasce le gestiscono admin e formatori (sui propri campionati), stagione corrente.
+  const canManageBands = (currentUser.role === 'admin' || currentUser.role === 'instructor') && selectedSeason === CURRENT_SEASON;
 
   return (
     <div className="page-stack">
@@ -249,6 +334,9 @@ export default function AdminRefereesPage({ currentUser }) {
             </button>
             <button type="button" className={view === 'ranking' ? 'is-active' : ''} onClick={() => setView('ranking')}>
               Classifica
+            </button>
+            <button type="button" className={view === 'bands' ? 'is-active' : ''} onClick={() => setView('bands')}>
+              Fasce
             </button>
           </div>
           <Select
@@ -362,33 +450,46 @@ export default function AdminRefereesPage({ currentUser }) {
             </div>
           </div>
 
-          <div className="admin-referee-filters">
+          <div className="games-filters-row">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cerca per nome, cognome, tessera, provincia..."
+              style={{ flex: '1 1 240px', minHeight: '46px', boxSizing: 'border-box' }}
             />
-            {!assignedCompetitions.length ? (
+            <div style={{ flex: '0 1 170px' }}>
               <Select
-                value={filterCategory}
-                onChange={setFilterCategory}
-                placeholder="Tutte le categorie"
+                value={filterBand}
+                onChange={setFilterBand}
+                placeholder="Tutte le fasce"
+                options={[{ value: '', label: 'Tutte le fasce' }, ...BAND_OPTIONS]}
+              />
+            </div>
+            {!assignedCompetitions.length ? (
+              <div style={{ flex: '0 1 240px' }}>
+                <Select
+                  value={filterCategory}
+                  onChange={setFilterCategory}
+                  placeholder="Tutte le categorie"
+                  options={[
+                    { value: '', label: 'Tutte le categorie' },
+                    ...COMPETITIONS.map((c) => ({ value: c.value, label: c.label }))
+                  ]}
+                />
+              </div>
+            ) : null}
+            <div style={{ flex: '0 1 150px' }}>
+              <Select
+                value={filterActive}
+                onChange={setFilterActive}
+                placeholder="Tutti"
                 options={[
-                  { value: '', label: 'Tutte le categorie' },
-                  ...COMPETITIONS.map((c) => ({ value: c.value, label: c.label }))
+                  { value: '', label: 'Tutti' },
+                  { value: '1', label: 'Attivi' },
+                  { value: '0', label: 'Inattivi' }
                 ]}
               />
-            ) : null}
-            <Select
-              value={filterActive}
-              onChange={setFilterActive}
-              placeholder="Tutti"
-              options={[
-                { value: '', label: 'Tutti' },
-                { value: '1', label: 'Attivi' },
-                { value: '0', label: 'Inattivi' }
-              ]}
-            />
+            </div>
           </div>
 
           {loading ? <div className="empty-state" style={{ padding: '24px' }}>Caricamento...</div> : null}
@@ -491,7 +592,7 @@ export default function AdminRefereesPage({ currentUser }) {
             </div>
           ) : null}
         </section>
-      ) : (
+      ) : view === 'ranking' ? (
         <section className="common-card">
           <div className="section-heading">
             <div>
@@ -534,7 +635,88 @@ export default function AdminRefereesPage({ currentUser }) {
             </div>
           )}
         </section>
-      )}
+      ) : view === 'bands' ? (
+        <section className="common-card">
+          <div className="section-heading">
+            <div>
+              <h2>Fasce arbitri</h2>
+              <p>Liste per campionato e stagione: esordienti, playoff, playout.</p>
+            </div>
+          </div>
+
+          <div className="admin-referee-filters">
+            <Select
+              value={bandCompetition}
+              onChange={setBandCompetition}
+              placeholder="Campionato"
+              options={bandCompetitions.map((c) => ({ value: c, label: competitionLabel(c) }))}
+            />
+            <Select
+              value={bandFilter}
+              onChange={setBandFilter}
+              placeholder="Fascia"
+              options={BAND_OPTIONS}
+            />
+          </div>
+
+          {canManageBands ? (
+            <div className="games-filters-row" style={{ marginTop: '10px' }}>
+              <div style={{ flex: '1 1 320px', maxWidth: '520px' }}>
+                <MultiSelect
+                  values={bandAddIds}
+                  onChange={setBandAddIds}
+                  allLabel="Aggiungi arbitri alla fascia…"
+                  options={bandPool
+                    .filter((r) => !bandMembers.some((m) => m.refereeId === r.id))
+                    .map((r) => ({ value: String(r.id), label: `${r.lastName} ${r.firstName}${r.licenseNumber ? ` · ${r.licenseNumber}` : ''}` }))}
+                />
+              </div>
+              <button type="button" className="primary-button" onClick={addBand} disabled={bandBusy || !bandAddIds.length}>
+                Aggiungi{bandAddIds.length ? ` (${bandAddIds.length})` : ''}
+              </button>
+            </div>
+          ) : null}
+
+          {bandMembers.length === 0 ? (
+            <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>
+              Nessun arbitro in questa fascia per il campionato selezionato.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="referee-table">
+                <thead>
+                  <tr>
+                    <th>Tessera</th>
+                    <th>Cognome, Nome</th>
+                    <th>Stato</th>
+                    {canManageBands ? <th>Azioni</th> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {bandMembers.map((m) => (
+                    <tr key={m.bandId}>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--muted)', fontSize: '0.82rem' }}>{m.licenseNumber || '-'}</td>
+                      <td style={{ fontWeight: 600 }}>{m.fullName}</td>
+                      <td>
+                        <span className={`status-badge ${m.active ? 'status-final' : 'status-draft'}`} style={{ padding: '3px 8px', fontSize: '0.72rem' }}>
+                          {m.active ? 'Attivo' : 'Inattivo'}
+                        </span>
+                      </td>
+                      {canManageBands ? (
+                        <td>
+                          <button type="button" className="danger-button" onClick={() => removeBand(m.bandId)} disabled={bandBusy}>
+                            Rimuovi
+                          </button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

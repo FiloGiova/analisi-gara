@@ -30,7 +30,7 @@ meRouter.get('/profile', (req, res) => {
 meRouter.patch(
   '/profile',
   asyncHandler(async (req, res) => {
-    const user = updateOwnProfile({
+    const user = await updateOwnProfile({
       userId: req.user.id,
       displayName: req.body?.displayName
     });
@@ -41,7 +41,7 @@ meRouter.patch(
 meRouter.get(
   '/reports',
   asyncHandler(async (req, res) => {
-    const reports = listReports({
+    const reports = await listReports({
       search: req.query.search || '',
       status: req.query.status || '',
       season: req.query.season || '',
@@ -54,7 +54,7 @@ meRouter.get(
 meRouter.get(
   '/stats',
   asyncHandler(async (req, res) => {
-    const stats = getStats(req.user, { season: req.query.season || '' });
+    const stats = await getStats(req.user, { season: req.query.season || '' });
     res.json({ stats });
   })
 );
@@ -64,7 +64,7 @@ meRouter.post(
   upload.single('photo'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new HttpError(400, 'File mancante.');
-    const photoPath = savePhotoForUser(req.user.id, req.file.buffer);
+    const photoPath = await savePhotoForUser(req.user.id, req.file.buffer);
     res.json({ photoPath });
   })
 );
@@ -72,7 +72,7 @@ meRouter.post(
 meRouter.delete(
   '/photo',
   asyncHandler(async (req, res) => {
-    deletePhotoForUser(req.user.id);
+    await deletePhotoForUser(req.user.id);
     res.json({ ok: true });
   })
 );

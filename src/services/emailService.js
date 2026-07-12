@@ -1,10 +1,8 @@
 import nodemailer from 'nodemailer';
-import path from 'node:path';
-import fs from 'node:fs';
 import { config } from '../config.js';
-import { getDb } from '../database/connection.js';
+import { dbGet, dbRun } from '../database/db.js';
 import { getReport } from './reportService.js';
-import { generatePdfForRole, getPdfFileInfo } from './pdfService.js';
+import { getPdfFileInfo, buildReportPdf } from './pdfService.js';
 import { HttpError } from '../utils/httpError.js';
 
 function getTransporter() {
@@ -19,22 +17,22 @@ function getTransporter() {
   });
 }
 
-function findRefereeEmail(refereeName, refereeId = null) {
+async function findRefereeEmail(refereeName, refereeId = null) {
   if (refereeId) {
-    const row = getDb()
-      .prepare("SELECT email FROM referees WHERE id = ? AND email IS NOT NULL AND email != ''")
-      .get(refereeId);
+    const row = await dbGet(
+      "SELECT email FROM referees WHERE id = ? AND email IS NOT NULL AND email != ''",
+      [refereeId]
+    );
     if (row?.email) return row.email;
   }
   if (!refereeName) return null;
-  const row = getDb()
-    .prepare(
-      `SELECT email FROM referees
-       WHERE LOWER(TRIM(first_name || ' ' || last_name)) = LOWER(TRIM(?))
-         AND email IS NOT NULL AND email != ''
-       LIMIT 1`
-    )
-    .get(refereeName);
+  const row = await dbGet(
+    `SELECT email FROM referees
+     WHERE LOWER(TRIM(first_name || ' ' || last_name)) = LOWER(TRIM(?))
+       AND email IS NOT NULL AND email != ''
+     LIMIT 1`,
+    [refereeName]
+  );
   return row?.email || null;
 }
 
@@ -58,24 +56,21 @@ export async function sendReportToReferee(reportId, role, user) {
     throw new HttpError(400, 'Ruolo non valido.');
   }
 
-  const report = getReport(reportId, user);
+  const report = await getReport(reportId, user);
   const refereeName = refereeNameForRole(report, role);
 
   if (!refereeName) {
     throw new HttpError(400, 'Nome arbitro non inserito nel rapporto.');
   }
 
-  const refereeEmail = findRefereeEmail(refereeName, refereeIdForRole(report, role));
+  const refereeEmail = await findRefereeEmail(refereeName, refereeIdForRole(report, role));
   if (!refereeEmail) {
     throw new HttpError(404, `Nessuna email trovata per "${refereeName}". Aggiorna l'anagrafica arbitri.`);
   }
 
-  // genera PDF se non esiste ancora
-  let fileInfo = getPdfFileInfo(report, role);
-  if (!fs.existsSync(fileInfo.filePath)) {
-    await generatePdfForRole(report, role);
-    fileInfo = getPdfFileInfo(report, role);
-  }
+  // PDF rigenerato dal payload e allegato come buffer (nessun file su disco).
+  const { fileName } = await getPdfFileInfo(report, role);
+  const buffer = await buildReportPdf(report, role);
 
   const transporter = getTransporter();
   const labelRole = role === 'first' ? '1° arbitro' : '2° arbitro';
@@ -97,18 +92,11 @@ export async function sendReportToReferee(reportId, role, user) {
     to: refereeEmail,
     subject,
     text,
-    attachments: [
-      {
-        filename: path.basename(fileInfo.filePath),
-        path: fileInfo.filePath
-      }
-    ]
+    attachments: [{ filename: fileName, content: buffer }]
   });
 
   const sentAt = new Date().toISOString();
-  getDb()
-    .prepare(`UPDATE reports SET ${sentAtColumn(role)} = ? WHERE id = ?`)
-    .run(sentAt, reportId);
+  await dbRun(`UPDATE reports SET ${sentAtColumn(role)} = ? WHERE id = ?`, [sentAt, reportId]);
 
   return { sentAt, refereeEmail };
 }

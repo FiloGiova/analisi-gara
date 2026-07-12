@@ -1,0 +1,45 @@
+# Blueprint Render per AnalisiGara (backend Express + SPA, DB/Storage su Supabase).
+# Su render.com: New → Blueprint → collega il repo FiloGiova/analisi-gara.
+# I valori marcati `sync: false` NON stanno nel repo: si inseriscono nella
+# dashboard Render (Environment) — sono gli stessi del .env locale.
+services:
+  - type: web
+    name: analisi-gara
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: cloud-migration
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DATABASE_SSL
+        value: "true"
+      - key: STORAGE_BUCKET
+        value: rapporti
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # Opzionali (email agli arbitri): impostare se si usa SMTP.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # Opzionali (AI giudizio globale).
+      - key: ENABLE_AI_FEATURES
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

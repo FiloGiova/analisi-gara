@@ -12,14 +12,14 @@ export const usersRouter = express.Router();
 usersRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
-    res.json({ users: listUsers() });
+    res.json({ users: await listUsers() });
   })
 );
 
 usersRouter.post(
   '/',
   asyncHandler(async (req, res) => {
-    const user = createUser({
+    const user = await createUser({
       username: req.body?.username,
       password: req.body?.password,
       displayName: req.body?.displayName,
@@ -38,7 +38,7 @@ usersRouter.put(
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw new HttpError(400, 'ID utente non valido.');
 
-    const user = updateUser({
+    const user = await updateUser({
       id,
       displayName: req.body?.displayName,
       role: req.body?.role,
@@ -57,7 +57,7 @@ usersRouter.post(
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw new HttpError(400, 'ID utente non valido.');
 
-    const user = resetUserPassword({
+    const user = await resetUserPassword({
       id,
       password: req.body?.password
     });

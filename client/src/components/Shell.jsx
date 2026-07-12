@@ -9,8 +9,9 @@ export default function Shell({ user, onLogout, showBackButton = false, children
     ? user.instructorCompetitions
     : [user.instructorCompetition || user.formatterCompetition].filter(Boolean);
   const isReferee = user.role === 'referee';
-  const canSeeReferees = user.role === 'admin' || (user.role === 'instructor' && instructorCompetitions.length > 0);
-  const canCreateReports = !isReferee;
+  // Admin e formatori (con almeno un campionato) vedono le sezioni gestionali
+  // (Gare, Statistiche, Arbitri). Gli osservatori no.
+  const canSeeManagement = user.role === 'admin' || (user.role === 'instructor' && instructorCompetitions.length > 0);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -64,9 +65,19 @@ export default function Shell({ user, onLogout, showBackButton = false, children
 
         <nav className="topbar-actions">
           <button type="button" className="ghost-button" onClick={() => navigate(isReferee ? '/me' : '/')}>
-            {isReferee ? 'I miei rapporti' : 'Dashboard'}
+            {isReferee ? 'I miei rapporti' : 'Rapporti'}
           </button>
-          {canSeeReferees ? (
+          {canSeeManagement ? (
+            <button type="button" className="ghost-button" onClick={() => navigate('/games')}>
+              Gare
+            </button>
+          ) : null}
+          {canSeeManagement ? (
+            <button type="button" className="ghost-button" onClick={() => navigate('/coverage')}>
+              Statistiche
+            </button>
+          ) : null}
+          {canSeeManagement ? (
             <button type="button" className="ghost-button" onClick={() => navigate('/admin/referees')}>
               Arbitri
             </button>
@@ -88,17 +99,18 @@ export default function Shell({ user, onLogout, showBackButton = false, children
                   <button type="button" role="menuitem" onClick={() => go('/admin/users')}>
                     Utenti
                   </button>
+                  <button type="button" role="menuitem" onClick={() => go('/admin/sources')}>
+                    Sorgenti gare
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => go('/admin/imports')}>
+                    Import designazioni
+                  </button>
                   <button type="button" role="menuitem" onClick={() => go('/admin/logs')}>
                     Log accessi
                   </button>
                 </div>
               ) : null}
             </div>
-          ) : null}
-          {canCreateReports ? (
-            <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
-              Nuovo rapporto
-            </button>
           ) : null}
           <div className="user-chip">
             <button type="button" className="profile-button" onClick={() => navigate('/account')} aria-label="Apri profilo">
