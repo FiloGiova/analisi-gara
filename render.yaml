@@ -9,7 +9,9 @@ services:
     plan: free
     region: frankfurt
     branch: cloud-migration
-    buildCommand: npm install && npm run build
+    # --omit=optional salta better-sqlite3 (nativo, usato solo dallo script di
+    # migrazione in locale — mai a runtime). --include=dev serve per vite (build).
+    buildCommand: npm install --include=dev --omit=optional && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
