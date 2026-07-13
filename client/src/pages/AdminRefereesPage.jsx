@@ -324,8 +324,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     return nameMatch && categoryMatch && activeMatch && bandMatch;
   });
   const canManageCurrentSeason = currentUser.role === 'admin' && selectedSeason === CURRENT_SEASON;
-  // Le fasce le gestiscono admin e formatori (sui propri campionati), stagione corrente.
-  const canManageBands = (currentUser.role === 'admin' || currentUser.role === 'instructor') && selectedSeason === CURRENT_SEASON;
+  // Le fasce sono storicizzate per stagione: admin e formatori possono quindi
+  // completare o correggere anche quelle delle stagioni archiviate.
+  const canManageBands = currentUser.role === 'admin' || currentUser.role === 'instructor';
 
   return (
     <div className="page-stack">

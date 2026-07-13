@@ -160,8 +160,35 @@ select:focus {
 
 .brand strong {
   display: block;
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.1;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.brand-wordmark {
+  font-size: 1.22rem;
+  font-weight: 900;
+  letter-spacing: -0.055em;
+  white-space: nowrap;
+}
+
+.brand-wordmark span {
+  display: inline-block;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-wordmark span:first-child {
+  background-image: linear-gradient(135deg, #0b2942, #123c5c);
+}
+
+.brand-wordmark span:last-child {
+  background-image: linear-gradient(135deg, #056b79, #00899a);
 }
 
 .brand small {
@@ -175,17 +202,14 @@ select:focus {
   place-items: center;
   width: 46px;
   height: 46px;
-  border-radius: 15px;
-  overflow: hidden;
-  background: #10252d;
-  box-shadow: 0 14px 28px rgba(18, 60, 105, 0.25);
+  flex: 0 0 auto;
 }
 
 .brand-mark img {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .season-switcher {
@@ -993,8 +1017,8 @@ select:focus {
 }
 
 .band-competition-filter {
-  flex: 0 1 230px;
-  width: 230px;
+  flex: 0 1 260px;
+  width: 260px;
 }
 
 .band-type-filter {
@@ -1003,8 +1027,8 @@ select:focus {
 }
 
 .band-add-menu {
-  flex: 0 0 190px;
-  width: 190px;
+  flex: 0 0 215px;
+  width: 215px;
 }
 
 .multi-select .band-add-trigger {
@@ -1014,7 +1038,8 @@ select:focus {
   border-radius: 999px;
   background: var(--ink);
   color: var(--paper);
-  font-weight: 700;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(14, 31, 38, 0.14);
 }
 
 .multi-select .band-add-trigger:hover,
@@ -1024,8 +1049,11 @@ select:focus {
   color: var(--paper);
 }
 
-.band-add-trigger .custom-select-value {
+.band-add-trigger .custom-select-value,
+.band-add-trigger .custom-select-value.is-placeholder {
   flex: 0 1 auto;
+  color: #fff;
+  font-weight: 800;
 }
 
 .band-add-trigger .custom-select-caret {
@@ -1037,6 +1065,10 @@ select:focus {
   right: 0;
   left: auto;
   width: min(390px, calc(100vw - 40px));
+}
+
+.stats-search-input {
+  font-size: 0.82rem;
 }
 
 /* Pannello suggerimenti osservatore (Designa osservatori): card pulite su fondo
@@ -1993,9 +2025,12 @@ dd {
 }
 
 .login-brand .brand-mark {
-  width: 58px;
-  height: 58px;
-  border-radius: 18px;
+  width: 66px;
+  height: 66px;
+}
+
+.login-brand .brand-wordmark {
+  font-size: 1.65rem;
 }
 
 .login-card h1 {

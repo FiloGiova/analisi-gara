@@ -39,8 +39,8 @@ export default function LoginPage({ onLogin }) {
             <span className="brand-mark">
               <img src="/app-logo.png" alt="" />
             </span>
-            <span>
-              <strong>FischioLab</strong>
+            <span className="brand-copy">
+              <strong className="brand-wordmark"><span>Fischio</span><span>Lab</span></strong>
               <small>Compila, archivia, esporta</small>
             </span>
           </div>

@@ -21,6 +21,10 @@ sezione "Storico modifiche" del dettaglio gara.
   ricerca impostati nella pagina, mantenendo lo scoping del formatore.
 - Export XLSX dell'anagrafica arbitri coerente con stagione, campionato, fascia,
   stato e ricerca; la colonna Fascia riporta tutte le appartenenze stagionali.
+- Gestione delle fasce disponibile anche sulle stagioni archiviate; controlli
+  Fasce e ricerca Statistiche resi più leggibili.
+- Nuovo marchio FischioLab: simbolo F con fischietto per favicon e icona,
+  wordmark blu-teal nella topbar e nella schermata di accesso.
 
 ### Qualità e automazione
 - Otto file di test migrati da `getDb().prepare(...)` agli helper PostgreSQL

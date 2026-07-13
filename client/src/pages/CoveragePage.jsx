@@ -243,6 +243,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
             </small>
           </div>
           <input
+            className="stats-search-input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca arbitro: nome, cognome o tessera…"
