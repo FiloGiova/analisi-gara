@@ -397,7 +397,7 @@ Note implementative:
 
 ## Roadmap futura: app Android/iOS
 
-Obiettivo futuro, non immediato: trasformare AnalisiGara da webapp completa a
+Obiettivo futuro, non immediato: trasformare FischioLab da webapp completa a
 vera applicazione installabile su Android e iOS.
 
 Priorità attuale: completare e stabilizzare prima la versione webapp.
@@ -413,7 +413,7 @@ HTTPS.
 
 ### Prerequisiti
 
-- Esporre AnalisiGara con un dominio HTTPS stabile, non solo tramite IP locale.
+- Esporre FischioLab con un dominio HTTPS stabile, non solo tramite IP locale.
 - Verificare login, sessioni, cookie e logout da rete esterna.
 - Rendere tutte le schermate principali comode da usare su mobile.
 - Sistemare apertura, download e condivisione PDF in ambiente mobile.

@@ -71,7 +71,7 @@ if (fs.existsSync(clientDist)) {
       .status(200)
       .type('html')
       .send(
-        '<h1>Rapporti Arbitrali</h1><p>Frontend non compilato. Esegui <code>npm run build</code>, poi riavvia il server.</p>'
+        '<h1>FischioLab</h1><p>Frontend non compilato. Esegui <code>npm run build</code>, poi riavvia il server.</p>'
       );
   });
 }
@@ -91,7 +91,7 @@ async function start() {
   await initializeDatabase();
   await dbRun('DELETE FROM sessions WHERE expires_at <= ?', [new Date().toISOString()]);
   app.listen(config.port, config.host, () => {
-    console.log(`Rapporti Arbitrali in ascolto su http://${config.host}:${config.port}`);
+    console.log(`FischioLab in ascolto su http://${config.host}:${config.port}`);
     console.log(`Storage: ${config.storageDriver} | DB: Postgres`);
   });
 }

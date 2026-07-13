@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Rapporti Arbitrali" — a webapp for basketball referee observers to write, archive, and export match evaluation reports. UI text, API error messages, and comments are in Italian; keep new user-facing strings in Italian.
+"FischioLab" — a webapp for basketball referee observers to write, archive, and export match evaluation reports. UI text, API error messages, and comments are in Italian; keep new user-facing strings in Italian.
 
 Stack: Node 18+ ESM (`"type": "module"` everywhere), Express, React 18 + Vite, SQLite via `better-sqlite3` (synchronous API — no async DB calls), `pdfkit` for PDF export (no Chromium). No Docker. Deployed to a UGREEN NAS (Debian ARM64) via systemd service `analisi-gara`.
 

@@ -1,6 +1,6 @@
-# Rapporti Arbitrali
+# FischioLab
 
-Webapp leggera per compilare rapporti arbitrali basati sul modello Excel `12799.xlsx`, con dashboard, login locale, bozze, salvataggio definitivo, archivio e generazione di due PDF separati:
+FischioLab è la webapp per compilare rapporti arbitrali basati sul modello Excel `12799.xlsx`, con dashboard, login locale, bozze, salvataggio definitivo, archivio e generazione di due PDF separati:
 
 - `numGara_arbitro1.pdf`
 - `numGara_arbitro2.pdf`

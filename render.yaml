@@ -1,4 +1,4 @@
-# Blueprint Render per AnalisiGara (backend Express + SPA, DB/Storage su Supabase).
+# Blueprint Render per FischioLab (backend Express + SPA, DB/Storage su Supabase).
 # Su render.com: New → Blueprint → collega il repo FiloGiova/analisi-gara.
 # I valori marcati `sync: false` NON stanno nel repo: si inseriscono nella
 # dashboard Render (Environment) — sono gli stessi del .env locale.

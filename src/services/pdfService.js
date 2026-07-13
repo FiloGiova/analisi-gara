@@ -461,7 +461,7 @@ export function buildReportPdf(report, role) {
       autoFirstPage: true,
       info: {
         Title: `${report.data.matchNumber || 'Rapporto'} - ${role === 'first' ? report.data.firstRefereeName : report.data.secondRefereeName}`,
-        Author: report.data.observerName || 'Rapporti Arbitrali'
+        Author: report.data.observerName || 'FischioLab'
       }
     });
 

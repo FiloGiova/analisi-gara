@@ -58,7 +58,7 @@ export default function Shell({ user, onLogout, showBackButton = false, children
             <img src="/app-logo.png" alt="" />
           </span>
           <span>
-            <strong>Rapporti Arbitrali</strong>
+            <strong>FischioLab</strong>
             <small>Valutazioni gara</small>
           </span>
         </button>

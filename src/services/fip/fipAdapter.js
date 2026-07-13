@@ -244,7 +244,7 @@ export async function fetchGiornataHtml(params, giornata, { fetchImpl = fetch, c
     response = await fetchImpl(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; RapportiArbitrali/1.0)',
+        'User-Agent': 'Mozilla/5.0 (compatible; FischioLab/1.0)',
         Accept: 'text/html'
       }
     });

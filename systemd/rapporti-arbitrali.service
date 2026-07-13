@@ -1,5 +1,5 @@
 [Unit]
-Description=Webapp Rapporti Arbitrali
+Description=Webapp FischioLab
 After=network.target
 
 [Service]

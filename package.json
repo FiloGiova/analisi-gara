@@ -1,9 +1,9 @@
 {
-  "name": "rapporti-arbitrali",
+  "name": "fischiolab",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Webapp leggera per compilare, archiviare ed esportare rapporti arbitrali.",
+  "description": "FischioLab: webapp per compilare, archiviare ed esportare rapporti arbitrali.",
   "engines": {
     "node": ">=20 <25"
   },

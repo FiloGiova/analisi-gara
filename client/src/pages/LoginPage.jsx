@@ -40,7 +40,7 @@ export default function LoginPage({ onLogin }) {
               <img src="/app-logo.png" alt="" />
             </span>
             <span>
-              <strong>Rapporti Arbitrali</strong>
+              <strong>FischioLab</strong>
               <small>Compila, archivia, esporta</small>
             </span>
           </div>

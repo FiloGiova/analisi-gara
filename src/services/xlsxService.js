@@ -68,7 +68,7 @@ export async function buildDesignationsTemplate(sportSeason) {
   }
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Rapporti Arbitrali';
+  workbook.creator = 'FischioLab';
 
   const info = workbook.addWorksheet('Istruzioni');
   info.columns = [{ width: 100 }];
