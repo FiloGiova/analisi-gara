@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { config } from './src/config.js';
 import { initializeDatabase } from './src/database/connection.js';
-import { dbRun } from './src/database/db.js';
+import { dbGet, dbRun } from './src/database/db.js';
 import { attachUser, requireAdmin, requireAdminOrInstructor, requireAuth, requireReportAuthors } from './src/middleware/auth.js';
 import { authRouter } from './src/routes/auth.routes.js';
 import { reportsRouter } from './src/routes/reports.routes.js';
@@ -32,8 +32,13 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(attachUser);
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, storageDir: config.storageDir });
+app.get('/api/health', async (_req, res) => {
+  try {
+    await dbGet('SELECT 1 AS ok');
+    res.json({ ok: true });
+  } catch (_) {
+    res.status(503).json({ ok: false });
+  }
 });
 
 app.use('/api/auth', authRouter);
