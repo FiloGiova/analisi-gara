@@ -4,7 +4,7 @@
 # dashboard Render (Environment) — sono gli stessi del .env locale.
 services:
   - type: web
-    name: analisi-gara
+    name: fischiolab
     runtime: node
     plan: free
     region: frankfurt
