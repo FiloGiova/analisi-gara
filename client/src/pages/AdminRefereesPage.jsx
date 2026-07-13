@@ -78,6 +78,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   const [bandBusy, setBandBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [formBands, setFormBands] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -182,6 +183,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     if (currentUser.role !== 'admin') return;
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setFormBands([]);
     setShowForm(true);
     setError('');
     setSuccess('');
@@ -202,6 +204,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
       category: referee.category || '',
       notes: referee.notes || ''
     });
+    setFormBands(allBands
+      .filter((item) => item.refereeId === referee.id && item.competition === referee.category)
+      .map((item) => item.band));
     setShowForm(true);
     setError('');
     setSuccess('');
@@ -211,11 +216,31 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   function cancelForm() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setFormBands([]);
     setShowForm(false);
   }
 
   async function refreshSeason() {
     await Promise.all([loadReferees(selectedSeason), loadRanking(selectedSeason), loadAllBands()]);
+  }
+
+  async function syncFormBands(refereeId, competition) {
+    if (!competition) return;
+    const existing = allBands.filter((item) =>
+      item.refereeId === refereeId && item.competition === competition
+    );
+    await Promise.all([
+      ...existing
+        .filter((item) => !formBands.includes(item.band))
+        .map((item) => api.removeRefereeBand(item.bandId)),
+      ...formBands
+        .filter((band) => !existing.some((item) => item.band === band))
+        .map((band) => api.addRefereeBand(refereeId, {
+          competition,
+          sportSeason: selectedSeason,
+          band
+         }))
+     ]);
   }
 
   async function handleSubmit(e) {
@@ -225,15 +250,21 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     setSuccess('');
     try {
       const payload = { ...form, sportSeason: selectedSeason };
+      if (formBands.length && !form.category) {
+        throw new ApiError('Seleziona una categoria prima di assegnare una fascia.');
+      }
       if (editingId) {
         await api.updateReferee(editingId, payload);
+        await syncFormBands(editingId, form.category);
         setSuccess('Arbitro aggiornato.');
       } else {
-        await api.createReferee(payload);
+        const data = await api.createReferee(payload);
+        await syncFormBands(data.referee.id, form.category);
         setSuccess('Arbitro creato.');
       }
       setEditingId(null);
       setForm(EMPTY_FORM);
+      setFormBands([]);
       setShowForm(false);
       await refreshSeason();
     } catch (err) {
@@ -395,6 +426,21 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                   ...COMPETITIONS.map((c) => ({ value: c.value, label: `${c.label} (${c.value})` }))
                 ]}
               />
+            </label>
+            <label className="field field-span-3">
+              Fasce
+              <MultiSelect
+                values={formBands}
+                onChange={setFormBands}
+                options={BAND_OPTIONS}
+                placeholder={form.category ? 'Seleziona fasce…' : 'Prima scegli la categoria'}
+                allLabel={form.category ? 'Nessuna fascia' : 'Prima scegli la categoria'}
+              />
+              <small style={{ color: 'var(--muted)', fontWeight: 500 }}>
+                {form.category
+                  ? `Valide per ${competitionLabel(form.category)} · ${selectedSeason}`
+                  : 'Le fasce sono associate a campionato e stagione.'}
+              </small>
             </label>
             <label className="field field-span-3" style={{ gridColumn: '1 / -1' }}>
               Note

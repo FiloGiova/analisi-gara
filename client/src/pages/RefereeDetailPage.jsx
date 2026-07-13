@@ -176,9 +176,10 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
     setSuccess('');
     try {
       const data = await api.updateReferee(referee.id, { ...form, sportSeason: selectedSeason });
+      await persistBands();
       setReferee(data.referee);
       setEditing(false);
-      setSuccess('Dati dell’arbitro aggiornati.');
+      setSuccess('Dati e fasce dell’arbitro aggiornati.');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Modifica non riuscita.');
     } finally {
@@ -186,26 +187,30 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
     }
   }
 
+  async function persistBands() {
+    const existing = new Map(bandRows.map((item) => [item.band, item]));
+    const toRemove = bandRows.filter((item) => !selectedBands.includes(item.band));
+    const toAdd = selectedBands.filter((band) => !existing.has(band));
+    await Promise.all([
+      ...toRemove.map((item) => api.removeRefereeBand(item.bandId)),
+      ...toAdd.map((band) => api.addRefereeBand(referee.id, {
+        competition: bandCompetition,
+        sportSeason: selectedSeason,
+        band
+      }))
+    ]);
+    const data = await api.listRefereeBands({ competition: bandCompetition, season: selectedSeason });
+    const rows = (data.members || []).filter((item) => item.refereeId === referee.id);
+    setBandRows(rows);
+    setSelectedBands(rows.map((item) => item.band));
+  }
+
   async function saveBands() {
     setBandsBusy(true);
     setError('');
     setSuccess('');
     try {
-      const existing = new Map(bandRows.map((item) => [item.band, item]));
-      const toRemove = bandRows.filter((item) => !selectedBands.includes(item.band));
-      const toAdd = selectedBands.filter((band) => !existing.has(band));
-      await Promise.all([
-        ...toRemove.map((item) => api.removeRefereeBand(item.bandId)),
-        ...toAdd.map((band) => api.addRefereeBand(referee.id, {
-          competition: bandCompetition,
-          sportSeason: selectedSeason,
-          band
-        }))
-      ]);
-      const data = await api.listRefereeBands({ competition: bandCompetition, season: selectedSeason });
-      const rows = (data.members || []).filter((item) => item.refereeId === referee.id);
-      setBandRows(rows);
-      setSelectedBands(rows.map((item) => item.band));
+      await persistBands();
       setSuccess('Fasce aggiornate.');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Aggiornamento delle fasce non riuscito.');
@@ -223,6 +228,15 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
             <p className="eyebrow">{selectedSeason === CURRENT_SEASON ? 'Stagione corrente' : 'Archivio storico'}</p>
             <h1>{referee.lastName} {referee.firstName}</h1>
             <p>{referee.category || 'Categoria non assegnata'} · {selectedSeason}</p>
+            {bandRows.length ? (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                {bandRows.map((item) => (
+                  <span key={item.bandId} className="shared-pill">
+                    {BAND_OPTIONS.find((option) => option.value === item.band)?.label || item.band}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -291,6 +305,19 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                   ...manageableCompetitions.map((value) => ({ value, label: competitionLabel(value) }))
                 ]}
               />
+            </label>
+            <label className="field field-span-3">
+              Fasce · {competitionLabel(bandCompetition)}
+              <MultiSelect
+                values={selectedBands}
+                onChange={setSelectedBands}
+                options={BAND_OPTIONS}
+                placeholder="Seleziona fasce…"
+                allLabel="Nessuna fascia"
+              />
+              <small style={{ color: 'var(--muted)', fontWeight: 500 }}>
+                Selezione multipla per la stagione {selectedSeason}.
+              </small>
             </label>
             <label className="field field-span-3" style={{ gridColumn: '1 / -1' }}>
               Note
