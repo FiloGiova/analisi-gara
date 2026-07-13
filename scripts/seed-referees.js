@@ -1,10 +1,12 @@
 /**
- * Seed arbitri DR1 stagione 2025/2026.
- * Uso: node scripts/seed-referees.js
- * Non sovrascrive arbitri già presenti (controlla per nome+cognome).
+ * Import idempotente arbitri DR1 stagione 2025/2026 su Postgres.
+ *
+ * Uso:
+ *   node scripts/seed-referees.js           # anteprima, nessuna scrittura
+ *   node scripts/seed-referees.js --commit  # applica in una transazione
  */
 import 'dotenv/config';
-import { initializeDatabase, getDb } from '../src/database/connection.js';
+import { dbAll, dbTx, closePool } from '../src/database/db.js';
 
 function parseDate(it) {
   if (!it) return null;
@@ -67,62 +69,176 @@ const REFEREES = [
   { license: '67438', lastName: 'VENTURI',          firstName: 'JACOPO',           expiry: '01/09/2026', province: 'TORINO',      dob: '02/10/2003', phone: '3661438604', email: 'vventurijacopo@gmail.com' },
 ];
 
-initializeDatabase();
-const db = getDb();
+const commit = process.argv.includes('--commit');
 
-const insertReferee = db.prepare(
-  `INSERT INTO referees (license_number, first_name, last_name, birth_date, email, phone, province, certificate_expiry, category)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-);
-const findReferee = db.prepare(
-  'SELECT id FROM referees WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)'
-);
-const insertRoster = db.prepare(
-  `INSERT INTO referee_season_categories (referee_id, sport_season, category, active)
-   VALUES (?, ?, ?, 1)
-   ON CONFLICT(referee_id, sport_season)
-   DO UPDATE SET category = excluded.category,
-                 active = 1,
-                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`
-);
-const updateCurrentCategory = db.prepare(
-  "UPDATE referees SET category = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?"
-);
+function clean(value) {
+  return String(value || '').trim();
+}
 
-let created = 0;
-let skipped = 0;
-let seasonRowsChanged = 0;
+function nameKey(firstName, lastName) {
+  return `${clean(lastName).toLocaleLowerCase('it')}|${clean(firstName).toLocaleLowerCase('it')}`;
+}
 
-db.transaction(() => {
-  for (const r of REFEREES) {
-    const existing = findReferee.get(r.firstName, r.lastName);
-    let refereeId;
+function sameNullable(left, right) {
+  return clean(left) === clean(right);
+}
 
-    if (existing) {
-      refereeId = existing.id;
-      skipped++;
-    } else {
-      const res = insertReferee.run(
-        r.license || null,
-        r.firstName,
-        r.lastName,
-        parseDate(r.dob),
-        r.email || null,
-        r.phone || null,
-        r.province || null,
-        parseDate(r.expiry),
-        CATEGORY
-      );
-      refereeId = res.lastInsertRowid;
-      created++;
+function expectedFields(referee) {
+  return {
+    license_number: referee.license || null,
+    first_name: referee.firstName,
+    last_name: referee.lastName,
+    birth_date: parseDate(referee.dob),
+    email: referee.email || null,
+    phone: referee.phone || null,
+    province: referee.province || null,
+    certificate_expiry: parseDate(referee.expiry)
+  };
+}
+
+function needsUpdate(existing, expected) {
+  return Object.entries(expected).some(([field, value]) => !sameNullable(existing[field], value)) || Number(existing.active) !== 1;
+}
+
+async function buildPlan() {
+  const existingRows = await dbAll(
+    `SELECT r.*,
+            sc.category AS season_category,
+            sc.active AS season_active
+       FROM referees r
+       LEFT JOIN referee_season_categories sc
+         ON sc.referee_id = r.id AND sc.sport_season = ?`,
+    [SEASON]
+  );
+
+  const byLicense = new Map();
+  const byName = new Map();
+  for (const row of existingRows) {
+    if (clean(row.license_number)) {
+      const matches = byLicense.get(clean(row.license_number)) || [];
+      matches.push(row);
+      byLicense.set(clean(row.license_number), matches);
+    }
+    const key = nameKey(row.first_name, row.last_name);
+    const matches = byName.get(key) || [];
+    matches.push(row);
+    byName.set(key, matches);
+  }
+
+  const inputLicenses = new Set();
+  const inputNames = new Set();
+  const conflicts = [];
+  const plan = [];
+
+  for (const referee of REFEREES) {
+    const license = clean(referee.license);
+    const key = nameKey(referee.firstName, referee.lastName);
+    if (license && inputLicenses.has(license)) conflicts.push(`Tessera duplicata nell'elenco: ${license}`);
+    if (inputNames.has(key)) conflicts.push(`Nominativo duplicato nell'elenco: ${referee.lastName} ${referee.firstName}`);
+    if (license) inputLicenses.add(license);
+    inputNames.add(key);
+
+    const licenseMatches = license ? (byLicense.get(license) || []) : [];
+    const nameMatches = byName.get(key) || [];
+    if (licenseMatches.length > 1 || nameMatches.length > 1) {
+      conflicts.push(`Più corrispondenze nel DB per ${referee.lastName} ${referee.firstName}.`);
+      continue;
     }
 
-    const seasonRes = insertRoster.run(refereeId, SEASON, CATEGORY);
-    updateCurrentCategory.run(CATEGORY, refereeId);
-    if (seasonRes.changes > 0) seasonRowsChanged++;
-  }
-})();
+    const byLicenseRow = licenseMatches[0] || null;
+    const byNameRow = nameMatches[0] || null;
+    if (byLicenseRow && byNameRow && byLicenseRow.id !== byNameRow.id) {
+      conflicts.push(`Tessera e nominativo puntano a due arbitri diversi per ${referee.lastName} ${referee.firstName}.`);
+      continue;
+    }
 
-console.log(`Arbitri creati:  ${created}`);
-console.log(`Arbitri saltati: ${skipped} (già presenti)`);
-console.log(`Categorie stagione aggiornate: ${seasonRowsChanged} (${CATEGORY} ${SEASON})`);
+    const existing = byLicenseRow || byNameRow;
+    const expected = expectedFields(referee);
+    const rosterReady =
+      existing && existing.season_category === CATEGORY && Number(existing.season_active) === 1;
+    plan.push({
+      referee,
+      expected,
+      existing,
+      action: !existing ? 'create' : needsUpdate(existing, expected) ? 'update' : rosterReady ? 'unchanged' : 'roster'
+    });
+  }
+
+  return { plan, conflicts };
+}
+
+async function applyPlan(plan) {
+  await dbTx(async (client) => {
+    for (const item of plan) {
+      let refereeId = item.existing?.id;
+      const values = Object.values(item.expected);
+
+      if (!refereeId) {
+        const result = await client.run(
+          `INSERT INTO referees
+             (license_number, first_name, last_name, birth_date, email, phone, province, certificate_expiry, category, active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1)
+           RETURNING id`,
+          values
+        );
+        refereeId = result.rows[0].id;
+      } else if (item.action === 'update') {
+        await client.run(
+          `UPDATE referees
+              SET license_number = ?, first_name = ?, last_name = ?, birth_date = ?, email = ?, phone = ?,
+                  province = ?, certificate_expiry = ?, active = 1, updated_at = iso_now()
+            WHERE id = ?`,
+          [...values, refereeId]
+        );
+      }
+
+      if (item.action !== 'unchanged') {
+        await client.run(
+          `INSERT INTO referee_season_categories (referee_id, sport_season, category, active)
+           VALUES (?, ?, ?, 1)
+           ON CONFLICT (referee_id, sport_season)
+           DO UPDATE SET category = excluded.category, active = 1, updated_at = iso_now()`,
+          [refereeId, SEASON, CATEGORY]
+        );
+      }
+    }
+  });
+}
+
+async function main() {
+  const { plan, conflicts } = await buildPlan();
+  const counts = Object.fromEntries(
+    ['create', 'update', 'roster', 'unchanged'].map((action) => [
+      action,
+      plan.filter((item) => item.action === action).length
+    ])
+  );
+
+  console.log(`Import ${CATEGORY} ${SEASON} — ${commit ? 'COMMIT' : 'ANTEPRIMA'}`);
+  console.log(`Righe valide: ${REFEREES.length}`);
+  console.log(`Da creare: ${counts.create}`);
+  console.log(`Da aggiornare: ${counts.update}`);
+  console.log(`Solo appartenenza stagionale: ${counts.roster}`);
+  console.log(`Già allineati: ${counts.unchanged}`);
+
+  if (conflicts.length) {
+    console.error(`Conflitti: ${conflicts.length}`);
+    for (const conflict of conflicts) console.error(`- ${conflict}`);
+    throw new Error('Import annullato: risolvere i conflitti prima di procedere.');
+  }
+
+  if (!commit) {
+    console.log('Nessuna scrittura eseguita. Rilancia con --commit per applicare.');
+    return;
+  }
+
+  await applyPlan(plan);
+  console.log('Import completato in una transazione.');
+}
+
+main()
+  .catch((err) => {
+    console.error(`ERRORE: ${err.message}`);
+    process.exitCode = 1;
+  })
+  .finally(closePool);
