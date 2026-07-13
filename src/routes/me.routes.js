@@ -3,6 +3,7 @@ import multer from 'multer';
 import { listReports, getStats } from '../services/reportService.js';
 import { savePhotoForUser, deletePhotoForUser } from '../services/photoService.js';
 import { updateOwnProfile } from '../services/userService.js';
+import { listAvailableSeasons } from '../services/seasonService.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 
 const upload = multer({
@@ -26,6 +27,13 @@ meRouter.get('/', (req, res) => {
 meRouter.get('/profile', (req, res) => {
   res.json({ user: req.user || null });
 });
+
+meRouter.get(
+  '/seasons',
+  asyncHandler(async (_req, res) => {
+    res.json({ seasons: await listAvailableSeasons() });
+  })
+);
 
 meRouter.patch(
   '/profile',

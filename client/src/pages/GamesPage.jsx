@@ -57,10 +57,9 @@ function officialLabel(official) {
   return official.refereeName || official.userName || official.externalName || '—';
 }
 
-export default function GamesPage({ currentUser }) {
+export default function GamesPage({ currentUser, season }) {
   const canManage = currentUser.role === 'admin' || currentUser.role === 'instructor';
   const [games, setGames] = useState([]);
-  const [season] = useState(CURRENT_SEASON); // pagina sempre sulla stagione corrente
   const [matchday, setMatchday] = useState('');
   const [stateFilter, setStateFilter] = useState([]); // più stati selezionabili insieme (checkbox)
   const [sourceFilter, setSourceFilter] = useState([]); // fasi selezionate (menu a tendina multi)
@@ -87,6 +86,10 @@ export default function GamesPage({ currentUser }) {
   }
 
   useEffect(() => {
+    setMatchday('');
+    setStateFilter([]);
+    setSourceFilter([]);
+    setRefereeFilter('');
     if (canManage) loadGames();
   }, [season]);
 

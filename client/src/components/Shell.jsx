@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { navigate } from '../lib/navigation.js';
 import UserAvatar from './UserAvatar.jsx';
+import SeasonSelector from './SeasonSelector.jsx';
 
-export default function Shell({ user, onLogout, showBackButton = false, children }) {
+export default function Shell({ user, onLogout, showBackButton = false, season, seasons, onSeasonChange, children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const instructorCompetitions = user.instructorCompetitions?.length
@@ -62,6 +63,8 @@ export default function Shell({ user, onLogout, showBackButton = false, children
             <small>Valutazioni gara</small>
           </span>
         </button>
+
+        <SeasonSelector value={season} seasons={seasons} onChange={onSeasonChange} />
 
         <nav className="topbar-actions">
           <button type="button" className="ghost-button" onClick={() => navigate(isReferee ? '/me' : '/')}>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { currentSportSeason } from '../../shared/reportTemplate.js';
 import { api } from './lib/api.js';
 import { getHashPath, parseRoute, navigate } from './lib/navigation.js';
 import Shell from './components/Shell.jsx';
@@ -19,6 +20,8 @@ import AdminSourcesPage from './pages/AdminSourcesPage.jsx';
 import AdminImportsPage from './pages/AdminImportsPage.jsx';
 import CoveragePage from './pages/CoveragePage.jsx';
 
+const CURRENT_SEASON = currentSportSeason();
+
 function useRoute() {
   const [path, setPath] = useState(getHashPath());
 
@@ -35,6 +38,8 @@ export default function App() {
   const route = useRoute();
   const [user, setUser] = useState(null);
   const [features, setFeatures] = useState({ aiEnabled: false });
+  const [season, setSeason] = useState(CURRENT_SEASON);
+  const [seasons, setSeasons] = useState([CURRENT_SEASON]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -46,9 +51,28 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!user) {
+      setSeasons([CURRENT_SEASON]);
+      setSeason(CURRENT_SEASON);
+      return;
+    }
+    let ignore = false;
+    api.listAvailableSeasons()
+      .then((data) => {
+        if (!ignore) setSeasons(Array.from(new Set([CURRENT_SEASON, ...(data.seasons || [])])));
+      })
+      .catch(() => {
+        if (!ignore) setSeasons([CURRENT_SEASON]);
+      });
+    return () => { ignore = true; };
+  }, [user?.id]);
+
   async function handleLogout() {
     await api.logout();
     setUser(null);
+    setSeason(CURRENT_SEASON);
+    setSeasons([CURRENT_SEASON]);
     navigate('/');
   }
 
@@ -69,15 +93,17 @@ export default function App() {
 
   const isReferee = user.role === 'referee';
   let page = isReferee
-    ? <RefereeHomePage currentUser={user} />
-    : <DashboardPage currentUser={user} />;
-  if (route.name === 'refereeHome') page = <RefereeHomePage currentUser={user} />;
-  if (!isReferee && route.name === 'games') page = <GamesPage currentUser={user} />;
-  if (!isReferee && route.name === 'designateObservers') page = <DesignateObserversPage currentUser={user} />;
+    ? <RefereeHomePage currentUser={user} season={season} />
+    : <DashboardPage currentUser={user} season={season} />;
+  if (route.name === 'refereeHome') page = <RefereeHomePage currentUser={user} season={season} />;
+  if (!isReferee && route.name === 'games') page = <GamesPage currentUser={user} season={season} />;
+  if (!isReferee && route.name === 'designateObservers') page = <DesignateObserversPage currentUser={user} season={season} />;
   if (!isReferee && route.name === 'gameDetail') page = <GameDetailPage id={route.id} currentUser={user} />;
-  if (route.name === 'adminSources') page = <AdminSourcesPage currentUser={user} />;
-  if (route.name === 'adminImports') page = <AdminImportsPage currentUser={user} />;
-  if (!isReferee && route.name === 'coverage') page = <CoveragePage currentUser={user} />;
+  if (route.name === 'adminSources') page = <AdminSourcesPage currentUser={user} season={season} />;
+  if (route.name === 'adminImports') page = <AdminImportsPage currentUser={user} season={season} />;
+  if (!isReferee && route.name === 'coverage') {
+    page = <CoveragePage currentUser={user} globalSeason={season} seasons={seasons} />;
+  }
   if (!isReferee && route.name === 'newReport') page = <ReportFormPage currentUser={user} features={features} gameId={route.gameId} />;
   if (!isReferee && route.name === 'editReport') page = <ReportFormPage id={route.id} currentUser={user} features={features} />;
   if (route.name === 'reportDetail') page = <ReportDetailPage id={route.id} currentUser={user} />;
@@ -92,8 +118,8 @@ export default function App() {
     />
   );
   if (route.name === 'adminLogs') page = <AdminLogsPage currentUser={user} />;
-  if (route.name === 'adminRefereeDetail') page = <RefereeDetailPage id={route.id} currentUser={user} />;
-  if (route.name === 'adminReferees') page = <AdminRefereesPage currentUser={user} />;
+  if (route.name === 'adminRefereeDetail') page = <RefereeDetailPage id={route.id} currentUser={user} season={season} />;
+  if (route.name === 'adminReferees') page = <AdminRefereesPage currentUser={user} season={season} />;
   if (route.name === 'adminUsers') page = <AdminUsersPage currentUser={user} onPasswordChanged={() => {
     setUser(null);
     navigate('/');
@@ -110,7 +136,14 @@ export default function App() {
   const showBackButton = route.name !== 'dashboard' && route.name !== 'refereeHome';
 
   return (
-    <Shell user={user} onLogout={handleLogout} showBackButton={showBackButton}>
+    <Shell
+      user={user}
+      onLogout={handleLogout}
+      showBackButton={showBackButton}
+      season={season}
+      seasons={seasons}
+      onSeasonChange={setSeason}
+    >
       {page}
     </Shell>
   );

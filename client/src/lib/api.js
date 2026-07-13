@@ -41,6 +41,7 @@ export const api = {
     if (season) params.set('season', season);
     return request(`/api/me/stats${params.toString() ? `?${params}` : ''}`);
   },
+  listAvailableSeasons: () => request('/api/me/seasons'),
   myProfile: () => request('/api/me/profile'),
   updateMyProfile: ({ displayName }) => request('/api/me/profile', {
     method: 'PATCH',

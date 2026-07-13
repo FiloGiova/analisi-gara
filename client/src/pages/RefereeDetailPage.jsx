@@ -80,10 +80,8 @@ function colleagueLabel(game, myRole) {
   return others.join(', ');
 }
 
-export default function RefereeDetailPage({ id, currentUser }) {
+export default function RefereeDetailPage({ id, currentUser, season: selectedSeason }) {
   const [referee, setReferee] = useState(null);
-  const [seasons, setSeasons] = useState([CURRENT_SEASON]);
-  const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON);
   const [designations, setDesignations] = useState([]);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
@@ -102,14 +100,11 @@ export default function RefereeDetailPage({ id, currentUser }) {
 
   useEffect(() => {
     if (!canInspect) return;
-    api.listRefereeSeasons()
-      .then((data) => setSeasons(Array.from(new Set([CURRENT_SEASON, ...(data.seasons || [])]))))
-      .catch(() => setSeasons([CURRENT_SEASON]));
-  }, [canInspect]);
-
-  useEffect(() => {
-    if (!canInspect) return;
     setError('');
+    setSuccess('');
+    setEditing(false);
+    setReferee(null);
+    setBandCompetition('');
     api.getReferee(id, { season: selectedSeason })
       .then((data) => setReferee(data.referee))
       .catch((err) => setError(err.message || 'Arbitro non trovato.'));
@@ -242,20 +237,6 @@ export default function RefereeDetailPage({ id, currentUser }) {
 
       {error ? <div className="error-banner">{error}</div> : null}
       {success ? <div className="success-banner">{success}</div> : null}
-
-      <section className="toolbar-card">
-        <div className="admin-referee-toolbar">
-          <Select
-            value={selectedSeason}
-            onChange={setSelectedSeason}
-            placeholder="Stagione"
-            options={seasons.map((season) => ({
-              value: season,
-              label: season === CURRENT_SEASON ? `${season} · corrente` : season
-            }))}
-          />
-        </div>
-      </section>
 
       {editing && form ? (
         <form className="common-card" onSubmit={saveReferee}>

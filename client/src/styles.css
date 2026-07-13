@@ -188,6 +188,128 @@ select:focus {
   object-fit: cover;
 }
 
+.season-switcher {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.season-switcher-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 7px 9px 7px 12px;
+  border: 1px solid rgba(18, 60, 105, 0.16);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(247, 251, 255, 0.98), rgba(232, 241, 251, 0.78));
+  color: var(--blue);
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.season-switcher-trigger:hover,
+.season-switcher-trigger:focus-visible,
+.season-switcher.is-open .season-switcher-trigger {
+  outline: none;
+  border-color: rgba(29, 111, 120, 0.44);
+  box-shadow: 0 0 0 3px rgba(29, 111, 120, 0.1);
+}
+
+.season-switcher.is-archive .season-switcher-trigger {
+  border-color: rgba(226, 125, 54, 0.4);
+  background: linear-gradient(135deg, rgba(255, 249, 243, 0.98), var(--orange-soft));
+  color: #9a4b17;
+}
+
+.season-switcher-copy {
+  display: grid;
+  gap: 1px;
+}
+
+.season-switcher-copy small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.season-switcher-copy strong {
+  font-size: 0.82rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.season-switcher-caret {
+  display: inline-grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border-radius: 999px;
+  background: rgba(18, 60, 105, 0.09);
+  font-size: 0.7rem;
+  transition: transform 180ms ease;
+}
+
+.season-switcher.is-open .season-switcher-caret {
+  transform: rotate(180deg);
+}
+
+.season-switcher-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 120;
+  display: grid;
+  gap: 3px;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(14,31,38,0.14);
+  animation: select-pop 140ms ease both;
+}
+
+.season-switcher-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.season-switcher-option:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.season-switcher-option.is-selected {
+  background: linear-gradient(135deg, var(--blue), var(--teal));
+  color: #fff;
+}
+
+.season-switcher-option > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.season-switcher-option strong {
+  font-size: 0.84rem;
+}
+
+.season-switcher-option small {
+  color: inherit;
+  font-size: 0.67rem;
+  opacity: 0.72;
+}
+
 .topbar-actions,
 .save-actions,
 .detail-actions,
@@ -2765,6 +2887,20 @@ dd {
 
   .brand {
     width: 100%;
+  }
+
+  .season-switcher {
+    width: 100%;
+  }
+
+  .season-switcher-trigger {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .season-switcher-menu {
+    left: 0;
+    right: 0;
   }
 
   .dashboard-hero,

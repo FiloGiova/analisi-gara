@@ -25,10 +25,10 @@ function cellStyle(completed) {
   return { background: 'var(--orange-soft)', color: 'var(--danger)', fontWeight: 800 };
 }
 
-export default function CoveragePage({ currentUser }) {
+export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   const canAccess = currentUser.role === 'admin' || currentUser.role === 'instructor';
   const [view, setView] = useState('coverage');
-  const season = CURRENT_SEASON; // statistiche sempre sulla stagione corrente
+  const [season, setSeason] = useState(globalSeason);
   const [competition, setCompetition] = useState(''); // '' = tutti i campionati
   const [band, setBand] = useState(''); // '' = tutte le fasce
   const [search, setSearch] = useState(''); // filtro nome/cognome/tessera
@@ -38,6 +38,10 @@ export default function CoveragePage({ currentUser }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setSeason(globalSeason);
+  }, [globalSeason]);
 
   useEffect(() => {
     if (!canAccess) return;
@@ -56,7 +60,7 @@ export default function CoveragePage({ currentUser }) {
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Impossibile caricare i visionamenti.'))
       .finally(() => setLoading(false));
-  }, [canAccess, competition, band]);
+  }, [canAccess, season, competition, band]);
 
   if (!canAccess) {
     return <div className="empty-state"><h2>Sezione riservata ad amministratori e formatori</h2></div>;
@@ -121,6 +125,20 @@ export default function CoveragePage({ currentUser }) {
           </div>
         </div>
         <div className="games-filters-row" style={{ marginTop: '12px' }}>
+          <div style={{ flex: '0 1 220px' }}>
+            <Select
+              value={season}
+              onChange={setSeason}
+              placeholder="Stagione statistiche"
+              options={seasons.map((item) => ({
+                value: item,
+                label: item === CURRENT_SEASON ? `${item} · corrente` : `${item} · archivio`
+              }))}
+            />
+            <small style={{ display: 'block', margin: '5px 2px 0', color: 'var(--muted)' }}>
+              Vale solo in questa pagina
+            </small>
+          </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}

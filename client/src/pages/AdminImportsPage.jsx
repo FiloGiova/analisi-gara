@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { currentSportSeason } from '../../../shared/reportTemplate.js';
-import Select from '../components/Select.jsx';
 import { api, ApiError, downloadDesignationsTemplate } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-
-const CURRENT_SEASON = currentSportSeason();
 
 const ROLE_LABELS = {
   referee1: '1° arbitro',
@@ -29,9 +25,7 @@ function ActionBadge({ action }) {
   );
 }
 
-export default function AdminImportsPage({ currentUser }) {
-  const [seasons, setSeasons] = useState([CURRENT_SEASON]);
-  const [season, setSeason] = useState(CURRENT_SEASON);
+export default function AdminImportsPage({ currentUser, season }) {
   const [preview, setPreview] = useState(null);
   const [applyResult, setApplyResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -42,11 +36,10 @@ export default function AdminImportsPage({ currentUser }) {
   const isAdmin = currentUser.role === 'admin';
 
   useEffect(() => {
-    if (!isAdmin) return;
-    api.listGameSeasons()
-      .then((data) => setSeasons(Array.from(new Set([CURRENT_SEASON, ...(data.seasons || [])]))))
-      .catch(() => setSeasons([CURRENT_SEASON]));
-  }, [isAdmin]);
+    setPreview(null);
+    setApplyResult(null);
+    if (fileRef.current) fileRef.current.value = '';
+  }, [season]);
 
   if (!isAdmin) {
     return <div className="empty-state"><h2>Sezione riservata agli amministratori</h2></div>;
@@ -121,12 +114,7 @@ export default function AdminImportsPage({ currentUser }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Select
-            value={season}
-            onChange={setSeason}
-            placeholder="Stagione"
-            options={seasons.map((s) => ({ value: s, label: s === CURRENT_SEASON ? `${s} · corrente` : s }))}
-          />
+          <span className="status-badge status-draft">Stagione {season}</span>
           <button type="button" className="primary-button" onClick={() => downloadDesignationsTemplate(season)}>
             Scarica template ({season})
           </button>

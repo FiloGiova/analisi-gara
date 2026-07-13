@@ -1,22 +1,18 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
-
-const CURRENT_SEASON = currentSportSeason();
 
 function formatDate(value) {
   if (!value) return '-';
   try { return new Date(value).toLocaleDateString('it-IT'); } catch { return value; }
 }
 
-export default function RefereeHomePage({ currentUser }) {
+export default function RefereeHomePage({ currentUser, season }) {
   const [reports, setReports] = useState([]);
   const [stats, setStats] = useState(null);
-  const [season, setSeason] = useState(CURRENT_SEASON);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 

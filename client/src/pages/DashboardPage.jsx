@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import { api, downloadReportPdf } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import WorkbenchTable from '../components/WorkbenchTable.jsx';
-
-const CURRENT_SEASON = currentSportSeason();
 
 function dateValue(value) {
   const t = new Date(value || '').getTime();
@@ -37,7 +34,7 @@ function buildSparkline(total, lastMonth) {
   return values.map((v) => Math.max(2, Math.round((v / max) * 22)));
 }
 
-export default function DashboardPage({ currentUser }) {
+export default function DashboardPage({ currentUser, season }) {
   const [reports, setReports] = useState([]);
   const [pendingGames, setPendingGames] = useState([]);
   const [stats, setStats] = useState(null);
@@ -45,7 +42,6 @@ export default function DashboardPage({ currentUser }) {
   const [competition, setCompetition] = useState('');
   const [observer, setObserver] = useState('');
   const [observers, setObservers] = useState([]);
-  const [season, setSeason] = useState(CURRENT_SEASON);
   const [sortColumn, setSortColumn] = useState('updatedAt');
   const [sortDir, setSortDir] = useState('desc');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -68,6 +64,7 @@ export default function DashboardPage({ currentUser }) {
   }, [filtersOpen]);
 
   useEffect(() => {
+    setCompetition('');
     api.getReportStats({ season }).then((data) => setStats(data.stats)).catch(() => {});
     api.listReportObservers({ season })
       .then((data) => {
@@ -121,10 +118,9 @@ export default function DashboardPage({ currentUser }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  const seasonOptions = Array.from(new Set([CURRENT_SEASON, ...(stats?.seasons || [])]));
   const canFilterObservers = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
   const isReferee = currentUser?.role === 'referee';
-  const filterCount = [competition, observer, season !== CURRENT_SEASON ? season : ''].filter(Boolean).length;
+  const filterCount = [competition, observer].filter(Boolean).length;
   const hasFilters = Boolean(search || filterCount);
   const availableCompetitions = Array.from(new Set(reports.map((r) => r.competition).filter(Boolean))).sort();
 
@@ -145,7 +141,6 @@ export default function DashboardPage({ currentUser }) {
     setSearch('');
     setCompetition('');
     setObserver('');
-    setSeason(CURRENT_SEASON);
     setFiltersOpen(false);
   }
 
@@ -348,12 +343,6 @@ export default function DashboardPage({ currentUser }) {
                       ]}
                     />
                   )}
-                  <Select
-                    value={season}
-                    onChange={setSeason}
-                    placeholder="Anno sportivo"
-                    options={seasonOptions.map((s) => ({ value: s, label: s === CURRENT_SEASON ? `${s} · corrente` : s }))}
-                  />
                   <div className="filter-drawer-actions">
                     {hasFilters && (
                       <button type="button" className="ghost-button" onClick={resetFilters}>

@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
-import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { COMPETITIONS } from '../../../shared/reportTemplate.js';
 import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 
-const CURRENT_SEASON = currentSportSeason();
-
-const EMPTY_FORM = {
-  name: '',
-  sportSeason: CURRENT_SEASON,
-  competition: '',
-  url: ''
-};
+function emptyForm(season) {
+  return {
+    name: '',
+    sportSeason: season,
+    competition: '',
+    url: ''
+  };
+}
 
 function formatDateTime(iso) {
   if (!iso) return '—';
@@ -30,9 +30,9 @@ const SYNC_STATUS_LABELS = {
   running: 'In corso'
 };
 
-export default function AdminSourcesPage({ currentUser }) {
+export default function AdminSourcesPage({ currentUser, season }) {
   const [sources, setSources] = useState([]);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(() => emptyForm(season));
   const [showForm, setShowForm] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
   const [syncResult, setSyncResult] = useState(null);
@@ -51,7 +51,7 @@ export default function AdminSourcesPage({ currentUser }) {
   async function load() {
     setLoading(true);
     try {
-      const data = await api.listSources();
+      const data = await api.listSources({ season });
       setSources(data.sources || []);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Impossibile caricare le sorgenti.');
@@ -88,8 +88,13 @@ export default function AdminSourcesPage({ currentUser }) {
   }
 
   useEffect(() => {
-    if (isAdmin) load();
-  }, [isAdmin]);
+    if (!isAdmin) return;
+    setForm(emptyForm(season));
+    setShowForm(false);
+    setSyncResult(null);
+    setExpandedRuns(null);
+    load();
+  }, [isAdmin, season]);
 
   if (!isAdmin) {
     return <div className="empty-state"><h2>Sezione riservata agli amministratori</h2></div>;
@@ -113,7 +118,7 @@ export default function AdminSourcesPage({ currentUser }) {
         : `Sorgente "${names}" creata. Ora puoi eseguire la prima sincronizzazione.`;
       const skippedMsg = data.skipped?.length ? ` Già configurati e saltati: ${data.skipped.join(', ')}.` : '';
       setSuccess(base + skippedMsg);
-      setForm(EMPTY_FORM);
+      setForm(emptyForm(season));
       setShowForm(false);
       await load();
     } catch (err) {
@@ -189,7 +194,7 @@ export default function AdminSourcesPage({ currentUser }) {
     <div className="page-stack">
       <section className="dashboard-hero admin-hero">
         <div>
-          <p className="eyebrow">Amministrazione</p>
+          <p className="eyebrow">Amministrazione · stagione {season}</p>
           <h1>Sorgenti gare e sincronizzazioni</h1>
           <p>
             Incolla il link pubblico FIP del girone (pagina "Risultati") per importare calendario e
@@ -309,6 +314,10 @@ export default function AdminSourcesPage({ currentUser }) {
             <button type="button" className="ghost-button" onClick={() => setShowForm(false)}>Annulla</button>
           </div>
           <div className="common-grid">
+            <div className="field field-span-3">
+              <span>Stagione della nuova sorgente</span>
+              <strong>{season}</strong>
+            </div>
             <label className="field field-span-3">
               <span className="required-label">Link FIP del girone <small className="required-symbol">*</small></span>
               <input
@@ -321,10 +330,6 @@ export default function AdminSourcesPage({ currentUser }) {
             <label className="field field-span-3">
               Nome visualizzato (con più gironi diventa un prefisso, es. "DR1 — Girone A")
               <input value={form.name} onChange={(e) => updateForm('name', e.target.value)} placeholder="es. DR1 Piemonte" />
-            </label>
-            <label className="field field-span-2">
-              <span className="required-label">Stagione <small className="required-symbol">*</small></span>
-              <input value={form.sportSeason} onChange={(e) => updateForm('sportSeason', e.target.value)} placeholder="es. 2025/2026" required />
             </label>
             <label className="field field-span-2">
               Campionato

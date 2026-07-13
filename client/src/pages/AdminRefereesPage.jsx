@@ -57,13 +57,11 @@ function instructorCompetitionsForUser(user) {
   return user?.formatterCompetition ? [user.formatterCompetition] : [];
 }
 
-export default function AdminRefereesPage({ currentUser }) {
+export default function AdminRefereesPage({ currentUser, season: selectedSeason }) {
   const assignedCompetitions = instructorCompetitionsForUser(currentUser);
   const canAccess = currentUser.role === 'admin' || assignedCompetitions.length > 0;
   const [referees, setReferees] = useState([]);
   const [ranking, setRanking] = useState([]);
-  const [seasons, setSeasons] = useState([CURRENT_SEASON]);
-  const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON);
   const [view, setView] = useState('list');
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -85,16 +83,6 @@ export default function AdminRefereesPage({ currentUser }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-
-  async function loadSeasons() {
-    try {
-      const data = await api.listRefereeSeasons();
-      const next = Array.from(new Set([CURRENT_SEASON, ...(data.seasons || [])]));
-      setSeasons(next);
-    } catch (_) {
-      setSeasons([CURRENT_SEASON]);
-    }
-  }
 
   async function loadReferees(season = selectedSeason) {
     setLoading(true);
@@ -175,11 +163,6 @@ export default function AdminRefereesPage({ currentUser }) {
       setLoading(false);
       return;
     }
-    loadSeasons();
-  }, [canAccess, currentUser.instructorCompetition, currentUser.instructorCompetitions]);
-
-  useEffect(() => {
-    if (!canAccess) return;
     if (selectedSeason !== CURRENT_SEASON) cancelForm();
     loadReferees(selectedSeason);
     loadRanking(selectedSeason);
@@ -232,7 +215,7 @@ export default function AdminRefereesPage({ currentUser }) {
   }
 
   async function refreshSeason() {
-    await Promise.all([loadReferees(selectedSeason), loadRanking(selectedSeason), loadSeasons()]);
+    await Promise.all([loadReferees(selectedSeason), loadRanking(selectedSeason), loadAllBands()]);
   }
 
   async function handleSubmit(e) {
@@ -339,15 +322,6 @@ export default function AdminRefereesPage({ currentUser }) {
               Fasce
             </button>
           </div>
-          <Select
-            value={selectedSeason}
-            onChange={setSelectedSeason}
-            placeholder="Stagione"
-            options={seasons.map((season) => ({
-              value: season,
-              label: season === CURRENT_SEASON ? `${season} · corrente` : season
-            }))}
-          />
         </div>
       </section>
 

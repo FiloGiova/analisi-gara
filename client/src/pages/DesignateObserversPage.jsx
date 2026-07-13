@@ -1,12 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { COMPETITIONS } from '../../../shared/reportTemplate.js';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-
-const CURRENT_SEASON = currentSportSeason();
 
 function formatDateTime(iso) {
   if (!iso) return '—';
@@ -25,9 +23,8 @@ function refereeLabel(official) {
   return official.refereeName || official.externalName || '—';
 }
 
-export default function DesignateObserversPage({ currentUser }) {
+export default function DesignateObserversPage({ currentUser, season }) {
   const canManage = currentUser.role === 'admin' || currentUser.role === 'instructor';
-  const season = CURRENT_SEASON;
   const [games, setGames] = useState([]);
   const [observers, setObservers] = useState([]);
   const [competition, setCompetition] = useState('');
@@ -54,8 +51,11 @@ export default function DesignateObserversPage({ currentUser }) {
   }
 
   useEffect(() => {
+    setCompetition('');
+    setSourceFilter([]);
+    setMatchdayFilter([]);
     if (canManage) loadGames();
-  }, []);
+  }, [canManage, season]);
 
   useEffect(() => {
     if (!canManage) return;
