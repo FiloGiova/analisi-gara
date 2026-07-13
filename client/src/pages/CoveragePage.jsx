@@ -36,7 +36,6 @@ export default function CoveragePage({ currentUser }) {
   const [matrix, setMatrix] = useState(null);
   const [employment, setEmployment] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [activeOnly, setActiveOnly] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -79,9 +78,7 @@ export default function CoveragePage({ currentUser }) {
   }
 
   const cellsMap = new Map((matrix?.cells || []).map((c) => [`${c.observerKey}|${c.refereeId}`, c]));
-  const visibleReferees = (coverage?.referees || [])
-    .filter((r) => !activeOnly || r.active || r.completedCount > 0 || r.scheduledCount > 0)
-    .filter(matchesSearch);
+  const visibleReferees = (coverage?.referees || []).filter(matchesSearch);
 
   // Il formatore vede solo i propri campionati; l'admin tutti.
   const myCompetitions = currentUser.role === 'instructor'
@@ -122,19 +119,15 @@ export default function CoveragePage({ currentUser }) {
               Impiego arbitri
             </button>
           </div>
-          <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
-            <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} style={{ width: 'auto' }} />
-            Solo arbitri attivi o con dati
-          </label>
         </div>
         <div className="games-filters-row" style={{ marginTop: '12px' }}>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca arbitro: nome, cognome o tessera…"
-            style={{ flex: '0 1 280px', minHeight: '46px', boxSizing: 'border-box' }}
+            style={{ flex: '0 1 340px', minHeight: '46px', boxSizing: 'border-box' }}
           />
-          <div style={{ flex: '0 1 200px' }}>
+          <div style={{ flex: '0 1 240px' }}>
             <Select
               value={competition}
               onChange={setCompetition}
@@ -240,7 +233,7 @@ export default function CoveragePage({ currentUser }) {
             </div>
           </div>
           {(() => {
-            const visible = employment.referees.filter((r) => !activeOnly || r.active || r.totalGames > 0).filter(matchesSearch);
+            const visible = employment.referees.filter(matchesSearch);
             if (visible.length === 0) {
               return <div className="empty-state" style={{ padding: '24px' }}>Nessuna designazione in questa stagione.</div>;
             }

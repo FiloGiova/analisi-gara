@@ -1,13 +1,45 @@
 import { useEffect, useState } from 'react';
-import { currentSportSeason } from '../../../shared/reportTemplate.js';
+import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
 import Select from '../components/Select.jsx';
-import { api } from '../lib/api.js';
+import MultiSelect from '../components/MultiSelect.jsx';
+import DateInput from '../components/DateInput.jsx';
+import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
 
 const CURRENT_SEASON = currentSportSeason();
+const BAND_OPTIONS = [
+  { value: 'esordiente', label: 'Esordienti' },
+  { value: 'playoff', label: 'Playoff' },
+  { value: 'playout', label: 'Playout' }
+];
+
+function competitionLabel(value) {
+  return COMPETITIONS.find((item) => item.value === value)?.label || value;
+}
+
+function instructorCompetitionsForUser(user) {
+  if (user?.role !== 'instructor') return [];
+  if (user.instructorCompetitions?.length) return user.instructorCompetitions;
+  return [user.instructorCompetition || user.formatterCompetition].filter(Boolean);
+}
+
+function refereeForm(referee) {
+  return {
+    licenseNumber: referee.licenseNumber || '',
+    firstName: referee.firstName || '',
+    lastName: referee.lastName || '',
+    birthDate: referee.birthDate || '',
+    email: referee.email || '',
+    phone: referee.phone || '',
+    province: referee.province || '',
+    certificateExpiry: referee.certificateExpiry || '',
+    category: referee.category || '',
+    notes: referee.notes || ''
+  };
+}
 
 function formatDate(iso) {
   if (!iso) return '-';
@@ -53,8 +85,20 @@ export default function RefereeDetailPage({ id, currentUser }) {
   const [seasons, setSeasons] = useState([CURRENT_SEASON]);
   const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON);
   const [designations, setDesignations] = useState([]);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [bandCompetition, setBandCompetition] = useState('');
+  const [bandRows, setBandRows] = useState([]);
+  const [selectedBands, setSelectedBands] = useState([]);
+  const [bandsBusy, setBandsBusy] = useState(false);
   const [error, setError] = useState('');
   const canInspect = canInspectReferees(currentUser);
+  const instructorCompetitions = instructorCompetitionsForUser(currentUser);
+  const manageableCompetitions = instructorCompetitions.length
+    ? instructorCompetitions
+    : COMPETITIONS.map((item) => item.value);
 
   useEffect(() => {
     if (!canInspect) return;
@@ -72,6 +116,29 @@ export default function RefereeDetailPage({ id, currentUser }) {
   }, [canInspect, id, selectedSeason]);
 
   useEffect(() => {
+    if (!referee || bandCompetition) return;
+    const preferred = manageableCompetitions.includes(referee.category)
+      ? referee.category
+      : manageableCompetitions[0];
+    setBandCompetition(preferred || '');
+  }, [referee, bandCompetition, manageableCompetitions.join('|')]);
+
+  useEffect(() => {
+    if (!canInspect || !bandCompetition) {
+      setBandRows([]);
+      setSelectedBands([]);
+      return;
+    }
+    api.listRefereeBands({ competition: bandCompetition, season: selectedSeason })
+      .then((data) => {
+        const rows = (data.members || []).filter((item) => item.refereeId === Number(id));
+        setBandRows(rows);
+        setSelectedBands(rows.map((item) => item.band));
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Impossibile caricare le fasce.'));
+  }, [canInspect, id, selectedSeason, bandCompetition]);
+
+  useEffect(() => {
     if (!canInspect) return;
     api.listGames({ refereeId: id, season: selectedSeason })
       .then((data) => setDesignations(data.games || []))
@@ -79,7 +146,7 @@ export default function RefereeDetailPage({ id, currentUser }) {
   }, [canInspect, id, selectedSeason]);
 
   if (!canInspect) return <div className="empty-state"><h2>Sezione arbitri non abilitata</h2></div>;
-  if (error) return <div className="error-banner">{error}</div>;
+  if (error && !referee) return <div className="error-banner">{error}</div>;
   if (!referee) return <div className="empty-state">Caricamento arbitro...</div>;
 
   const stats = referee.stats || {};
@@ -96,6 +163,62 @@ export default function RefereeDetailPage({ id, currentUser }) {
     setReferee((current) => ({ ...current, photoPath: null }));
   }
 
+  function startEdit() {
+    setForm(refereeForm(referee));
+    setEditing(true);
+    setError('');
+    setSuccess('');
+  }
+
+  function updateForm(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function saveReferee(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const data = await api.updateReferee(referee.id, { ...form, sportSeason: selectedSeason });
+      setReferee(data.referee);
+      setEditing(false);
+      setSuccess('Dati dell’arbitro aggiornati.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Modifica non riuscita.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveBands() {
+    setBandsBusy(true);
+    setError('');
+    setSuccess('');
+    try {
+      const existing = new Map(bandRows.map((item) => [item.band, item]));
+      const toRemove = bandRows.filter((item) => !selectedBands.includes(item.band));
+      const toAdd = selectedBands.filter((band) => !existing.has(band));
+      await Promise.all([
+        ...toRemove.map((item) => api.removeRefereeBand(item.bandId)),
+        ...toAdd.map((band) => api.addRefereeBand(referee.id, {
+          competition: bandCompetition,
+          sportSeason: selectedSeason,
+          band
+        }))
+      ]);
+      const data = await api.listRefereeBands({ competition: bandCompetition, season: selectedSeason });
+      const rows = (data.members || []).filter((item) => item.refereeId === referee.id);
+      setBandRows(rows);
+      setSelectedBands(rows.map((item) => item.band));
+      setSuccess('Fasce aggiornate.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Aggiornamento delle fasce non riuscito.');
+    } finally {
+      setBandsBusy(false);
+    }
+  }
+
   return (
     <div className="page-stack">
       <section className="detail-hero">
@@ -107,10 +230,18 @@ export default function RefereeDetailPage({ id, currentUser }) {
             <p>{referee.category || 'Categoria non assegnata'} · {selectedSeason}</p>
           </div>
         </div>
-        <button type="button" className="hero-button" onClick={() => navigate('/admin/referees')}>
-          Torna agli arbitri
-        </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button type="button" className="hero-button" onClick={startEdit}>
+            Modifica
+          </button>
+          <button type="button" className="hero-button" onClick={() => navigate('/admin/referees')}>
+            Torna agli arbitri
+          </button>
+        </div>
       </section>
+
+      {error ? <div className="error-banner">{error}</div> : null}
+      {success ? <div className="success-banner">{success}</div> : null}
 
       <section className="toolbar-card">
         <div className="admin-referee-toolbar">
@@ -123,6 +254,124 @@ export default function RefereeDetailPage({ id, currentUser }) {
               label: season === CURRENT_SEASON ? `${season} · corrente` : season
             }))}
           />
+        </div>
+      </section>
+
+      {editing && form ? (
+        <form className="common-card" onSubmit={saveReferee}>
+          <div className="section-heading">
+            <div>
+              <h2>Modifica arbitro</h2>
+              <p>I dati e la categoria si riferiscono alla stagione {selectedSeason}.</p>
+            </div>
+            <button type="button" className="ghost-button" onClick={() => setEditing(false)}>Annulla</button>
+          </div>
+          <div className="common-grid">
+            <label className="field field-span-2">
+              Numero tessera
+              <input value={form.licenseNumber} onChange={(e) => updateForm('licenseNumber', e.target.value)} />
+            </label>
+            <label className="field field-span-2">
+              Nome
+              <input value={form.firstName} onChange={(e) => updateForm('firstName', e.target.value)} required />
+            </label>
+            <label className="field field-span-2">
+              Cognome
+              <input value={form.lastName} onChange={(e) => updateForm('lastName', e.target.value)} required />
+            </label>
+            <label className="field field-span-3">
+              Data di nascita
+              <DateInput value={form.birthDate} onChange={(value) => updateForm('birthDate', value)} />
+            </label>
+            <label className="field field-span-3">
+              Scadenza certificato
+              <DateInput value={form.certificateExpiry} onChange={(value) => updateForm('certificateExpiry', value)} />
+            </label>
+            <label className="field field-span-2">
+              Email
+              <input type="email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} />
+            </label>
+            <label className="field field-span-2">
+              Telefono
+              <input type="tel" value={form.phone} onChange={(e) => updateForm('phone', e.target.value)} />
+            </label>
+            <label className="field field-span-2">
+              Provincia
+              <input value={form.province} onChange={(e) => updateForm('province', e.target.value)} />
+            </label>
+            <label className="field field-span-3">
+              Categoria
+              <Select
+                value={form.category}
+                onChange={(value) => updateForm('category', value)}
+                placeholder="— Nessuna —"
+                options={[
+                  { value: '', label: '— Nessuna —' },
+                  ...manageableCompetitions.map((value) => ({ value, label: competitionLabel(value) }))
+                ]}
+              />
+            </label>
+            <label className="field field-span-3" style={{ gridColumn: '1 / -1' }}>
+              Note
+              <textarea
+                value={form.notes}
+                onChange={(e) => updateForm('notes', e.target.value)}
+                style={{ minHeight: '80px' }}
+              />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button type="button" className="ghost-button" onClick={() => setEditing(false)}>Annulla</button>
+            <button type="submit" className="primary-button" disabled={saving}>
+              {saving ? 'Salvataggio…' : 'Aggiorna arbitro'}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      <section className="common-card">
+        <div className="section-heading">
+          <div>
+            <h2>Fasce</h2>
+            <p>Appartenenze dell’arbitro per campionato e stagione.</p>
+          </div>
+        </div>
+        <div className="games-filters-row">
+          <div style={{ flex: '0 1 240px' }}>
+            <Select
+              value={bandCompetition}
+              onChange={setBandCompetition}
+              placeholder="Campionato"
+              options={manageableCompetitions.map((value) => ({ value, label: competitionLabel(value) }))}
+            />
+          </div>
+          <div style={{ flex: '0 1 240px' }}>
+            <MultiSelect
+              values={selectedBands}
+              onChange={setSelectedBands}
+              options={BAND_OPTIONS}
+              placeholder="Seleziona fasce…"
+              allLabel="Nessuna fascia"
+            />
+          </div>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={saveBands}
+            disabled={bandsBusy || !bandCompetition}
+          >
+            {bandsBusy ? 'Salvataggio…' : 'Salva fasce'}
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
+          {bandRows.length ? bandRows.map((item) => (
+            <span key={item.bandId} className="shared-pill">
+              {BAND_OPTIONS.find((option) => option.value === item.band)?.label || item.band}
+              {' · '}{competitionLabel(item.competition)} · {item.sportSeason}
+            </span>
+          )) : (
+            <span style={{ color: 'var(--muted)' }}>Nessuna fascia assegnata per questo campionato e stagione.</span>
+          )}
         </div>
       </section>
 

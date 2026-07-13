@@ -786,7 +786,7 @@ select:focus {
 }
 
 .games-filter-giornata {
-  flex: 0 1 150px;
+  flex: 0 1 180px;
 }
 
 /* Arbitri: leggermente più largo; se il nome selezionato è lungo va a capo. */

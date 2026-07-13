@@ -100,7 +100,9 @@ function effectiveBandCompetitions(req) {
 function assertBandManage(req, competition) {
   if (req.user?.role === 'admin') return;
   if (req.user?.role === 'instructor') {
-    const comps = req.user.instructorCompetitions || [];
+    const comps = req.user.instructorCompetitions?.length
+      ? req.user.instructorCompetitions
+      : [req.user.instructorCompetition].filter(Boolean);
     if (comps.includes(competition)) return;
     throw new HttpError(403, 'Campionato non assegnato alla tua utenza.');
   }
@@ -171,7 +173,21 @@ refereesRouter.post('/', requireAdmin, asyncHandler(async (req, res) => {
   res.status(201).json({ referee });
 }));
 
-refereesRouter.put('/:id', requireAdmin, asyncHandler(async (req, res) => {
+refereesRouter.put('/:id', asyncHandler(async (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'instructor') {
+    throw new HttpError(403, 'Permessi insufficienti per modificare l’arbitro.');
+  }
+  if (req.user.role === 'instructor') {
+    const competitions = scopedCompetitions(req);
+    await getReferee(Number(req.params.id), {
+      season: String(req.body?.sportSeason || '').trim(),
+      competitions
+    });
+    const nextCategory = String(req.body?.category || '').trim();
+    if (req.body?.category !== undefined && nextCategory && !competitions.includes(nextCategory)) {
+      throw new HttpError(403, 'Puoi assegnare solo uno dei tuoi campionati.');
+    }
+  }
   const referee = await updateReferee(Number(req.params.id), req.body);
   res.json({ referee });
 }));
