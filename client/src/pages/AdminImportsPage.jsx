@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, downloadDesignationsTemplate } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 const ROLE_LABELS = {
   referee1: '1° arbitro',
@@ -165,7 +166,7 @@ export default function AdminImportsPage({ currentUser, season }) {
               <tbody>
                 {preview.rows.map((row, idx) => (
                   <tr key={idx} style={row.status === 'errore' ? { background: 'var(--orange-soft)' } : undefined}>
-                    <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{row.matchNumber}</td>
+                    <td style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatMatchNumber(row.matchNumber)}</td>
                     <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{row.sheetName} · r.{row.rowNumber}</td>
                     <td>
                       {row.status === 'errore' ? (
@@ -229,7 +230,7 @@ export default function AdminImportsPage({ currentUser, season }) {
               <ul style={{ paddingLeft: '18px', display: 'grid', gap: '4px' }}>
                 {applyResult.conflicts.map((c, i) => (
                   <li key={i}>
-                    Gara <strong>{c.matchNumber}</strong> · {c.field}: attuale "{c.currentValue}" ({c.currentSource}) vs file "{c.incomingValue}" — {c.proposal}
+                    Gara <strong>{formatMatchNumber(c.matchNumber)}</strong> · {c.field}: attuale "{c.currentValue}" ({c.currentSource}) vs file "{c.incomingValue}" — {c.proposal}
                   </li>
                 ))}
               </ul>
@@ -245,7 +246,7 @@ export default function AdminImportsPage({ currentUser, season }) {
               </p>
               <ul style={{ paddingLeft: '18px', display: 'grid', gap: '4px' }}>
                 {applyResult.unresolved.map((u, i) => (
-                  <li key={i}><strong>{u.externalName}</strong> — gara {u.matchNumber} ({ROLE_LABELS[u.role]})</li>
+                  <li key={i}><strong>{u.externalName}</strong> — gara {formatMatchNumber(u.matchNumber)} ({ROLE_LABELS[u.role]})</li>
                 ))}
               </ul>
             </div>
@@ -256,7 +257,7 @@ export default function AdminImportsPage({ currentUser, season }) {
               <h3 style={{ marginBottom: '6px', color: 'var(--danger)' }}>Errori</h3>
               <ul style={{ paddingLeft: '18px' }}>
                 {applyResult.errors.map((e, i) => (
-                  <li key={i}>Gara {e.matchNumber}: {e.message}</li>
+                  <li key={i}>Gara {formatMatchNumber(e.matchNumber)}: {e.message}</li>
                 ))}
               </ul>
             </div>

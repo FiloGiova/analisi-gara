@@ -4,6 +4,7 @@ import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 function emptyForm(season) {
   return {
@@ -233,7 +234,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
               <ul style={{ paddingLeft: '18px', display: 'grid', gap: '4px' }}>
                 {syncResult.unresolved.map((item, idx) => (
                   <li key={idx}>
-                    <strong>{item.externalName}</strong> — gara {item.matchNumber} ({item.role})
+                    <strong>{item.externalName}</strong> — gara {formatMatchNumber(item.matchNumber)} ({item.role})
                     {item.candidates?.length ? (
                       <span style={{ color: 'var(--muted)' }}>
                         {' '}· candidati: {item.candidates.map((c) => c.fullName).join(', ')}
@@ -263,7 +264,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
                   <tbody>
                     {syncResult.conflicts.map((c, idx) => (
                       <tr key={idx}>
-                        <td style={{ fontFamily: 'monospace' }}>{c.matchNumber}</td>
+                        <td style={{ fontFamily: 'monospace' }}>{formatMatchNumber(c.matchNumber)}</td>
                         <td>{c.field}</td>
                         <td>{c.currentValue || '—'}</td>
                         <td style={{ fontWeight: 600 }}>{c.incomingValue || '—'}</td>
@@ -282,7 +283,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
               <h3 style={{ marginBottom: '6px', color: 'var(--danger)' }}>Errori ({syncResult.errors.length})</h3>
               <ul style={{ paddingLeft: '18px' }}>
                 {syncResult.errors.map((e, idx) => (
-                  <li key={idx}>{e.matchNumber ? `Gara ${e.matchNumber}: ` : ''}{e.message}</li>
+                  <li key={idx}>{e.matchNumber ? `Gara ${formatMatchNumber(e.matchNumber)}: ` : ''}{e.message}</li>
                 ))}
               </ul>
             </div>

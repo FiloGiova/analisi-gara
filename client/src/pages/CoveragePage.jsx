@@ -3,6 +3,7 @@ import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate
 import Select from '../components/Select.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -25,6 +26,54 @@ function cellStyle(completed) {
   return { background: 'var(--orange-soft)', color: 'var(--danger)', fontWeight: 800 };
 }
 
+function refereeRoleLabel(role) {
+  if (role === 'referee1') return '1°';
+  if (role === 'referee2') return '2°';
+  return '3°';
+}
+
+function compareSortValues(first, second) {
+  if (typeof first === 'number' && typeof second === 'number') return first - second;
+  return String(first || '').localeCompare(String(second || ''), 'it', {
+    sensitivity: 'base',
+    numeric: true
+  });
+}
+
+function sortRows(rows, sort, valueFor) {
+  const direction = sort.direction === 'asc' ? 1 : -1;
+  return [...rows].sort((first, second) => {
+    const compared = compareSortValues(valueFor(first, sort.key), valueFor(second, sort.key));
+    if (compared) return compared * direction;
+    return String(first.fullName || first.label || '').localeCompare(
+      String(second.fullName || second.label || ''),
+      'it',
+      { sensitivity: 'base' }
+    );
+  });
+}
+
+function updateSort(setSort, key, initialDirection = 'asc') {
+  setSort((current) => current.key === key
+    ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+    : { key, direction: initialDirection });
+}
+
+function SortableHeader({ label, sort, sortKey, onSort, initialDirection = 'asc', style }) {
+  const active = sort.key === sortKey;
+  const ariaSort = active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none';
+  return (
+    <th aria-sort={ariaSort} style={style}>
+      <button type="button" className="sortable-header-button" onClick={() => onSort(sortKey, initialDirection)}>
+        <span>{label}</span>
+        <span className={`sort-indicator ${active ? 'is-active' : ''}`} aria-hidden="true">
+          {active ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   const canAccess = currentUser.role === 'admin' || currentUser.role === 'instructor';
   const [view, setView] = useState('coverage');
@@ -36,6 +85,9 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   const [matrix, setMatrix] = useState(null);
   const [employment, setEmployment] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [coverageSort, setCoverageSort] = useState({ key: 'name', direction: 'asc' });
+  const [employmentSort, setEmploymentSort] = useState({ key: 'games', direction: 'desc' });
+  const [matrixSort, setMatrixSort] = useState({ key: 'observer', direction: 'asc' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -83,6 +135,26 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
 
   const cellsMap = new Map((matrix?.cells || []).map((c) => [`${c.observerKey}|${c.refereeId}`, c]));
   const visibleReferees = (coverage?.referees || []).filter(matchesSearch);
+  const sortedCoverageReferees = sortRows(visibleReferees, coverageSort, (row, key) => {
+    if (key.startsWith('matchday:')) {
+      const matchday = key.replace('matchday:', '');
+      return row.timeline?.[matchday]?.length || 0;
+    }
+    return ({
+      name: row.fullName,
+      completed: row.completedCount || 0,
+      observers: row.distinctObservers || 0,
+      last: row.lastCompletedDate ? new Date(row.lastCompletedDate).getTime() : 0,
+      scheduled: row.scheduledCount || 0
+    })[key];
+  });
+  const visibleMatrixReferees = (matrix?.referees || []).filter(matchesSearch);
+  const sortedMatrixObservers = sortRows(matrix?.observers || [], matrixSort, (observer, key) => {
+    if (key === 'observer') return observer.label;
+    const refereeId = Number(key.replace('referee:', ''));
+    const cell = cellsMap.get(`${observer.key}|${refereeId}`);
+    return (cell?.completed || 0) * 1000 + (cell?.scheduled || 0);
+  });
 
   // Il formatore vede solo i propri campionati; l'admin tutti.
   const myCompetitions = currentUser.role === 'instructor'
@@ -181,18 +253,26 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
               <table className="referee-table">
                 <thead>
                   <tr>
-                    <th>Arbitro</th>
-                    <th>Compl.</th>
-                    <th>Oss. diversi</th>
-                    <th>Ultimo</th>
-                    <th>Progr.</th>
+                    <SortableHeader label="Arbitro" sort={coverageSort} sortKey="name" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
+                    <SortableHeader label="Compl." sort={coverageSort} sortKey="completed" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
+                    <SortableHeader label="Oss. diversi" sort={coverageSort} sortKey="observers" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
+                    <SortableHeader label="Ultimo" sort={coverageSort} sortKey="last" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
+                    <SortableHeader label="Progr." sort={coverageSort} sortKey="scheduled" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
                     {coverage.matchdays.map((m) => (
-                      <th key={m} style={{ whiteSpace: 'nowrap' }}>G{m}</th>
+                      <SortableHeader
+                        key={m}
+                        label={`G${m}`}
+                        sort={coverageSort}
+                        sortKey={`matchday:${m}`}
+                        initialDirection="desc"
+                        onSort={(key, direction) => updateSort(setCoverageSort, key, direction)}
+                        style={{ whiteSpace: 'nowrap' }}
+                      />
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleReferees.map((r) => (
+                  {sortedCoverageReferees.map((r) => (
                     <tr key={r.refereeId} className={r.active ? '' : 'is-disabled'}>
                       <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                         {r.fullName}
@@ -247,11 +327,21 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
           <div className="section-heading">
             <div>
               <h2>Impiego arbitri</h2>
-              <p>Gare dirette nel campionato, dalle designazioni. Nelle colonne giornata: numero gara e ruolo.</p>
+              <p>Gare dirette nel campionato, dalle designazioni. Nelle colonne giornata: squadre e ruolo.</p>
             </div>
           </div>
           {(() => {
-            const visible = employment.referees.filter(matchesSearch);
+            const visible = sortRows(employment.referees.filter(matchesSearch), employmentSort, (row, key) => {
+              if (key.startsWith('matchday:')) {
+                const matchday = key.replace('matchday:', '');
+                return row.timeline?.[matchday]?.length || 0;
+              }
+              return ({
+                name: row.fullName,
+                games: row.totalGames || 0,
+                last: row.lastDate ? new Date(row.lastDate).getTime() : 0
+              })[key];
+            });
             if (visible.length === 0) {
               return <div className="empty-state" style={{ padding: '24px' }}>Nessuna designazione in questa stagione.</div>;
             }
@@ -260,13 +350,19 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 <table className="referee-table">
                   <thead>
                     <tr>
-                      <th>Arbitro</th>
-                      <th>Gare</th>
-                      <th>Da 1°</th>
-                      <th>Da 2°</th>
-                      <th>Ultima</th>
+                      <SortableHeader label="Arbitro" sort={employmentSort} sortKey="name" onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)} />
+                      <SortableHeader label="Gare" sort={employmentSort} sortKey="games" initialDirection="desc" onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)} />
+                      <SortableHeader label="Ultima" sort={employmentSort} sortKey="last" initialDirection="desc" onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)} />
                       {employment.matchdays.map((m) => (
-                        <th key={m} style={{ whiteSpace: 'nowrap' }}>G{m}</th>
+                        <SortableHeader
+                          key={m}
+                          label={`G${m}`}
+                          sort={employmentSort}
+                          sortKey={`matchday:${m}`}
+                          initialDirection="desc"
+                          onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)}
+                          style={{ whiteSpace: 'nowrap' }}
+                        />
                       ))}
                     </tr>
                   </thead>
@@ -285,8 +381,6 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                           {!r.active ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (inattivo)</span> : null}
                         </td>
                         <td style={{ fontWeight: 800, color: r.totalGames ? 'var(--blue)' : 'var(--muted-2)' }}>{r.totalGames}</td>
-                        <td>{r.asReferee1 || '—'}</td>
-                        <td>{r.asReferee2 || '—'}</td>
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDate(r.lastDate)}</td>
                         {employment.matchdays.map((m) => {
                           const entries = r.timeline?.[m] || [];
@@ -298,12 +392,15 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                                     <button
                                       key={i}
                                       type="button"
-                                      className="ghost-button"
-                                      style={{ padding: '1px 6px', fontSize: '0.75rem', fontFamily: 'monospace' }}
+                                      className="employment-matchup-button"
                                       onClick={() => navigate(`/games/${entry.gameId}`)}
-                                      title={`${entry.teams} · ${formatDate(entry.date)}`}
+                                      title={`Gara ${formatMatchNumber(entry.matchNumber)} · ${entry.teams} · ${formatDate(entry.date)}`}
                                     >
-                                      {entry.matchNumber} ({entry.role === 'referee1' ? '1°' : entry.role === 'referee2' ? '2°' : '3°'})
+                                      <span className="employment-matchup-teams">
+                                        <span>{entry.teamHome || '—'}</span>
+                                        <span><small>vs</small> {entry.teamAway || '—'}</span>
+                                      </span>
+                                      <span className="employment-matchup-role">{refereeRoleLabel(entry.role)}</span>
                                     </button>
                                   ))}
                             </td>
@@ -334,20 +431,28 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
               <table className="referee-table">
                 <thead>
                   <tr>
-                    <th>Osservatore \ Arbitro</th>
-                    {matrix.referees.filter(matchesSearch).map((ref) => (
-                      <th key={ref.refereeId} style={{ whiteSpace: 'nowrap' }}>{ref.fullName}</th>
+                    <SortableHeader label="Osservatore \ Arbitro" sort={matrixSort} sortKey="observer" onSort={(key, direction) => updateSort(setMatrixSort, key, direction)} />
+                    {visibleMatrixReferees.map((ref) => (
+                      <SortableHeader
+                        key={ref.refereeId}
+                        label={ref.fullName}
+                        sort={matrixSort}
+                        sortKey={`referee:${ref.refereeId}`}
+                        initialDirection="desc"
+                        onSort={(key, direction) => updateSort(setMatrixSort, key, direction)}
+                        style={{ whiteSpace: 'nowrap' }}
+                      />
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {matrix.observers.map((obs) => (
+                  {sortedMatrixObservers.map((obs) => (
                     <tr key={obs.key}>
                       <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                         {obs.label}
                         {obs.historical ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (storico)</span> : null}
                       </td>
-                      {matrix.referees.filter(matchesSearch).map((ref) => {
+                      {visibleMatrixReferees.map((ref) => {
                         const cell = cellsMap.get(`${obs.key}|${ref.refereeId}`);
                         const completed = cell?.completed || 0;
                         const scheduled = cell?.scheduled || 0;
@@ -381,7 +486,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 <ul style={{ paddingLeft: '18px', display: 'grid', gap: '4px' }}>
                   {detail.completed.map((item, i) => (
                     <li key={i}>
-                      ✓ {formatDate(item.date)} · gara {item.matchNumber} · {item.teams}{' '}
+                      ✓ {formatDate(item.date)} · gara {formatMatchNumber(item.matchNumber)} · {item.teams}{' '}
                       {item.reportId ? (
                         <button type="button" className="ghost-button" style={{ padding: '1px 8px' }} onClick={() => navigate(`/reports/${item.reportId}`)}>
                           Apri rapporto
@@ -395,7 +500,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 <ul style={{ paddingLeft: '18px', display: 'grid', gap: '4px', marginTop: '6px' }}>
                   {detail.scheduled.map((item, i) => (
                     <li key={i} style={{ color: 'var(--muted)' }}>
-                      ○ {formatDate(item.date)} · gara {item.matchNumber} · {item.teams}{' '}
+                      ○ {formatDate(item.date)} · gara {formatMatchNumber(item.matchNumber)} · {item.teams}{' '}
                       {item.gameId ? (
                         <button type="button" className="ghost-button" style={{ padding: '1px 8px' }} onClick={() => navigate(`/games/${item.gameId}`)}>
                           Apri gara

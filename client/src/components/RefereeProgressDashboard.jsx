@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { EVALUATION_SECTIONS } from '../../../shared/reportTemplate.js';
 import { api } from '../lib/api.js';
 import Sparkline from './Sparkline.jsx';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 const GROUP_COLORS = ['#123c69', '#1d6f78', '#e27d36', '#6f7c85', '#a04ea0', '#15745b'];
 
@@ -24,7 +25,7 @@ function buildSeriesForGroups(groups, matches, sectionId) {
         x: i,
         y: value ?? null,
         title: m.matchNumber
-          ? `Gara ${m.matchNumber} (${m.date}): ${value ?? 'N/V'}`
+          ? `Gara ${formatMatchNumber(m.matchNumber)} (${m.date}): ${value ?? 'N/V'}`
           : `${m.date}: ${value ?? 'N/V'}`
       };
     });

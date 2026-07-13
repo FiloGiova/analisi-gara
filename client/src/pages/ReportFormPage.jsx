@@ -8,6 +8,7 @@ import SegmentedChoice from '../components/SegmentedChoice.jsx';
 import Select from '../components/Select.jsx';
 import FormProgressNav from '../components/FormProgressNav.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 function observerNameForUser(user) {
   return user?.displayName || user?.username || '';
@@ -359,7 +360,11 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
       : isFullyComplete ? 'Salva definitivo' : 'Salva bozza';
     return (
       <div className="save-actions">
-        <button type="button" className="ghost-button" onClick={() => navigate(isEdit ? `/reports/${id}` : '/')}>
+        <button
+          type="button"
+          className="ghost-button"
+          onClick={() => navigate(isEdit ? `/reports/${id}` : gameId ? `/games/${gameId}` : '/reports')}
+        >
           Annulla
         </button>
         <button
@@ -393,8 +398,8 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
       <div className="empty-state">
         <h2>Rapporto non modificabile</h2>
         <p>{loadError}</p>
-        <button type="button" className="primary-button" onClick={() => navigate('/')}>
-          Torna alla dashboard
+        <button type="button" className="primary-button" onClick={() => navigate('/reports')}>
+          Torna ai rapporti
         </button>
       </div>
     );
@@ -406,7 +411,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
       <section className="form-hero" style={{ marginBottom: 20 }}>
         <div>
           <p className="eyebrow">{isEdit ? 'Modifica rapporto' : 'Nuovo rapporto'}</p>
-          <h1>{report.matchNumber ? `Gara ${report.matchNumber}` : 'Compila un nuovo rapporto'}</h1>
+          <h1>{report.matchNumber ? `Gara ${formatMatchNumber(report.matchNumber)}` : 'Compila un nuovo rapporto'}</h1>
         </div>
         <SaveActions />
       </section>
@@ -416,7 +421,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
       {gameInfo?.existingReportId && !isEdit ? (
         <div className="error-banner" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>
-            <strong>Attenzione:</strong> esiste già un rapporto per la gara {gameInfo.matchNumber}.
+            <strong>Attenzione:</strong> esiste già un rapporto per la gara {formatMatchNumber(gameInfo.matchNumber)}.
           </span>
           <button type="button" className="ghost-button" onClick={() => navigate(`/reports/${gameInfo.existingReportId}`)}>
             Apri il rapporto esistente

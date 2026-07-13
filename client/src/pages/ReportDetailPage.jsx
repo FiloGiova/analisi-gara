@@ -4,6 +4,7 @@ import { api, downloadReportPdf } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 function DownloadIcon() {
   return (
@@ -168,7 +169,7 @@ export default function ReportDetailPage({ id, currentUser }) {
   async function handleDelete() {
     try {
       await api.deleteReport(report.id);
-      navigate('/');
+      navigate(currentUser?.role === 'referee' ? '/me' : '/reports');
     } catch (err) {
       setError(err.message || 'Cancellazione non riuscita.');
     }
@@ -204,7 +205,7 @@ export default function ReportDetailPage({ id, currentUser }) {
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
         >
-          Cancellare il rapporto gara <strong>{data.matchNumber || report.id}</strong>?
+          Cancellare il rapporto gara <strong>{formatMatchNumber(data.matchNumber, report.id)}</strong>?
           {' '}L'operazione non può essere annullata.
         </ConfirmModal>
       ) : null}
@@ -214,7 +215,7 @@ export default function ReportDetailPage({ id, currentUser }) {
         <div className="detail-hero-top">
           <div className="detail-hero-content">
             <p className="eyebrow">
-              #{data.matchNumber || report.id}
+              #{formatMatchNumber(data.matchNumber, report.id)}
               {data.competition ? ` · ${data.competition}` : ''}
               {data.reportDate ? ` · ${new Date(data.reportDate).toLocaleDateString('it-IT')}` : ''}
             </p>
@@ -257,7 +258,7 @@ export default function ReportDetailPage({ id, currentUser }) {
       <dl className="meta-strip">
         <div className="meta-cell">
           <dt>N° gara</dt>
-          <dd>{data.matchNumber || '—'}</dd>
+          <dd>{formatMatchNumber(data.matchNumber)}</dd>
         </div>
         <div className="meta-cell">
           <dt>Osservatore</dt>

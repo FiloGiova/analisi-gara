@@ -172,6 +172,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
 
   useEffect(() => {
     if (!canAccess || view !== 'bands') return;
+    setBandAddIds([]);
     loadBands();
   }, [canAccess, view, bandCompetition, bandFilter, selectedSeason]);
 
@@ -664,38 +665,41 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
             </div>
           </div>
 
-          <div className="admin-referee-filters">
-            <Select
-              value={bandCompetition}
-              onChange={setBandCompetition}
-              placeholder="Campionato"
-              options={bandCompetitions.map((c) => ({ value: c, label: competitionLabel(c) }))}
-            />
-            <Select
-              value={bandFilter}
-              onChange={setBandFilter}
-              placeholder="Fascia"
-              options={BAND_OPTIONS}
-            />
-          </div>
-
-          {canManageBands ? (
-            <div className="games-filters-row" style={{ marginTop: '10px' }}>
-              <div style={{ flex: '1 1 320px', maxWidth: '520px' }}>
+          <div className="band-filters-row">
+            <div className="band-competition-filter">
+              <Select
+                value={bandCompetition}
+                onChange={setBandCompetition}
+                placeholder="Campionato"
+                options={bandCompetitions.map((c) => ({ value: c, label: competitionLabel(c) }))}
+              />
+            </div>
+            <div className="band-type-filter">
+              <Select
+                value={bandFilter}
+                onChange={setBandFilter}
+                placeholder="Fascia"
+                options={BAND_OPTIONS}
+              />
+            </div>
+            {canManageBands ? (
+              <div className="band-add-menu">
                 <MultiSelect
                   values={bandAddIds}
                   onChange={setBandAddIds}
-                  allLabel="Aggiungi arbitri alla fascia…"
+                  triggerLabel="Aggiungi arbitri"
+                  triggerClassName="band-add-trigger"
+                  disabled={bandBusy}
+                  actionLabel={`Aggiungi${bandAddIds.length ? ` (${bandAddIds.length})` : ''}`}
+                  onAction={addBand}
+                  actionDisabled={bandBusy || !bandAddIds.length}
                   options={bandPool
                     .filter((r) => !bandMembers.some((m) => m.refereeId === r.id))
                     .map((r) => ({ value: String(r.id), label: `${r.lastName} ${r.firstName}${r.licenseNumber ? ` · ${r.licenseNumber}` : ''}` }))}
                 />
               </div>
-              <button type="button" className="primary-button" onClick={addBand} disabled={bandBusy || !bandAddIds.length}>
-                Aggiungi{bandAddIds.length ? ` (${bandAddIds.length})` : ''}
-              </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
 
           {bandMembers.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>

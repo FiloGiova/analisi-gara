@@ -1,4 +1,5 @@
 import StatusBadge from './StatusBadge.jsx';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 function relativeDate(value) {
   const diff = Date.now() - new Date(value).getTime();
@@ -75,7 +76,7 @@ export default function WorkbenchTable({ reports, sortColumn, sortDir, onSort, o
             const surnameSecond = surname(report.secondRefereeName);
             return (
               <tr key={report.id} onClick={() => onNavigate(report.id)}>
-                <td className="match-num-cell">#{report.matchNumber || report.id}</td>
+                <td className="match-num-cell">#{formatMatchNumber(report.matchNumber, report.id)}</td>
                 <td className="teams-cell">
                   {teamHome || '—'}
                   <span className="vs-sep">vs</span>

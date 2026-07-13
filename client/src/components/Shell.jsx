@@ -3,7 +3,16 @@ import { navigate } from '../lib/navigation.js';
 import UserAvatar from './UserAvatar.jsx';
 import SeasonSelector from './SeasonSelector.jsx';
 
-export default function Shell({ user, onLogout, showBackButton = false, season, seasons, onSeasonChange, children }) {
+export default function Shell({
+  user,
+  onLogout,
+  showBackButton = false,
+  season,
+  seasons,
+  onSeasonChange,
+  activeSection = '',
+  children
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const instructorCompetitions = user.instructorCompetitions?.length
@@ -13,6 +22,11 @@ export default function Shell({ user, onLogout, showBackButton = false, season, 
   // Admin e formatori (con almeno un campionato) vedono le sezioni gestionali
   // (Gare, Statistiche, Arbitri). Gli osservatori no.
   const canSeeManagement = user.role === 'admin' || (user.role === 'instructor' && instructorCompetitions.length > 0);
+  const homePath = isReferee ? '/me' : '/';
+
+  function navClass(section) {
+    return `ghost-button topbar-nav-button ${activeSection === section ? 'is-active' : ''}`.trim();
+  }
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -41,7 +55,7 @@ export default function Shell({ user, onLogout, showBackButton = false, season, 
     if (window.history.length > 1) {
       window.history.back();
     } else {
-      navigate(isReferee ? '/me' : '/');
+      navigate(homePath);
     }
   }
 
@@ -54,7 +68,7 @@ export default function Shell({ user, onLogout, showBackButton = false, season, 
           </button>
         ) : null}
 
-        <button className="brand" type="button" onClick={() => navigate('/')}>
+        <button className="brand" type="button" onClick={() => navigate(homePath)}>
           <span className="brand-mark">
             <img src="/app-logo.png" alt="" />
           </span>
@@ -67,21 +81,41 @@ export default function Shell({ user, onLogout, showBackButton = false, season, 
         <SeasonSelector value={season} seasons={seasons} onChange={onSeasonChange} />
 
         <nav className="topbar-actions">
-          <button type="button" className="ghost-button" onClick={() => navigate(isReferee ? '/me' : '/')}>
-            {isReferee ? 'I miei rapporti' : 'Rapporti'}
-          </button>
           {canSeeManagement ? (
-            <button type="button" className="ghost-button" onClick={() => navigate('/games')}>
+            <button
+              type="button"
+              className={navClass('games')}
+              onClick={() => navigate('/')}
+              aria-current={activeSection === 'games' ? 'page' : undefined}
+            >
               Gare
             </button>
           ) : null}
+          <button
+            type="button"
+            className={navClass('reports')}
+            onClick={() => navigate(isReferee ? '/me' : canSeeManagement ? '/reports' : '/')}
+            aria-current={activeSection === 'reports' ? 'page' : undefined}
+          >
+            {isReferee ? 'I miei rapporti' : 'Rapporti'}
+          </button>
           {canSeeManagement ? (
-            <button type="button" className="ghost-button" onClick={() => navigate('/coverage')}>
+            <button
+              type="button"
+              className={navClass('coverage')}
+              onClick={() => navigate('/coverage')}
+              aria-current={activeSection === 'coverage' ? 'page' : undefined}
+            >
               Statistiche
             </button>
           ) : null}
           {canSeeManagement ? (
-            <button type="button" className="ghost-button" onClick={() => navigate('/admin/referees')}>
+            <button
+              type="button"
+              className={navClass('referees')}
+              onClick={() => navigate('/admin/referees')}
+              aria-current={activeSection === 'referees' ? 'page' : undefined}
+            >
               Arbitri
             </button>
           ) : null}
@@ -89,10 +123,11 @@ export default function Shell({ user, onLogout, showBackButton = false, season, 
             <div className={`admin-menu ${menuOpen ? 'is-open' : ''}`} ref={menuRef}>
               <button
                 type="button"
-                className="ghost-button admin-menu-trigger"
+                className={`${navClass('admin')} admin-menu-trigger`}
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
+                aria-current={activeSection === 'admin' ? 'page' : undefined}
               >
                 Admin
                 <span className="admin-menu-caret" aria-hidden="true">▾</span>

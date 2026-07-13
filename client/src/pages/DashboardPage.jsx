@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import WorkbenchTable from '../components/WorkbenchTable.jsx';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 function dateValue(value) {
   const t = new Date(value || '').getTime();
@@ -192,7 +193,7 @@ export default function DashboardPage({ currentUser, season }) {
           onConfirm={handleDelete}
           onCancel={() => setReportToDelete(null)}
         >
-          Cancellare il rapporto gara <strong>{reportToDelete.matchNumber || reportToDelete.id}</strong>?
+          Cancellare il rapporto gara <strong>{formatMatchNumber(reportToDelete.matchNumber, reportToDelete.id)}</strong>?
           {' '}L'operazione non può essere annullata.
         </ConfirmModal>
       ) : null}
@@ -269,7 +270,7 @@ export default function DashboardPage({ currentUser, season }) {
               <tbody>
                 {pendingGames.map((g) => (
                   <tr key={g.gameId} className="is-clickable" onClick={() => navigate(`/reports/new?game=${g.gameId}`)}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{g.matchNumber}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{formatMatchNumber(g.matchNumber)}</td>
                     <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatPendingDate(g.scheduledAt)}</td>
                     <td style={{ fontWeight: 600 }}>{g.teamHome} - {g.teamAway}</td>
                     <td>{g.referee1 || '—'}</td>

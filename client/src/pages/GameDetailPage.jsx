@@ -5,6 +5,7 @@ import ConfirmModal from '../components/ConfirmModal.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 const REFEREE_ROLES = [
   { role: 'referee1', label: '1° arbitro' },
@@ -291,7 +292,7 @@ export default function GameDetailPage({ id, currentUser }) {
             {game.matchday ? ` · Giornata ${game.matchday}` : ''}
             {game.competition ? ` · ${game.competition}` : ''}
           </p>
-          <h1>Gara {game.matchNumber}</h1>
+          <h1>Gara {formatMatchNumber(game.matchNumber)}</h1>
           <p style={{ fontWeight: 600 }}>
             {game.teamHome} - {game.teamAway}
             {game.scoreHome !== '' && game.scoreAway !== '' ? ` (${game.scoreHome}-${game.scoreAway})` : ''}

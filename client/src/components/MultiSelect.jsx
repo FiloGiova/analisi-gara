@@ -2,7 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 
 // Menu a tendina con checkbox: selezione multipla di valori.
 // Riusa gli stili .custom-select* per restare coerente con Select.
-export default function MultiSelect({ values = [], onChange, options, placeholder = 'Seleziona…', allLabel }) {
+export default function MultiSelect({
+  values = [],
+  onChange,
+  options,
+  placeholder = 'Seleziona…',
+  allLabel,
+  triggerLabel = '',
+  triggerClassName = '',
+  disabled = false,
+  actionLabel = '',
+  onAction,
+  actionDisabled = false
+}) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -26,18 +38,22 @@ export default function MultiSelect({ values = [], onChange, options, placeholde
     onChange(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
   }
 
-  const label = values.length === 0
+  const selectionLabel = values.length === 0
     ? (allLabel || placeholder)
     : values.length === 1
       ? (options.find((o) => o.value === values[0])?.label || '1 selezionata')
       : `${values.length} selezionate`;
+  const label = triggerLabel
+    ? `${triggerLabel}${values.length ? ` (${values.length})` : ''}`
+    : selectionLabel;
 
   return (
     <div className={`custom-select multi-select ${open ? 'is-open' : ''}`} ref={wrapRef}>
       <button
         type="button"
-        className="custom-select-trigger"
-        onClick={() => setOpen((o) => !o)}
+        className={`custom-select-trigger ${triggerClassName}`.trim()}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -69,6 +85,21 @@ export default function MultiSelect({ values = [], onChange, options, placeholde
               </li>
             ))
           )}
+          {onAction ? (
+            <li className="multi-select-action">
+              <button
+                type="button"
+                disabled={actionDisabled}
+                onClick={() => {
+                  if (actionDisabled) return;
+                  onAction();
+                  setOpen(false);
+                }}
+              >
+                {actionLabel || 'Conferma selezione'}
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </div>

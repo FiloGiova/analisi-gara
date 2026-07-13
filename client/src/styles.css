@@ -386,6 +386,19 @@ select:focus {
   border-color: var(--muted-2);
 }
 
+.topbar-nav-button.is-active,
+.topbar-nav-button[aria-current='page'] {
+  border-color: rgba(29, 111, 120, 0.34);
+  background: var(--blue-soft);
+  color: var(--blue);
+  box-shadow: inset 0 -2px 0 var(--teal);
+}
+
+.topbar-nav-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29, 111, 120, 0.14);
+}
+
 .danger-button {
   background: #fff1ef;
   color: var(--danger);
@@ -947,6 +960,83 @@ select:focus {
   font-weight: 700;
   padding: 4px 6px;
   cursor: pointer;
+}
+
+.multi-select-action {
+  position: sticky;
+  bottom: -6px;
+  padding: 8px 6px 4px;
+  border-top: 1px solid var(--line-soft);
+  background: #fff;
+}
+
+.multi-select-action button {
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 700;
+}
+
+.multi-select-action button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.band-filters-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.band-competition-filter {
+  flex: 0 1 230px;
+  width: 230px;
+}
+
+.band-type-filter {
+  flex: 0 1 170px;
+  width: 170px;
+}
+
+.band-add-menu {
+  flex: 0 0 190px;
+  width: 190px;
+}
+
+.multi-select .band-add-trigger {
+  min-height: 46px;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 700;
+}
+
+.multi-select .band-add-trigger:hover,
+.multi-select.is-open .band-add-trigger {
+  border-color: transparent;
+  background: var(--ink-soft);
+  color: var(--paper);
+}
+
+.band-add-trigger .custom-select-value {
+  flex: 0 1 auto;
+}
+
+.band-add-trigger .custom-select-caret {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.band-add-menu .custom-select-menu {
+  right: 0;
+  left: auto;
+  width: min(390px, calc(100vw - 40px));
 }
 
 /* Pannello suggerimenti osservatore (Designa osservatori): card pulite su fondo
@@ -2634,6 +2724,93 @@ dd {
   text-transform: uppercase;
   letter-spacing: 0.07em;
   white-space: nowrap;
+}
+
+.sortable-header-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  white-space: inherit;
+}
+
+.sortable-header-button:hover,
+.sortable-header-button:focus-visible {
+  outline: none;
+  color: var(--blue);
+}
+
+.sort-indicator {
+  color: var(--muted-2);
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.sort-indicator.is-active {
+  color: var(--teal);
+}
+
+.employment-matchup-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 145px;
+  max-width: 190px;
+  margin: 2px 0;
+  padding: 5px 7px;
+  border: 1px solid rgba(18, 60, 105, 0.12);
+  border-radius: 10px;
+  background: rgba(232, 241, 251, 0.58);
+  color: var(--ink);
+  text-align: left;
+}
+
+.employment-matchup-button:hover {
+  border-color: rgba(29, 111, 120, 0.34);
+  background: var(--blue-soft);
+}
+
+.employment-matchup-teams {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.employment-matchup-teams span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employment-matchup-teams small {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.employment-matchup-role {
+  display: inline-grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 0.64rem;
+  font-weight: 800;
 }
 
 .referee-table tbody tr {

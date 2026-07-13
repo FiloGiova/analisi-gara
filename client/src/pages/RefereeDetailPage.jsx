@@ -5,6 +5,7 @@ import MultiSelect from '../components/MultiSelect.jsx';
 import DateInput from '../components/DateInput.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { formatMatchNumber } from '../lib/formatters.js';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
@@ -454,7 +455,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                 {reports.map((report) => (
                   <tr key={`${report.id}-${report.role}`} className="is-clickable" onClick={() => navigate(`/reports/${report.id}`)}>
                     <td>{formatDate(report.reportDate)}</td>
-                    <td style={{ fontWeight: 700 }}>{report.matchNumber || report.id}</td>
+                    <td style={{ fontWeight: 700 }}>{formatMatchNumber(report.matchNumber, report.id)}</td>
                     <td>{report.roleLabel}</td>
                     <td>{report.teams || '-'}</td>
                     <td>{report.result || '-'}</td>
@@ -503,7 +504,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                     <tr key={game.id} className="is-clickable" onClick={() => navigate(`/games/${game.id}`)}>
                       <td style={{ whiteSpace: 'nowrap' }}>{formatDate(game.scheduledAt)}</td>
                       <td style={{ color: 'var(--muted)' }}>{game.matchday ?? '—'}</td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{game.matchNumber}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{formatMatchNumber(game.matchNumber)}</td>
                       <td style={{ fontWeight: 600 }}>
                         {game.teamHome} - {game.teamAway}
                         {game.scoreHome !== '' && game.scoreAway !== '' ? (

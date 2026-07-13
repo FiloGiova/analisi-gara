@@ -5,6 +5,7 @@ import MultiSelect from '../components/MultiSelect.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -174,7 +175,7 @@ export default function GamesPage({ currentUser, season }) {
         teamAway: form.teamAway,
         venue: form.venue
       });
-      setSuccess(`Gara ${form.matchNumber} creata.`);
+      setSuccess(`Gara ${formatMatchNumber(form.matchNumber)} creata.`);
       setForm(EMPTY_FORM);
       setShowForm(false);
       await loadGames();
@@ -229,7 +230,7 @@ export default function GamesPage({ currentUser, season }) {
           <div className="common-grid">
             <label className="field field-span-2">
               <span className="required-label">Numero gara <small className="required-symbol">*</small></span>
-              <input value={form.matchNumber} onChange={(e) => updateForm('matchNumber', e.target.value)} placeholder="es. 000311" required />
+              <input value={form.matchNumber} onChange={(e) => updateForm('matchNumber', e.target.value)} placeholder="es. 311" required />
             </label>
             <label className="field field-span-2">
               Campionato
@@ -359,7 +360,7 @@ export default function GamesPage({ currentUser, season }) {
               <tbody>
                 {filtered.map((game) => (
                   <tr key={game.id} className="is-clickable" onClick={() => navigate(`/games/${game.id}`)}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{game.matchNumber}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{formatMatchNumber(game.matchNumber)}</td>
                     <td style={{ color: 'var(--muted)' }}>{game.matchday ?? '—'}</td>
                     <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDateTime(game.scheduledAt)}</td>
                     <td style={{ color: 'var(--muted)' }}>{game.sourceName || '—'}</td>

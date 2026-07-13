@@ -4,6 +4,7 @@ import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -83,7 +84,7 @@ export default function RefereeHomePage({ currentUser, season }) {
           >
             <div className="report-card-top">
               <div>
-                <span className="match-number">Gara {report.matchNumber || report.id}</span>
+                <span className="match-number">Gara {formatMatchNumber(report.matchNumber, report.id)}</span>
                 <h2>{report.teams || 'Squadre non inserite'}</h2>
               </div>
               <StatusBadge status={report.status} />

@@ -12,7 +12,7 @@ export function parseRoute(path) {
   const segments = purePath.split('/').filter(Boolean);
   const query = Object.fromEntries(new URLSearchParams(queryString));
 
-  if (!segments.length) return { name: 'dashboard' };
+  if (!segments.length) return { name: 'home' };
   if (segments[0] === 'account') return { name: 'account' };
   if (segments[0] === 'me') return { name: 'refereeHome' };
   if (segments[0] === 'admin' && segments[1] === 'users') return { name: 'adminUsers' };
@@ -27,6 +27,7 @@ export function parseRoute(path) {
   if (segments[0] === 'games' && segments[1] === 'designate') return { name: 'designateObservers' };
   if (segments[0] === 'games' && segments[1]) return { name: 'gameDetail', id: Number(segments[1]) };
   if (segments[0] === 'games') return { name: 'games' };
+  if (segments[0] === 'reports' && segments.length === 1) return { name: 'dashboard' };
   if (segments[0] === 'reports' && segments[1] === 'new') {
     return { name: 'newReport', gameId: query.game ? Number(query.game) : null };
   }

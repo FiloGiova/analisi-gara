@@ -287,6 +287,8 @@ export async function getEmployment({ season, competitions = [], band = '' }) {
       gameId: row.game_id,
       matchNumber: row.match_number,
       role: row.role,
+      teamHome: row.team_home,
+      teamAway: row.team_away,
       teams: `${row.team_home} - ${row.team_away}`.trim(),
       date,
       gameStatus: row.status

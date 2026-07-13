@@ -5,6 +5,7 @@ import MultiSelect from '../components/MultiSelect.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { formatMatchNumber } from '../lib/formatters.js';
 
 function formatDateTime(iso) {
   if (!iso) return '—';
@@ -110,7 +111,7 @@ export default function DesignateObserversPage({ currentUser, season }) {
     try {
       const data = await api.setGameOfficial(gameId, 'observer', { userId });
       setGames((prev) => prev.map((g) => (g.id === gameId ? data.game : g)));
-      setSuccess(`Osservatore assegnato alla gara ${data.game.matchNumber}.`);
+      setSuccess(`Osservatore assegnato alla gara ${formatMatchNumber(data.game.matchNumber)}.`);
       setOpenSuggest(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Assegnazione non riuscita.');
@@ -239,7 +240,7 @@ export default function DesignateObserversPage({ currentUser, season }) {
                   return (
                     <Fragment key={game.id}>
                       <tr>
-                        <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{game.matchNumber}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{formatMatchNumber(game.matchNumber)}</td>
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDateTime(game.scheduledAt)}</td>
                         <td style={{ color: 'var(--muted)' }}>{game.matchday ?? '—'}</td>
                         <td style={{ fontWeight: 600 }}>{game.teamHome} - {game.teamAway}</td>

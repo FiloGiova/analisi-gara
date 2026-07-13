@@ -92,9 +92,16 @@ export default function App() {
   }
 
   const isReferee = user.role === 'referee';
+  const instructorCompetitions = user.instructorCompetitions?.length
+    ? user.instructorCompetitions
+    : [user.instructorCompetition || user.formatterCompetition].filter(Boolean);
+  const canSeeManagement = user.role === 'admin' || (user.role === 'instructor' && instructorCompetitions.length > 0);
   let page = isReferee
     ? <RefereeHomePage currentUser={user} season={season} />
-    : <DashboardPage currentUser={user} season={season} />;
+    : canSeeManagement
+      ? <GamesPage currentUser={user} season={season} />
+      : <DashboardPage currentUser={user} season={season} />;
+  if (!isReferee && route.name === 'dashboard') page = <DashboardPage currentUser={user} season={season} />;
   if (route.name === 'refereeHome') page = <RefereeHomePage currentUser={user} season={season} />;
   if (!isReferee && route.name === 'games') page = <GamesPage currentUser={user} season={season} />;
   if (!isReferee && route.name === 'designateObservers') page = <DesignateObserversPage currentUser={user} season={season} />;
@@ -128,12 +135,20 @@ export default function App() {
     page = (
       <div className="empty-state">
         <h2>Pagina non trovata</h2>
-        <button type="button" className="primary-button" onClick={() => navigate('/')}>Torna alla dashboard</button>
+        <button type="button" className="primary-button" onClick={() => navigate('/')}>Torna alla home</button>
       </div>
     );
   }
 
-  const showBackButton = route.name !== 'dashboard' && route.name !== 'refereeHome';
+  let activeSection = '';
+  if (route.name === 'home') activeSection = isReferee || !canSeeManagement ? 'reports' : 'games';
+  if (['games', 'gameDetail', 'designateObservers'].includes(route.name)) activeSection = 'games';
+  if (['dashboard', 'newReport', 'editReport', 'reportDetail', 'refereeHome'].includes(route.name)) activeSection = 'reports';
+  if (route.name === 'coverage') activeSection = 'coverage';
+  if (['adminReferees', 'adminRefereeDetail'].includes(route.name)) activeSection = 'referees';
+  if (['adminUsers', 'adminLogs', 'adminSources', 'adminImports'].includes(route.name)) activeSection = 'admin';
+
+  const showBackButton = !['home', 'dashboard', 'refereeHome', 'games'].includes(route.name);
 
   return (
     <Shell
@@ -143,6 +158,7 @@ export default function App() {
       season={season}
       seasons={seasons}
       onSeasonChange={setSeason}
+      activeSection={activeSection}
     >
       {page}
     </Shell>
