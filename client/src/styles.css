@@ -2756,6 +2756,63 @@ dd {
   color: var(--teal);
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-pill.status-success {
+  background: var(--final-soft);
+  color: var(--final);
+}
+
+.status-pill.status-partial,
+.status-pill.status-running {
+  background: var(--draft-soft);
+  color: var(--draft);
+}
+
+.status-pill.status-error {
+  background: #f8dddd;
+  color: var(--danger);
+}
+
+.stats-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.stats-employment-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.stats-employment-table .stats-sticky-column {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 190px;
+  background: var(--surface);
+  box-shadow: 8px 0 12px -12px rgba(14, 31, 38, 0.52);
+}
+
+.stats-employment-table thead .stats-sticky-column {
+  z-index: 3;
+}
+
+.stats-employment-table tbody tr:hover .stats-sticky-column {
+  background: #fbfcfc;
+}
+
 .employment-matchup-button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

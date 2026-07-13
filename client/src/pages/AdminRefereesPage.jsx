@@ -3,7 +3,7 @@ import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate
 import DateInput from '../components/DateInput.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
-import { api, ApiError } from '../lib/api.js';
+import { api, ApiError, downloadRefereesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 
 const CURRENT_SEASON = currentSportSeason();
@@ -291,6 +291,16 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     }
   }
 
+  function handleExport() {
+    downloadRefereesExport({
+      season: selectedSeason,
+      competition: assignedCompetitions.length ? '' : filterCategory,
+      activeFilter: filterActive,
+      band: filterBand,
+      search
+    });
+  }
+
   if (!canAccess) {
     return <div className="empty-state"><h2>Area arbitri non associata</h2></div>;
   }
@@ -469,6 +479,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
             <div>
               <h2>Elenco arbitri{filtered.length !== referees.length ? ` (${filtered.length} di ${referees.length})` : ` (${referees.length})`}</h2>
             </div>
+            <button type="button" className="ghost-button" onClick={handleExport} disabled={loading}>
+              Esporta vista XLSX
+            </button>
           </div>
 
           <div className="games-filters-row">

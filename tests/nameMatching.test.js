@@ -7,9 +7,8 @@ import path from 'node:path';
 // Database temporaneo isolato: va impostato PRIMA di importare config/connection.
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'analisigara-test-'));
 process.env.STORAGE_DIR = tempDir;
-process.env.DATABASE_PATH = path.join(tempDir, 'test.sqlite');
 
-const { initializeDatabase, getDb, closeDatabase } = await import('../src/database/connection.js');
+const { setupTestDatabase, closeTestDatabase, insertId } = await import('./helpers/testDatabase.js');
 const {
   cleanExternalName,
   normalizedNameKey,
@@ -18,20 +17,18 @@ const {
   listRefereeCandidates
 } = await import('../src/services/nameMatching.js');
 
-initializeDatabase();
+await setupTestDatabase();
 
-function insertReferee(firstName, lastName) {
-  return getDb()
-    .prepare('INSERT INTO referees (first_name, last_name) VALUES (?, ?)')
-    .run(firstName, lastName).lastInsertRowid;
+async function insertReferee(firstName, lastName) {
+  return insertId('INSERT INTO referees (first_name, last_name) VALUES (?, ?)', [firstName, lastName]);
 }
 
-const molinariId = insertReferee('Giorgio', 'Molinari');
-insertReferee('Mario', 'Rossi');
-insertReferee('Luca', 'Rossi');
+const molinariId = await insertReferee('Giorgio', 'Molinari');
+await insertReferee('Mario', 'Rossi');
+await insertReferee('Luca', 'Rossi');
 
-test.after(() => {
-  closeDatabase();
+test.after(async () => {
+  await closeTestDatabase();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -49,35 +46,35 @@ test('normalizedNameKey è stabile per ordine, maiuscole, accenti e apostrofi', 
   assert.equal(normalizedNameKey('MOLINARI GIORGIO di TORINO (TO)'), normalizedNameKey('Giorgio Molinari'));
 });
 
-test('resolveRefereeName trova il match esatto non ambiguo', () => {
-  const result = resolveRefereeName('MOLINARI GIORGIO di TORINO (TO)', { source: 'fip_public' });
+test('resolveRefereeName trova il match esatto non ambiguo', async () => {
+  const result = await resolveRefereeName('MOLINARI GIORGIO di TORINO (TO)', { source: 'fip_public' });
   assert.equal(result.refereeId, molinariId);
   assert.equal(result.via, 'exact');
 });
 
-test('resolveRefereeName non indovina in caso di ambiguità ma propone candidati', () => {
-  const result = resolveRefereeName('ROSSI', { source: 'fip_public' });
+test('resolveRefereeName non indovina in caso di ambiguità ma propone candidati', async () => {
+  const result = await resolveRefereeName('ROSSI', { source: 'fip_public' });
   assert.equal(result.refereeId, null);
   assert.ok(result.candidates.length >= 2, 'entrambi i Rossi devono comparire tra i candidati');
 });
 
-test('un alias verificato viene riutilizzato nelle risoluzioni successive', () => {
+test('un alias verificato viene riutilizzato nelle risoluzioni successive', async () => {
   const externalName = 'MOLINARI G.';
-  const before = resolveRefereeName(externalName, { source: 'xlsx' });
+  const before = await resolveRefereeName(externalName, { source: 'xlsx' });
   assert.equal(before.refereeId, null, 'senza alias il nome abbreviato non deve risolversi');
 
-  saveRefereeAlias({ source: 'xlsx', externalName, refereeId: molinariId });
-  const after = resolveRefereeName(externalName, { source: 'xlsx' });
+  await saveRefereeAlias({ source: 'xlsx', externalName, refereeId: molinariId });
+  const after = await resolveRefereeName(externalName, { source: 'xlsx' });
   assert.equal(after.refereeId, molinariId);
   assert.equal(after.via, 'alias');
 
   // L'alias vale solo per la sorgente in cui è stato verificato.
-  const otherSource = resolveRefereeName(externalName, { source: 'fip_public' });
+  const otherSource = await resolveRefereeName(externalName, { source: 'fip_public' });
   assert.equal(otherSource.refereeId, null);
 });
 
-test('listRefereeCandidates ordina per affinità', () => {
-  const candidates = listRefereeCandidates('Molinari Giorgio');
+test('listRefereeCandidates ordina per affinità', async () => {
+  const candidates = await listRefereeCandidates('Molinari Giorgio');
   assert.ok(candidates.length >= 1);
   assert.equal(candidates[0].refereeId, molinariId);
   assert.equal(candidates[0].score, 1);

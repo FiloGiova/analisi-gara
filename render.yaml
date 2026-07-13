@@ -25,6 +25,12 @@ services:
         value: "true"
       - key: STORAGE_BUCKET
         value: rapporti
+      - key: ENABLE_SCHEDULED_SYNC
+        value: "true"
+      - key: SCHEDULED_SYNC_TIME
+        value: "13:15"
+      - key: SCHEDULED_SYNC_TIMEZONE
+        value: Europe/Rome
       - key: DATABASE_URL
         sync: false
       - key: SUPABASE_URL

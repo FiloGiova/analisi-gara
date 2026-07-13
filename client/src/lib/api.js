@@ -208,31 +208,41 @@ export const api = {
     request(`/api/games/alias-candidates?name=${encodeURIComponent(name)}&type=${type}`),
   getObserverSuggestions: (gameId) =>
     request(`/api/games/${gameId}/observer-suggestions`),
-  getCoverage: ({ season = '', competition = '', band = '' } = {}) => {
+  getStatsPhases: ({ season = '', competition = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (season) params.set('season', season);
+    if (competition) params.set('competition', competition);
+    return request(`/api/stats/phases${params.toString() ? `?${params}` : ''}`);
+  },
+  getCoverage: ({ season = '', competition = '', band = '', phaseIds = [] } = {}) => {
     const params = new URLSearchParams();
     if (season) params.set('season', season);
     if (competition) params.set('competition', competition);
     if (band) params.set('band', band);
+    if (phaseIds.length) params.set('phases', phaseIds.join(','));
     return request(`/api/stats/coverage${params.toString() ? `?${params}` : ''}`);
   },
-  getEmployment: ({ season = '', competition = '', band = '' } = {}) => {
+  getEmployment: ({ season = '', competition = '', band = '', phaseIds = [] } = {}) => {
     const params = new URLSearchParams();
     if (season) params.set('season', season);
     if (competition) params.set('competition', competition);
     if (band) params.set('band', band);
+    if (phaseIds.length) params.set('phases', phaseIds.join(','));
     return request(`/api/stats/employment${params.toString() ? `?${params}` : ''}`);
   },
-  getMatrix: ({ season = '', competition = '', band = '' } = {}) => {
+  getMatrix: ({ season = '', competition = '', band = '', phaseIds = [] } = {}) => {
     const params = new URLSearchParams();
     if (season) params.set('season', season);
     if (competition) params.set('competition', competition);
     if (band) params.set('band', band);
+    if (phaseIds.length) params.set('phases', phaseIds.join(','));
     return request(`/api/stats/matrix${params.toString() ? `?${params}` : ''}`);
   },
-  getMatrixDetail: ({ season = '', competition = '', observerKey, refereeId }) => {
+  getMatrixDetail: ({ season = '', competition = '', phaseIds = [], observerKey, refereeId }) => {
     const params = new URLSearchParams({ observerKey, refereeId: String(refereeId) });
     if (season) params.set('season', season);
     if (competition) params.set('competition', competition);
+    if (phaseIds.length) params.set('phases', phaseIds.join(','));
     return request(`/api/stats/matrix-detail?${params}`);
   },
   previewDesignationsImport: async (file, season) => {
@@ -271,9 +281,84 @@ export const api = {
     })
 };
 
-export function downloadDesignationsTemplate(season) {
+export function downloadDesignationsTemplate(season, phaseIds = []) {
+  const params = new URLSearchParams({ season });
+  if (phaseIds.length) params.set('phases', phaseIds.join(','));
   const link = document.createElement('a');
-  link.href = `/api/imports/template?season=${encodeURIComponent(season)}`;
+  link.href = `/api/imports/template?${params}`;
+  link.setAttribute('download', '');
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 200);
+}
+
+export function downloadStatsExport({
+  view,
+  season = '',
+  competition = '',
+  band = '',
+  phaseIds = [],
+  search = '',
+  sortKey = '',
+  sortDirection = 'asc'
+}) {
+  const params = new URLSearchParams({ view });
+  if (season) params.set('season', season);
+  if (competition) params.set('competition', competition);
+  if (band) params.set('band', band);
+  if (phaseIds.length) params.set('phases', phaseIds.join(','));
+  if (search.trim()) params.set('search', search.trim());
+  if (sortKey) params.set('sort', sortKey);
+  params.set('direction', sortDirection);
+  const link = document.createElement('a');
+  link.href = `/api/stats/export?${params}`;
+  link.setAttribute('download', '');
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 200);
+}
+
+export function downloadGamesExport({
+  season = '',
+  matchday = '',
+  stateFilters = [],
+  sourceNames = [],
+  refereeId = '',
+  search = ''
+}) {
+  const params = new URLSearchParams();
+  if (season) params.set('season', season);
+  if (matchday) params.set('matchday', matchday);
+  stateFilters.forEach((state) => params.append('states', state));
+  sourceNames.forEach((source) => params.append('sources', source));
+  if (refereeId) params.set('refereeId', refereeId);
+  if (search) params.set('search', search);
+  const link = document.createElement('a');
+  link.href = `/api/games/export?${params}`;
+  link.setAttribute('download', '');
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 200);
+}
+
+export function downloadRefereesExport({
+  season = '',
+  competition = '',
+  activeFilter = '',
+  band = '',
+  search = ''
+}) {
+  const params = new URLSearchParams();
+  if (season) params.set('season', season);
+  if (competition) params.set('competition', competition);
+  if (activeFilter) params.set('active', activeFilter);
+  if (band) params.set('band', band);
+  if (search) params.set('search', search);
+  const link = document.createElement('a');
+  link.href = `/api/referees/export?${params}`;
   link.setAttribute('download', '');
   link.rel = 'noopener';
   document.body.appendChild(link);

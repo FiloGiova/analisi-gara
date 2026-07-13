@@ -104,3 +104,10 @@ export async function sendReportToReferee(reportId, role, user) {
 export function isEmailEnabled() {
   return Boolean(config.smtp);
 }
+
+export async function sendOperationalEmail({ to, subject, text }) {
+  if (!config.smtp || !to) return false;
+  const transporter = getTransporter();
+  await transporter.sendMail({ from: config.smtp.from, to, subject, text });
+  return true;
+}

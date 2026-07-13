@@ -21,12 +21,20 @@ function seasonParam(req) {
   return String(req.query.season || req.body?.sportSeason || '').trim() || currentSportSeason();
 }
 
+function phaseIdsParam(req) {
+  const raw = req.query.phases || '';
+  const values = Array.isArray(raw) ? raw : String(raw).split(',');
+  return [...new Set(values.map(Number).filter((value) => Number.isInteger(value) && value > 0))];
+}
+
 // Template XLSX per il designatore: un foglio per giornata, sempre rigenerato
 // con i dati correnti (quindi riscaricabile dopo ogni modifica).
 importsRouter.get('/template', asyncHandler(async (req, res) => {
   const season = seasonParam(req);
-  const workbook = await buildDesignationsTemplate(season);
-  const fileName = `designazioni_${season.replace('/', '-')}.xlsx`;
+  const phaseIds = phaseIdsParam(req);
+  const workbook = await buildDesignationsTemplate(season, { phaseIds });
+  const phaseSuffix = phaseIds.length ? `_fasi-${phaseIds.join('-')}` : '';
+  const fileName = `designazioni_${season.replace('/', '-')}${phaseSuffix}.xlsx`;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
   await workbook.xlsx.write(res);

@@ -1,0 +1,46 @@
+name: Verifica FischioLab
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-e-build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fischiolab_test
+          POSTGRES_DB: fischiolab_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fischiolab_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:fischiolab_test@127.0.0.1:5432/fischiolab_test
+      TEST_DATABASE_SSL: "false"
+
+    steps:
+      - name: Scarica il repository
+        uses: actions/checkout@v4
+
+      - name: Configura Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installa le dipendenze
+        run: npm ci --include=dev
+
+      - name: Esegui i test PostgreSQL
+        run: npm test
+
+      - name: Verifica la build frontend
+        run: npm run build

@@ -18,6 +18,7 @@ import { gamesRouter } from './src/routes/games.routes.js';
 import { sourcesRouter } from './src/routes/sources.routes.js';
 import { importsRouter } from './src/routes/imports.routes.js';
 import { statsRouter } from './src/routes/stats.routes.js';
+import { startScheduledFipSync } from './src/services/scheduledSyncService.js';
 
 const app = express();
 const clientDist = path.join(config.rootDir, 'dist', 'client');
@@ -93,6 +94,7 @@ async function start() {
   app.listen(config.port, config.host, () => {
     console.log(`FischioLab in ascolto su http://${config.host}:${config.port}`);
     console.log(`Storage: ${config.storageDriver} | DB: Postgres`);
+    startScheduledFipSync();
   });
 }
 

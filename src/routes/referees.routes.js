@@ -15,8 +15,11 @@ import {
   listBandMembers,
   addBandMember,
   removeBandMember,
-  getBandRow
+  getBandRow,
+  REFEREE_BANDS
 } from '../services/refereeService.js';
+import { buildRefereesWorkbook } from '../services/refereesExportService.js';
+import { currentSportSeason } from '../../shared/reportTemplate.js';
 
 export const refereesRouter = express.Router();
 
@@ -77,6 +80,30 @@ refereesRouter.get(
         competitions: scopedCompetitions(req)
       })
     });
+  })
+);
+
+refereesRouter.get(
+  '/export',
+  asyncHandler(async (req, res) => {
+    requireRefereeInspection(req);
+    const season = String(req.query.season || '').trim() || currentSportSeason();
+    const requestedBand = String(req.query.band || '').trim();
+    const activeFilter = ['0', '1'].includes(String(req.query.active || ''))
+      ? String(req.query.active)
+      : '';
+    const workbook = await buildRefereesWorkbook({
+      season,
+      competitions: scopedCompetitions(req),
+      activeFilter,
+      band: REFEREE_BANDS.includes(requestedBand) ? requestedBand : '',
+      search: String(req.query.search || '')
+    });
+    const fileName = `anagrafica_arbitri_${season.replace('/', '-')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    await workbook.xlsx.write(res);
+    res.end();
   })
 );
 

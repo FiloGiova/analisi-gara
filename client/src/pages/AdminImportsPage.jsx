@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import MultiSelect from '../components/MultiSelect.jsx';
 import { api, ApiError, downloadDesignationsTemplate } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
@@ -32,6 +33,8 @@ export default function AdminImportsPage({ currentUser, season }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [phaseIds, setPhaseIds] = useState([]);
+  const [phaseOptions, setPhaseOptions] = useState([]);
   const fileRef = useRef(null);
 
   const isAdmin = currentUser.role === 'admin';
@@ -39,7 +42,13 @@ export default function AdminImportsPage({ currentUser, season }) {
   useEffect(() => {
     setPreview(null);
     setApplyResult(null);
+    setPhaseIds([]);
+    setPhaseOptions([]);
     if (fileRef.current) fileRef.current.value = '';
+    if (!isAdmin) return;
+    api.getStatsPhases({ season })
+      .then((data) => setPhaseOptions(data.phases || []))
+      .catch(() => setPhaseOptions([]));
   }, [season]);
 
   if (!isAdmin) {
@@ -108,16 +117,29 @@ export default function AdminImportsPage({ currentUser, season }) {
           <div>
             <h2>1 · Template per il designatore</h2>
             <p>
-              Un foglio per ogni giornata, già compilato con numero gara, data, squadre e le
-              designazioni note. Dopo una modifica in corso d'opera basta riscaricarlo: viene
-              rigenerato ogni volta con i dati aggiornati.
+              Un foglio per ogni giornata, con campionato, gara, data, squadre e designazioni note.
+              Arbitro 1 e Arbitro 2 hanno un menu con i soli arbitri attivi del campionato; il
+              template viene rigenerato ogni volta con i dati aggiornati. Seleziona una o più fasi
+              per consegnare, per esempio, solo i playoff senza la fase regolare.
             </p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="status-badge status-draft">Stagione {season}</span>
-          <button type="button" className="primary-button" onClick={() => downloadDesignationsTemplate(season)}>
-            Scarica template ({season})
+          <div style={{ width: 'min(360px, 100%)' }}>
+            <MultiSelect
+              values={phaseIds}
+              onChange={setPhaseIds}
+              allLabel={phaseOptions.length ? 'Tutte le fasi' : 'Nessuna fase disponibile'}
+              options={phaseOptions.map((item) => ({
+                value: String(item.id),
+                label: item.competition ? `${item.name} · ${item.competition}` : item.name
+              }))}
+              disabled={!phaseOptions.length}
+            />
+          </div>
+          <button type="button" className="primary-button" onClick={() => downloadDesignationsTemplate(season, phaseIds)}>
+            Scarica template ({phaseIds.length ? `${phaseIds.length} fasi` : 'tutte le fasi'})
           </button>
         </div>
       </section>

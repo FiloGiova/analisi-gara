@@ -6,13 +6,13 @@ import path from 'node:path';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'analisigara-test-'));
 process.env.STORAGE_DIR = tempDir;
-process.env.DATABASE_PATH = path.join(tempDir, 'test.sqlite');
 
-const { initializeDatabase, getDb, closeDatabase } = await import('../src/database/connection.js');
+const { setupTestDatabase, closeTestDatabase, insertId, dbGet } = await import('./helpers/testDatabase.js');
 const { createSource, runFipSync } = await import('../src/services/syncService.js');
 const { getGame, listGames, setOfficial, getOfficialRow } = await import('../src/services/gameService.js');
+const { runScheduledFipSync, getScheduledFipSyncStatus } = await import('../src/services/scheduledSyncService.js');
 
-initializeDatabase();
+await setupTestDatabase();
 
 // Fixture sintetica con la stessa struttura DOM della pagina risultati FIP.
 function fipHtml(games) {
@@ -51,12 +51,10 @@ const fetchImpl = (url) =>
     text: () => Promise.resolve(currentHtml)
   });
 
-const venturiId = getDb()
-  .prepare('INSERT INTO referees (first_name, last_name) VALUES (?, ?)')
-  .run('Jacopo', 'Venturi').lastInsertRowid;
-const observerId = getDb()
-  .prepare("INSERT INTO users (username, password_hash, display_name, role) VALUES ('oss', 'x', 'Osservatore Test', 'observer')")
-  .run().lastInsertRowid;
+const venturiId = await insertId('INSERT INTO referees (first_name, last_name) VALUES (?, ?)', ['Jacopo', 'Venturi']);
+const observerId = await insertId(
+  "INSERT INTO users (username, password_hash, display_name, role) VALUES ('oss', 'x', 'Osservatore Test', 'observer')"
+);
 
 const { sources: [source] } = await createSource({
   sportSeason: '2025/2026',
@@ -71,8 +69,8 @@ const CALENDAR_ONLY = [
   { num: '000308', home: 'CASA B', away: 'OSPITE B', date: '18 Dicembre 2025', time: '18:00' }
 ];
 
-test.after(() => {
-  closeDatabase();
+test.after(async () => {
+  await closeTestDatabase();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -103,7 +101,7 @@ test('la prima sincronizzazione crea il calendario con arbitri vuoti', async () 
 
   assert.equal(result.created, 2);
   assert.equal(result.updated, 0);
-  const games = listGames({ season: '2025/2026' });
+  const games = await listGames({ season: '2025/2026' });
   assert.equal(games.length, 2);
   // Ordinamento per data: la gara del 17/12 precede quella del 18/12.
   assert.equal(games[0].matchNumber, '000311');
@@ -113,13 +111,13 @@ test('la prima sincronizzazione crea il calendario con arbitri vuoti', async () 
 
 test('la sincronizzazione è idempotente: stesso input, nessuna modifica', async () => {
   currentHtml = fipHtml(CALENDAR_ONLY);
-  const changesBefore = getDb().prepare('SELECT COUNT(*) AS n FROM game_changes').get().n;
+  const changesBefore = (await dbGet('SELECT COUNT(*) AS n FROM game_changes')).n;
   const result = await runFipSync(source.id, { fetchImpl });
 
   assert.equal(result.created, 0);
   assert.equal(result.updated, 0);
   assert.equal(result.officialsUpdated, 0);
-  const changesAfter = getDb().prepare('SELECT COUNT(*) AS n FROM game_changes').get().n;
+  const changesAfter = (await dbGet('SELECT COUNT(*) AS n FROM game_changes')).n;
   assert.equal(changesAfter, changesBefore, 'nessuna riga di audit per un sync senza differenze');
 });
 
@@ -135,7 +133,7 @@ test('le designazioni pubblicate aggiornano le gare esistenti senza duplicarle',
   assert.equal(result.unresolved.length, 1);
   assert.equal(result.unresolved[0].externalName, 'SCONOSCIUTO PINCO', 'nome pulito, senza provenienza');
 
-  const games = listGames({ season: '2025/2026' });
+  const games = await listGames({ season: '2025/2026' });
   const game = games.find((g) => g.matchNumber === '000311');
   assert.equal(game.officials.referee1.refereeId, venturiId, 'nome FIP associato all\'anagrafica');
   assert.equal(game.officials.referee2.refereeId, null, 'nome non riconosciuto resta da associare');
@@ -143,9 +141,9 @@ test('le designazioni pubblicate aggiornano le gare esistenti senza duplicarle',
 });
 
 test("l'osservatore assegnato manualmente sopravvive alle sincronizzazioni", async () => {
-  const games = listGames({ season: '2025/2026' });
+  const games = await listGames({ season: '2025/2026' });
   const game = games.find((g) => g.matchNumber === '000311');
-  setOfficial(game.id, { role: 'observer', userId: observerId, source: 'manual' }, {});
+  await setOfficial(game.id, { role: 'observer', userId: observerId, source: 'manual' }, {});
 
   currentHtml = fipHtml([
     { ...CALENDAR_ONLY[0], ref1: 'VENTURI JACOPO di TORINO (TO)', ref2: 'SCONOSCIUTO PINCO di NOVARA (NO)' },
@@ -153,14 +151,14 @@ test("l'osservatore assegnato manualmente sopravvive alle sincronizzazioni", asy
   ]);
   await runFipSync(source.id, { fetchImpl });
 
-  const after = getGame(game.id);
+  const after = await getGame(game.id);
   assert.equal(after.officials.observer.userId, observerId, 'osservatore mai toccato dal sync FIP');
 });
 
 test('un valore bloccato manualmente genera conflitto e non viene sovrascritto', async () => {
-  const games = listGames({ season: '2025/2026' });
+  const games = await listGames({ season: '2025/2026' });
   const game = games.find((g) => g.matchNumber === '000308');
-  setOfficial(game.id, { role: 'referee1', refereeId: venturiId, externalName: 'Venturi Jacopo', source: 'manual', manualLock: true }, {});
+  await setOfficial(game.id, { role: 'referee1', refereeId: venturiId, externalName: 'Venturi Jacopo', source: 'manual', manualLock: true }, {});
 
   currentHtml = fipHtml([
     CALENDAR_ONLY[0].num === '000311' ? { ...CALENDAR_ONLY[0], ref1: 'VENTURI JACOPO di TORINO (TO)', ref2: 'SCONOSCIUTO PINCO di NOVARA (NO)' } : CALENDAR_ONLY[0],
@@ -171,7 +169,7 @@ test('un valore bloccato manualmente genera conflitto e non viene sovrascritto',
   assert.equal(result.status, 'partial');
   assert.ok(result.conflicts.some((c) => c.matchNumber === '000308' && c.field === 'ufficiale:referee1'));
 
-  const official = getOfficialRow(game.id, 'referee1');
+  const official = await getOfficialRow(game.id, 'referee1');
   assert.equal(official.referee_id, venturiId, 'il valore bloccato resta invariato');
   assert.equal(official.manual_lock, 1);
 });
@@ -184,12 +182,44 @@ test('cambi di data e campo vengono applicati e tracciati in game_changes', asyn
   const result = await runFipSync(source.id, { fetchImpl });
 
   assert.equal(result.updated, 1);
-  const games = listGames({ season: '2025/2026' });
+  const games = await listGames({ season: '2025/2026' });
   const game = games.find((g) => g.matchNumber === '000311');
   assert.equal(game.scheduledAt, '2025-12-17T20:30');
   assert.equal(game.venue, 'NUOVO PALASPORT');
 
-  const detail = getGame(game.id);
+  const detail = await getGame(game.id);
   const audited = detail.changes.filter((c) => c.source === 'fip_public' && (c.field === 'scheduledAt' || c.field === 'venue'));
   assert.ok(audited.length >= 2, 'le modifiche da sync sono ricostruibili dallo storico');
+});
+
+test('il job giornaliero parte dopo l’orario e non viene eseguito due volte', async () => {
+  const beforeTime = await runScheduledFipSync({
+    now: new Date('2026-07-13T08:00:00Z'),
+    fetchImpl,
+    sourceDelayMs: 0
+  });
+  assert.equal(beforeTime.executed, false);
+  assert.equal(beforeTime.reason, 'before-scheduled-time');
+
+  const first = await runScheduledFipSync({
+    now: new Date('2026-07-13T12:00:00Z'),
+    fetchImpl,
+    force: true,
+    sourceDelayMs: 0
+  });
+  assert.equal(first.executed, true);
+  assert.ok(first.summary.totals.sources >= 1);
+
+  const duplicate = await runScheduledFipSync({
+    now: new Date('2026-07-13T14:00:00Z'),
+    fetchImpl,
+    force: true,
+    sourceDelayMs: 0
+  });
+  assert.equal(duplicate.executed, false);
+  assert.equal(duplicate.reason, 'already-run');
+
+  const status = await getScheduledFipSyncStatus();
+  assert.equal(status.lastRunDate, '2026-07-13');
+  assert.ok(['success', 'partial'].includes(status.status));
 });

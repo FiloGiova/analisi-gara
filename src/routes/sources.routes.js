@@ -9,6 +9,7 @@ import {
   listSyncRuns,
   runFipSync
 } from '../services/syncService.js';
+import { getScheduledFipSyncStatus } from '../services/scheduledSyncService.js';
 
 // Montato con requireAuth + requireAdmin in server.js.
 export const sourcesRouter = express.Router();
@@ -16,7 +17,11 @@ export const sourcesRouter = express.Router();
 sourcesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({ sources: await listSources({ season: String(req.query.season || '').trim() }) });
+    const [sources, scheduledSync] = await Promise.all([
+      listSources({ season: String(req.query.season || '').trim() }),
+      getScheduledFipSyncStatus()
+    ]);
+    res.json({ sources, scheduledSync });
   })
 );
 

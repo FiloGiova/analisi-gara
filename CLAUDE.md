@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "FischioLab" — a webapp for basketball referee observers to write, archive, and export match evaluation reports. UI text, API error messages, and comments are in Italian; keep new user-facing strings in Italian.
 
-Stack: Node 18+ ESM (`"type": "module"` everywhere), Express, React 18 + Vite, SQLite via `better-sqlite3` (synchronous API — no async DB calls), `pdfkit` for PDF export (no Chromium). No Docker. Deployed to a UGREEN NAS (Debian ARM64) via systemd service `analisi-gara`.
+Stack: Node 20+ ESM (`"type": "module"` everywhere), Express, React 18 + Vite, PostgreSQL via `pg` (API asincrone), Supabase Storage e `pdfkit` per i PDF (senza Chromium). Deploy su Render dal branch `cloud-migration`.
 
-There are no tests and no linter configured.
+The test suite uses a separate PostgreSQL database through `TEST_DATABASE_URL`; there is no linter configured.
 
 ## Commands
 
@@ -20,21 +20,21 @@ npm run build      # Vite build → dist/client (server serves this in productio
 npm start          # production: node server.js, serves API + built SPA on :3000
 npm run setup      # first-time init: creates DB, storage dirs, first admin (set ADMIN_USERNAME/ADMIN_PASSWORD)
 npm run seed:admin # create/update an admin user
-npm run import:legacy-pdfs -- --dry-run <files...>  # import historical PDF reports (--commit to apply)
-./deploy-nas.sh    # build + rsync to NAS + restart service (excludes node_modules, .env, storage)
+npm test           # PostgreSQL suite; requires a dedicated TEST_DATABASE_URL
+npm run test:unit  # pure FIP parser tests, no database required
 ```
 
-Local data lives in `./storage` (gitignored); on the NAS `STORAGE_DIR` points elsewhere. All paths (DB, output PDFs, uploads, templates) derive from `STORAGE_DIR` in [src/config.js](src/config.js).
+In production the database is Supabase PostgreSQL and persistent files use Supabase Storage. Without Supabase Storage credentials, local files live in `./storage` (gitignored).
 
 ## Architecture
 
-**Request flow**: `server.js` (entry, mounts routers + auth middleware) → `src/routes/*.routes.js` (validation, HTTP) → `src/services/*.js` (business logic) → `src/database/connection.js` (better-sqlite3 singleton; schema in `src/database/schema.sql`, applied idempotently at startup).
+**Request flow**: `server.js` (entry, mounts routers + auth middleware) → `src/routes/*.routes.js` (validation, HTTP) → `src/services/*.js` (business logic) → async helpers in `src/database/db.js`. PostgreSQL schema: `src/database/schema.postgres.sql`, applied idempotently at startup.
 
 **Error handling**: throw `HttpError(statusCode, message)` from [src/utils/httpError.js](src/utils/httpError.js) anywhere; the central handler in `server.js` turns it into a JSON response. Async route handlers are wrapped with `asyncHandler` from the same file.
 
 **Shared report template — the load-bearing file**: [shared/reportTemplate.js](shared/reportTemplate.js) is imported by *both* the server (validation, PDF layout, rating→number mapping) and the React client (form rendering, choice options). Any change to report structure, competitions, rating scales, or season derivation happens there once and affects both sides.
 
-**Reports data model**: a `reports` row holds a few indexed/searchable columns (match number, teams, referees, votes, status `draft`/`final`) plus the full form content as a `payload_json` blob. Each report evaluates two referees; export produces two PDFs (`numGara_arbitro1.pdf`, `numGara_arbitro2.pdf`) into `STORAGE_DIR/output/<season>/report-<id>/`, tracked in the `exports` table.
+**Reports data model**: a `reports` row holds a few indexed/searchable columns (match number, teams, referees, votes, status `draft`/`final`) plus the full form content as a `payload_json` blob. Each report evaluates two referees; export produces two PDFs named `numGara_Cognome.pdf`, stored under `output/<season>/report-<id>/` and tracked in `exports`.
 
 **Auth & roles**: cookie-based sessions; the token is hashed and stored server-side in the `sessions` table. `attachUser` sets `req.user` on every request; route guards (`requireAuth`, `requireAdmin`, `requireAdminOrInstructor`, `requireReferee`, `requireReportAuthors`) live in [src/middleware/auth.js](src/middleware/auth.js). Roles: `admin`, `instructor` (scoped to competitions), `observer`, `referee`. Legacy role values (`formatter`, `user`) are normalized in `publicUser()` — don't compare raw `users.role` directly.
 
@@ -46,6 +46,8 @@ Local data lives in `./storage` (gitignored); on the NAS `STORAGE_DIR` points el
 
 ## Deployment notes
 
-- `better-sqlite3` compiles a native module; on the NAS (ARM64) this needs `build-essential python3 make g++`.
-- After adding npm dependencies, `deploy-nas.sh` is not enough — SSH to the NAS, `npm install --omit=dev`, then `sudo systemctl restart analisi-gara`.
-- `COOKIE_SECURE=false` is intentional for LAN/HTTP use; set `true` only behind HTTPS.
+- Render deploys `cloud-migration` using `render.yaml`; the single Express process serves both API and SPA.
+- Keep `COOKIE_SECURE=true` on Render HTTPS.
+- The public `/api/health` endpoint also queries PostgreSQL and is pinged every 5 minutes by an external monitor.
+- `ENABLE_SCHEDULED_SYNC=true` runs the daily FIP synchronization inside the web process; execution state is persisted in `scheduled_jobs`.
+- Never run tests against `DATABASE_URL`: `TEST_DATABASE_URL` is mandatory, must be separate, and is truncated by the suite.

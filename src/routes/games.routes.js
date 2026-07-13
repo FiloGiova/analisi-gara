@@ -23,6 +23,7 @@ import {
   listObserverCandidates
 } from '../services/nameMatching.js';
 import { getObserverSuggestions } from '../services/statsService.js';
+import { buildGamesWorkbook } from '../services/gamesExportService.js';
 
 export const gamesRouter = express.Router();
 
@@ -45,6 +46,12 @@ gamesRouter.use((req, _res, next) => {
 // Campionati a cui il formatore è ristretto ([] = admin, nessuna restrizione).
 function scopedCompetitions(req) {
   return req.user?.role === 'instructor' ? req.user.instructorCompetitions || [] : [];
+}
+
+function repeatedParam(req, name) {
+  const raw = req.query[name];
+  if (raw === undefined || raw === null || raw === '') return [];
+  return (Array.isArray(raw) ? raw : [raw]).map((value) => String(value).trim()).filter(Boolean);
 }
 
 gamesRouter.get(
@@ -78,6 +85,30 @@ gamesRouter.get(
   requireAdminOrInstructor,
   asyncHandler(async (_req, res) => {
     res.json({ observers: await listAssignableObservers() });
+  })
+);
+
+gamesRouter.get(
+  '/export',
+  requireAdminOrInstructor,
+  asyncHandler(async (req, res) => {
+    const season = String(req.query.season || '').trim();
+    const allowedStates = new Set(['arbitri_mancanti', 'scoperta', 'rapporto_mancante']);
+    const stateFilters = repeatedParam(req, 'states').filter((state) => allowedStates.has(state));
+    const workbook = await buildGamesWorkbook({
+      season,
+      competitions: scopedCompetitions(req),
+      matchday: String(req.query.matchday || '').trim(),
+      stateFilters,
+      sourceNames: repeatedParam(req, 'sources'),
+      refereeId: req.query.refereeId ? Number(req.query.refereeId) : null,
+      search: String(req.query.search || '')
+    });
+    const fileName = `gare_${(season || 'tutte').replace('/', '-')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    await workbook.xlsx.write(res);
+    res.end();
   })
 );
 

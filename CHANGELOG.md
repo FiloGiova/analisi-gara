@@ -7,6 +7,38 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-07-13 — Statistiche, test PostgreSQL, sync automatico e template designatore
+
+### Statistiche
+- Selettore multiplo delle fasi FIP in Copertura, Matrice e Impiego.
+- Ordinamento iniziale alfabetico; colonna arbitro fissa nell'Impiego.
+- Numeri gara senza zeri iniziali nella UI e squadre visibili nell'Impiego.
+- Arbitri disattivati esclusi automaticamente da tutte le statistiche.
+- Copertura semplificata rimuovendo “Osservatori diversi” e “Programmati”.
+- Export XLSX della tab attiva, coerente con stagione, campionato, fasi, fascia,
+  ricerca e ordinamento impostati nella pagina.
+- Export XLSX dell'elenco Gare coerente con fase, giornata, arbitro, stato e
+  ricerca impostati nella pagina, mantenendo lo scoping del formatore.
+- Export XLSX dell'anagrafica arbitri coerente con stagione, campionato, fascia,
+  stato e ricerca; la colonna Fascia riporta tutte le appartenenze stagionali.
+
+### Qualità e automazione
+- Otto file di test migrati da `getDb().prepare(...)` agli helper PostgreSQL
+  asincroni; database separato obbligatorio e protetto da reset accidentali.
+- Suite verde: 53 test. GitHub Actions esegue test e build con PostgreSQL 17
+  effimero a ogni push.
+- Sync FIP giornaliero nel processo web alle 13:15 Europe/Rome: sorgenti attive
+  in sequenza, stato persistente anti-duplicazione/recupero dopo riavvio, esito
+  in pagina Sorgenti ed email opzionale per errori.
+
+### Designatore e documentazione
+- Template XLSX con colonna Campionato, rimozione Arbitro 3 e menu a tendina per
+  Arbitro 1/2 basati sugli arbitri attivi del campionato e della stagione.
+- Selezione multipla delle fasi nel download del template: playoff e playout
+  possono essere consegnati senza includere nuovamente la fase regolare.
+- README e CLAUDE aggiornati all'architettura Render + Supabase; NEXT_STEPS
+  ripulito e attività completate depennate.
+
 ## 2026-07-12 — Migrazione cloud: SQLite→Postgres (Supabase) + Storage (branch `cloud-migration`)
 
 Prima fase della migrazione da NAS a cloud (NEXT_STEPS_2.md). Host scelto: **Render**

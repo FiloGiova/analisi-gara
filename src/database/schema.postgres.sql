@@ -236,6 +236,16 @@ CREATE TABLE IF NOT EXISTS sync_runs (
   FOREIGN KEY (started_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS scheduled_jobs (
+  job_name      TEXT PRIMARY KEY,
+  last_run_key  TEXT,
+  status        TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle', 'running', 'success', 'partial', 'error')),
+  started_at    TEXT,
+  finished_at   TEXT,
+  summary_json  TEXT,
+  updated_at    TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
 CREATE TABLE IF NOT EXISTS game_changes (
   id          SERIAL PRIMARY KEY,
   game_id     INTEGER NOT NULL,

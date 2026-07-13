@@ -3,7 +3,7 @@ import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
-import { api, ApiError } from '../lib/api.js';
+import { api, ApiError, downloadGamesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
 
@@ -154,6 +154,17 @@ export default function GamesPage({ currentUser, season }) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function handleExport() {
+    downloadGamesExport({
+      season,
+      matchday,
+      stateFilters: stateFilter,
+      sourceNames: sourceFilter,
+      refereeId: refereeFilter,
+      search
+    });
+  }
+
   async function handleCreate(e) {
     e.preventDefault();
     setBusy(true);
@@ -280,6 +291,9 @@ export default function GamesPage({ currentUser, season }) {
           <div>
             <h2>Elenco gare{filtered.length !== games.length ? ` (${filtered.length} di ${games.length})` : ` (${games.length})`}</h2>
           </div>
+          <button type="button" className="ghost-button" onClick={handleExport} disabled={loading}>
+            Esporta vista XLSX
+          </button>
         </div>
 
         <div className="games-filters-search">

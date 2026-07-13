@@ -1,65 +1,94 @@
 # FischioLab
 
-FischioLab è la webapp per compilare rapporti arbitrali basati sul modello Excel `12799.xlsx`, con dashboard, login locale, bozze, salvataggio definitivo, archivio e generazione di due PDF separati:
+FischioLab è una webapp per gestire gare, designazioni e rapporti arbitrali di
+basket. Permette di importare i calendari FIP, assegnare gli osservatori,
+compilare i rapporti, generare i PDF e consultare statistiche stagionali.
 
-- `numGara_arbitro1.pdf`
-- `numGara_arbitro2.pdf`
+Produzione: [https://fischiolab.onrender.com](https://fischiolab.onrender.com)
 
-La sezione `Potenzialità` resta disponibile nell'app come nota interna, ma non viene mai esportata nei PDF.
+## Funzioni principali
 
-## Stack
+- import e sincronizzazione delle sorgenti pubbliche FIP;
+- gestione gare, arbitri e osservatori, con export XLSX della vista filtrata;
+- designazione osservatori singola o in blocco;
+- rapporti in bozza/definitivi e PDF separato per ciascun arbitro;
+- anagrafica arbitri per stagione, campionato e fascia, esportabile in XLSX con
+  i filtri correnti e le appartenenze alle fasce;
+- statistiche Copertura, Matrice incroci e Impiego arbitri, esportabili in XLSX
+  con i filtri della vista corrente;
+- template XLSX per il designatore, esportabile per una o più fasi di campionato;
+- ruoli `admin`, `instructor`, `observer` e `referee`;
+- helper AI opzionale per il giudizio globale;
+- invio PDF via email opzionale.
 
-- Backend: Node.js 18 + Express
-- Frontend: React + Vite
-- Database: SQLite tramite `better-sqlite3`
-- PDF: `pdfkit`, senza Chromium/Puppeteer
-- Auth: utenti locali, password hashate con bcrypt, sessioni server-side salvate in SQLite
-- Docker: non usato
+La sezione “Potenzialità” resta una nota interna: non viene esportata nei PDF e
+non viene mostrata agli utenti arbitro.
 
-## Struttura
+## Architettura
 
 ```text
-.
-├── server.js
-├── src/
-│   ├── database/
-│   ├── middleware/
-│   ├── routes/
-│   ├── services/
-│   └── utils/
-├── shared/
-│   └── reportTemplate.js
-├── client/
-│   ├── public/
-│   └── src/
-├── scripts/
-├── systemd/
-└── README.md
+Browser
+   │
+   ▼
+Render — singolo Web Service Node/Express
+   ├── frontend React/Vite
+   ├── API e autenticazione
+   ├── sincronizzazione FIP e import XLSX
+   └── generazione PDF
+         │
+         ├── Supabase PostgreSQL
+         └── Supabase Storage
 ```
 
-## Installazione Locale
+Il frontend viene compilato in `dist/client` e servito dallo stesso processo
+Express. Database e sessioni sono su PostgreSQL; PDF e foto sono su Supabase
+Storage. Il filesystem di Render è considerato effimero.
+
+## Requisiti
+
+- Node.js 20–24 (in produzione viene usato Node 22);
+- npm;
+- un database PostgreSQL;
+- facoltativo: progetto Supabase per lo storage di PDF e foto.
+
+## Configurazione locale
 
 ```bash
 npm install
 cp .env.example .env
-npm run setup
-npm run build
-npm start
 ```
 
-Poi apri:
+Impostare almeno:
 
-```text
-http://localhost:3000
+```env
+DATABASE_URL=postgres://...
+DATABASE_SSL=false
+SESSION_SECRET=una-stringa-casuale-lunga
+COOKIE_SECURE=false
 ```
 
-Se `npm run setup` crea il primo admin senza `ADMIN_PASSWORD`, stampa una password casuale una sola volta. In alternativa imposta prima:
+Con un database Supabase usare normalmente `DATABASE_SSL=true`.
+
+Per usare Supabase Storage:
+
+```env
+SUPABASE_URL=https://PROJECT.supabase.co
+SUPABASE_SERVICE_KEY=...
+STORAGE_BUCKET=rapporti
+```
+
+Se le variabili Supabase non sono presenti, in sviluppo PDF e foto vengono
+salvati sotto `STORAGE_DIR`.
+
+### Inizializzazione
 
 ```bash
-ADMIN_USERNAME=admin ADMIN_PASSWORD='scegli-una-password' npm run setup
+ADMIN_USERNAME=admin \
+ADMIN_PASSWORD='scegli-una-password-robusta' \
+npm run setup
 ```
 
-Per aggiornare o creare un admin:
+Per creare o aggiornare successivamente l’admin:
 
 ```bash
 ADMIN_PASSWORD='nuova-password' npm run seed:admin
@@ -67,254 +96,152 @@ ADMIN_PASSWORD='nuova-password' npm run seed:admin
 
 ## Sviluppo
 
-Per lavorare in locale con API e frontend insieme:
+Avvio API e frontend Vite:
 
 ```bash
 npm run dev
 ```
 
-Apri:
+- frontend: [http://localhost:5173](http://localhost:5173)
+- API: [http://localhost:3000](http://localhost:3000)
 
-```text
-http://localhost:5173
-```
-
-Il comando avvia Express su `3000` e Vite su `5173`; i dati restano in `./storage`.
-
-In alternativa, puoi avviarli separatamente:
-
-Terminale 1:
+Comandi separati:
 
 ```bash
 npm run dev:api
-```
-
-Terminale 2:
-
-```bash
 npm run dev:web
 ```
 
-Apri:
-
-```text
-http://localhost:5173
-```
-
-Vite inoltra le chiamate `/api` a Express su porta `3000`.
-
-## Deploy Sul NAS UGREEN
-
-Directory previste:
-
-```text
-/volume1/webapps/rapporti-arbitrali
-/volume1/rapporti-arbitrali/data
-/volume1/rapporti-arbitrali/output
-/volume1/rapporti-arbitrali/templates
-/volume1/rapporti-arbitrali/uploads
-```
-
-Se `/volume1` non esiste sul NAS, scegli un percorso equivalente e modifica `STORAGE_DIR` nel file `.env` e nel servizio systemd.
-
-### 1. Copia il progetto
+Build e avvio equivalente alla produzione:
 
 ```bash
-mkdir -p /volume1/webapps
-cp -R rapporti-arbitrali /volume1/webapps/rapporti-arbitrali
-cd /volume1/webapps/rapporti-arbitrali
-```
-
-### 2. Installa dipendenze
-
-```bash
-npm install
-```
-
-Su Debian ARM64, se `better-sqlite3` deve compilare il modulo nativo e mancano gli strumenti di build:
-
-```bash
-apt update
-apt install -y build-essential python3 make g++
-npm install
-```
-
-### 3. Configura ambiente
-
-```bash
-cp .env.example .env
-```
-
-Verifica almeno:
-
-```env
-PORT=3000
-HOST=0.0.0.0
-STORAGE_DIR=/volume1/rapporti-arbitrali
-NODE_ENV=production
-COOKIE_SECURE=false
-```
-
-### 4. Setup iniziale
-
-```bash
-ADMIN_USERNAME=admin ADMIN_PASSWORD='scegli-una-password-robusta' npm run setup
 npm run build
-```
-
-### 5. Avvio manuale di prova
-
-```bash
 npm start
 ```
 
-Apri da rete locale:
+## Test PostgreSQL
+
+La suite non usa mai il database indicato da `DATABASE_URL`. Richiede
+`TEST_DATABASE_URL`, verifica che sia diverso dalla produzione e accetta
+normalmente soltanto database il cui nome contiene `test`.
+
+Esempio con PostgreSQL locale via Docker:
+
+```bash
+docker run --name fischiolab-test-postgres \
+  -e POSTGRES_PASSWORD=fischiolab_test \
+  -e POSTGRES_DB=fischiolab_test \
+  -p 127.0.0.1:55432:5432 \
+  -d postgres:17-alpine
+
+TEST_DATABASE_URL=postgres://postgres:fischiolab_test@127.0.0.1:55432/fischiolab_test \
+TEST_DATABASE_SSL=false \
+npm test
+```
+
+Il database di test viene svuotato prima di ciascun file. GitHub Actions crea
+automaticamente un PostgreSQL effimero ed esegue test e build a ogni push.
+
+I test puri del parser FIP, che non richiedono database, possono essere eseguiti
+con:
+
+```bash
+npm run test:unit
+```
+
+## Deploy su Render
+
+Il file `render.yaml` descrive il Web Service:
+
+- branch: `cloud-migration`;
+- build: `npm install --include=dev && npm run build`;
+- start: `npm start`;
+- health check: `/api/health`.
+
+Le variabili segrete vengono inserite dalla dashboard Render e non devono essere
+committate:
+
+- `DATABASE_URL`;
+- `SUPABASE_URL`;
+- `SUPABASE_SERVICE_KEY`;
+- `SESSION_SECRET`;
+- eventuali credenziali SMTP e AI.
+
+Dopo un push su `cloud-migration`, Render esegue automaticamente build e
+deploy. Verificare:
+
+```bash
+curl -i https://fischiolab.onrender.com/api/health
+```
+
+La risposta attesa è `200 {"ok":true}`: il controllo esegue anche una query
+PostgreSQL.
+
+### Keep-alive
+
+Il piano gratuito Render sospende il servizio dopo 15 minuti senza traffico.
+Un monitor HTTP esterno chiama `/api/health` ogni 5 minuti, mantenendo attivi
+sia il processo Render sia il database Supabase.
+
+Il workspace deve mantenere un solo Web Service gratuito: un servizio sempre
+attivo usa quasi tutte le ore mensili incluse.
+
+## Sincronizzazione FIP automatica
+
+Il processo web sincronizza ogni giorno tutte le sorgenti attive. Non è
+necessario creare un secondo Cron Job Render.
+
+```env
+ENABLE_SCHEDULED_SYNC=true
+SCHEDULED_SYNC_TIME=13:15
+SCHEDULED_SYNC_TIMEZONE=Europe/Rome
+SCHEDULED_SYNC_SOURCE_DELAY_MS=2000
+SCHEDULED_SYNC_ALERT_EMAIL=admin@example.com
+```
+
+Lo stato dell’esecuzione è salvato in PostgreSQL:
+
+- un riavvio o deploy non causa una seconda esecuzione nello stesso giorno;
+- se il processo si riavvia dopo l’orario previsto, recupera l’esecuzione;
+- le sorgenti vengono elaborate in sequenza;
+- esito e contatori sono visibili nella pagina **Admin → Sorgenti gare**.
+
+Se SMTP e `SCHEDULED_SYNC_ALERT_EMAIL` sono configurati, gli esiti con avvisi o
+errori generano anche una notifica email.
+
+La sincronizzazione FIP aggiorna gare e arbitri, ma non modifica mai gli
+osservatori interni né i valori bloccati manualmente.
+
+## PDF e storage
+
+Per ogni rapporto vengono generati due PDF. Il nome segue il formato:
 
 ```text
-http://IP_DEL_NAS:3000
+numeroGara_Cognome.pdf
 ```
 
-## Servizio systemd
-
-Copia il servizio:
-
-```bash
-cp systemd/rapporti-arbitrali.service /etc/systemd/system/rapporti-arbitrali.service
-```
-
-Poi:
-
-```bash
-systemctl daemon-reload
-systemctl enable rapporti-arbitrali
-systemctl start rapporti-arbitrali
-systemctl status rapporti-arbitrali
-journalctl -u rapporti-arbitrali -f
-```
-
-Il servizio incluso usa:
-
-```ini
-WorkingDirectory=/volume1/webapps/rapporti-arbitrali
-ExecStart=/usr/bin/node /volume1/webapps/rapporti-arbitrali/server.js
-Environment=PORT=3000
-Environment=STORAGE_DIR=/volume1/rapporti-arbitrali
-Environment=NODE_ENV=production
-```
-
-Se Node non si trova in `/usr/bin/node`, verifica con:
-
-```bash
-which node
-```
-
-e aggiorna `ExecStart`.
-
-## Export PDF
-
-Dal dettaglio rapporto puoi generare due PDF. I file vengono salvati per stagione in:
+In produzione la chiave Storage è:
 
 ```text
-STORAGE_DIR/output/2025-2026/report-ID/
+output/<stagione>/report-<id>/<nome-file>.pdf
 ```
 
-con nomi:
+La Service Key Supabase deve restare esclusivamente lato server.
 
-```text
-numGara_arbitro1.pdf
-numGara_arbitro2.pdf
-```
+## Ruoli e sicurezza
 
-Il PDF contiene intestazione gara, arbitro valutato, valutazioni e commenti. La sezione `Potenzialità` è esclusa.
+- **Admin:** accesso completo.
+- **Formatore:** gare, arbitri e statistiche dei campionati assegnati; modifica
+  dei rapporti secondo la designazione.
+- **Osservatore:** vede e compila soltanto i propri rapporti/gare assegnate.
+- **Arbitro:** sola lettura dei propri rapporti, senza voto numerico e
+  Potenzialità.
 
-## Import Rapporti Storici
+Non esiste registrazione pubblica. Le password sono hashate e le sessioni sono
+token casuali memorizzati nel database. In produzione HTTPS deve usare
+`COOKIE_SECURE=true`.
 
-Per importare PDF storici ben strutturati come report definitivi, prima fai una prova:
+## Roadmap e storico
 
-```bash
-npm run import:legacy-pdfs -- --dry-run /percorso/12801_Moratti.pdf /percorso/12801_Scibetta.pdf
-```
-
-Quando osservatore e arbitri vengono riconosciuti nel DB:
-
-```bash
-npm run import:legacy-pdfs -- --commit /percorso/12801_Moratti.pdf /percorso/12801_Scibetta.pdf
-```
-
-Lo script crea il record nel DB, collega `created_by` all'osservatore trovato per nome, collega gli arbitri anagrafici, e copia i PDF originali in `STORAGE_DIR/output/<stagione>/report-<id>/`. Se gli arbitri non sono ancora presenti, puoi aggiungere `--create-missing-referees`.
-
-Per importare molti PDF insieme, copiali in una cartella e passa il glob:
-
-```bash
-npm run import:legacy-pdfs -- --dry-run /tmp/rapporti-storici/*.pdf
-npm run import:legacy-pdfs -- --commit /tmp/rapporti-storici/*.pdf
-```
-
-## Account arbitri
-
-Gli utenti con ruolo `referee` vedono solo i propri rapporti, senza voto numerico e senza potenzialità nel payload web. Il PDF resta scaricabile solo per la propria scheda.
-
-Per predisporre le credenziali degli arbitri di una stagione:
-
-```bash
-node scripts/seed-referee-accounts.js --season 2025/2026 --output-csv storage/seeds/referees-2025-2026.csv --dry-run
-node scripts/seed-referee-accounts.js --season 2025/2026 --output-csv storage/seeds/referees-2025-2026.csv
-```
-
-Il CSV contiene password in chiaro: consegnarlo offline e cancellarlo dopo la consegna.
-
-## Aggiornamento dell'App sul NAS
-
-Quando apporti modifiche sul Mac e vuoi pubblicarle sul NAS, esegui lo script di deploy dalla radice del progetto:
-
-```bash
-./deploy-nas.sh
-```
-
-Lo script fa in automatico:
-1. Builda il frontend (`npm run build`)
-2. Trasferisce i file modificati sul NAS (esclude `node_modules`, `.env`, `storage`)
-3. Riavvia il server
-
-Lo script apre una connessione SSH riutilizzabile: la password SSH viene chiesta una sola volta e le operazioni successive usano lo stesso canale. Se il NAS richiede anche `sudo`, quella password può essere chiesta una volta nella fase di installazione/riavvio.
-
-### Se hai aggiunto nuove dipendenze npm
-
-Dopo il deploy, collegati via SSH ed esegui:
-
-```bash
-ssh Filippo@192.168.1.93
-cd ~/AnalisiGara
-npm install --omit=dev
-sudo systemctl restart analisi-gara
-```
-
-### Comandi utili sul NAS
-
-```bash
-# Stato del server
-sudo systemctl status analisi-gara
-
-# Log in tempo reale
-journalctl -u analisi-gara -f
-
-# Riavvio manuale
-sudo systemctl restart analisi-gara
-
-# Stato tunnel ngrok
-sudo systemctl status ngrok-analisi
-```
-
-### URL di accesso
-
-| Contesto | URL |
-|---|---|
-| Rete locale | `http://192.168.1.93:3000` |
-| Internet | `https://encircle-outsmart-exploring.ngrok-free.dev` |
-
-## Note Sicurezza
-
-- Non esiste registrazione pubblica.
-- Le password sono hashate, non salvate in chiaro.
-- Le sessioni sono token casuali salvati lato server in SQLite.
-- In rete locale `COOKIE_SECURE=false` va bene; quando passerai a HTTPS imposta `COOKIE_SECURE=true`.
+- [NEXT_STEPS.md](NEXT_STEPS.md): attività ancora aperte e priorità.
+- [CHANGELOG.md](CHANGELOG.md): decisioni e modifiche già consegnate.

@@ -3,12 +3,14 @@ import { dbGet, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 import { listGames, setOfficial, getOfficialRow } from './gameService.js';
 import { resolveRefereeName, resolveObserverName, normalizedNameKey, cleanExternalName } from './nameMatching.js';
+import { listReferees } from './refereeService.js';
 
 // Import/export designazioni via XLSX. Il numero gara è la chiave: il file del
 // designatore aggiorna gare già presenti, mai ne crea di nuove.
 
 const TEMPLATE_COLUMNS = [
   { header: 'Numero gara', key: 'matchNumber', width: 14 },
+  { header: 'Campionato', key: 'competition', width: 18 },
   { header: 'Data', key: 'date', width: 12 },
   { header: 'Ora', key: 'time', width: 8 },
   { header: 'Squadra casa', key: 'teamHome', width: 32 },
@@ -16,7 +18,6 @@ const TEMPLATE_COLUMNS = [
   { header: 'Campo', key: 'venue', width: 36 },
   { header: 'Arbitro 1', key: 'referee1', width: 24 },
   { header: 'Arbitro 2', key: 'referee2', width: 24 },
-  { header: 'Arbitro 3', key: 'referee3', width: 24 },
   { header: 'Osservatore', key: 'observer', width: 24 }
 ];
 
@@ -57,14 +58,71 @@ function officialName(official) {
   return official.refereeName || official.userName || official.externalName || '';
 }
 
+async function addRefereeLists(workbook, games, sportSeason) {
+  const competitions = [...new Set(games.map((game) => game.competition || '').filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'it', { sensitivity: 'base' })
+  );
+  const lists = new Map();
+  if (!competitions.length) return lists;
+
+  const sheet = workbook.addWorksheet('Liste arbitri');
+  for (const [index, competition] of competitions.entries()) {
+    const referees = await listReferees({ competition, season: sportSeason, activeOnly: true });
+    const names = referees.map((referee) => referee.fullName).filter(Boolean);
+    const column = index + 1;
+    sheet.getCell(1, column).value = competition;
+    sheet.getCell(1, column).font = { bold: true };
+    names.forEach((name, rowIndex) => {
+      sheet.getCell(rowIndex + 2, column).value = name;
+    });
+    sheet.getColumn(column).width = Math.max(20, ...names.map((name) => name.length + 2));
+    if (!names.length) continue;
+
+    const rangeName = `Arbitri_${index + 1}`;
+    const columnLetter = sheet.getColumn(column).letter;
+    workbook.definedNames.add(
+      `'Liste arbitri'!$${columnLetter}$2:$${columnLetter}$${names.length + 1}`,
+      rangeName
+    );
+    lists.set(competition, rangeName);
+  }
+  sheet.state = 'veryHidden';
+  return lists;
+}
+
+function applyRefereeDropdown(row, rangeName) {
+  if (!rangeName) return;
+  for (const key of ['referee1', 'referee2']) {
+    row.getCell(key).dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [rangeName],
+      showErrorMessage: true,
+      errorStyle: 'stop',
+      errorTitle: 'Arbitro non valido',
+      error: 'Scegliere un arbitro dal menu del campionato.',
+      showInputMessage: true,
+      promptTitle: 'Arbitri disponibili',
+      prompt: 'Elenco degli arbitri attivi per campionato e stagione.'
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Template scaricabile: un foglio per giornata, precompilato con le gare e le
 // designazioni note. Rigenerarlo dopo una modifica produce il file aggiornato.
 // ---------------------------------------------------------------------------
-export async function buildDesignationsTemplate(sportSeason) {
-  const games = await listGames({ season: sportSeason });
+export async function buildDesignationsTemplate(sportSeason, { phaseIds = [] } = {}) {
+  const selectedPhaseIds = new Set(
+    phaseIds.map(Number).filter((value) => Number.isInteger(value) && value > 0)
+  );
+  const seasonGames = await listGames({ season: sportSeason });
+  const games = selectedPhaseIds.size
+    ? seasonGames.filter((game) => selectedPhaseIds.has(game.competitionSourceId))
+    : seasonGames;
   if (!games.length) {
-    throw new HttpError(404, `Nessuna gara nella stagione ${sportSeason}: sincronizza prima il calendario.`);
+    const scope = selectedPhaseIds.size ? 'nelle fasi selezionate' : `nella stagione ${sportSeason}`;
+    throw new HttpError(404, `Nessuna gara ${scope}: sincronizza prima il calendario.`);
   }
 
   const workbook = new ExcelJS.Workbook();
@@ -76,7 +134,11 @@ export async function buildDesignationsTemplate(sportSeason) {
     'DESIGNAZIONI ARBITRALI — ISTRUZIONI',
     '',
     `Stagione: ${sportSeason}. Un foglio per ogni giornata.`,
-    'Compilare solo le colonne "Arbitro 1", "Arbitro 2", "Arbitro 3" e "Osservatore" (formato: Cognome Nome).',
+    selectedPhaseIds.size
+      ? `Fasi incluse: ${[...new Set(games.map((game) => game.sourceName).filter(Boolean))].join(', ')}.`
+      : 'Fasi incluse: tutte.',
+    'Compilare solo le colonne "Arbitro 1", "Arbitro 2" e "Osservatore".',
+    'Per Arbitro 1 e Arbitro 2 usare il menu a tendina: contiene gli arbitri attivi del campionato.',
     'Non modificare la colonna "Numero gara": è la chiave usata per aggiornare le gare.',
     'Le celle lasciate vuote vengono ignorate: non cancellano designazioni già presenti.',
     'Le altre colonne (data, squadre, campo) sono solo informative.'
@@ -85,6 +147,8 @@ export async function buildDesignationsTemplate(sportSeason) {
     const row = info.addRow([line]);
     if (line === instructions[0]) row.font = { bold: true, size: 14 };
   }
+
+  const refereeLists = await addRefereeLists(workbook, games, sportSeason);
 
   const byMatchday = new Map();
   for (const game of games) {
@@ -106,8 +170,9 @@ export async function buildDesignationsTemplate(sportSeason) {
 
     for (const game of byMatchday.get(matchday)) {
       const scheduled = game.scheduledAt || '';
-      sheet.addRow({
+      const row = sheet.addRow({
         matchNumber: game.matchNumber,
+        competition: game.competition,
         date: scheduled ? scheduled.slice(0, 10).split('-').reverse().join('/') : '',
         time: scheduled.length > 10 ? scheduled.slice(11, 16) : '',
         teamHome: game.teamHome,
@@ -115,9 +180,9 @@ export async function buildDesignationsTemplate(sportSeason) {
         venue: game.venue,
         referee1: officialName(game.officials.referee1),
         referee2: officialName(game.officials.referee2),
-        referee3: officialName(game.officials.referee3),
         observer: officialName(game.officials.observer)
       });
+      applyRefereeDropdown(row, refereeLists.get(game.competition || ''));
     }
   }
 

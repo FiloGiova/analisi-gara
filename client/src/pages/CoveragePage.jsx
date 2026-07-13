@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import MultiSelect from '../components/MultiSelect.jsx';
 import Select from '../components/Select.jsx';
-import { api, ApiError } from '../lib/api.js';
+import { api, ApiError, downloadStatsExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
 
@@ -59,11 +60,11 @@ function updateSort(setSort, key, initialDirection = 'asc') {
     : { key, direction: initialDirection });
 }
 
-function SortableHeader({ label, sort, sortKey, onSort, initialDirection = 'asc', style }) {
+function SortableHeader({ label, sort, sortKey, onSort, initialDirection = 'asc', style, className = '' }) {
   const active = sort.key === sortKey;
   const ariaSort = active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none';
   return (
-    <th aria-sort={ariaSort} style={style}>
+    <th aria-sort={ariaSort} style={style} className={className}>
       <button type="button" className="sortable-header-button" onClick={() => onSort(sortKey, initialDirection)}>
         <span>{label}</span>
         <span className={`sort-indicator ${active ? 'is-active' : ''}`} aria-hidden="true">
@@ -79,6 +80,8 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   const [view, setView] = useState('coverage');
   const [season, setSeason] = useState(globalSeason);
   const [competition, setCompetition] = useState(''); // '' = tutti i campionati
+  const [phaseIds, setPhaseIds] = useState([]); // sorgenti FIP/fasi selezionate (checkbox)
+  const [phaseOptions, setPhaseOptions] = useState([]);
   const [band, setBand] = useState(''); // '' = tutte le fasce
   const [search, setSearch] = useState(''); // filtro nome/cognome/tessera
   const [coverage, setCoverage] = useState(null);
@@ -86,13 +89,14 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   const [employment, setEmployment] = useState(null);
   const [detail, setDetail] = useState(null);
   const [coverageSort, setCoverageSort] = useState({ key: 'name', direction: 'asc' });
-  const [employmentSort, setEmploymentSort] = useState({ key: 'games', direction: 'desc' });
+  const [employmentSort, setEmploymentSort] = useState({ key: 'name', direction: 'asc' });
   const [matrixSort, setMatrixSort] = useState({ key: 'observer', direction: 'asc' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setSeason(globalSeason);
+    setPhaseIds([]);
   }, [globalSeason]);
 
   useEffect(() => {
@@ -101,18 +105,20 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
     setError('');
     setDetail(null);
     Promise.all([
-      api.getCoverage({ season, competition, band }),
-      api.getMatrix({ season, competition, band }),
-      api.getEmployment({ season, competition, band })
+      api.getStatsPhases({ season, competition }),
+      api.getCoverage({ season, competition, band, phaseIds }),
+      api.getMatrix({ season, competition, band, phaseIds }),
+      api.getEmployment({ season, competition, band, phaseIds })
     ])
-      .then(([cov, mat, emp]) => {
+      .then(([phaseData, cov, mat, emp]) => {
+        setPhaseOptions(phaseData.phases || []);
         setCoverage(cov);
         setMatrix(mat);
         setEmployment(emp);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Impossibile caricare i visionamenti.'))
       .finally(() => setLoading(false));
-  }, [canAccess, season, competition, band]);
+  }, [canAccess, season, competition, phaseIds, band]);
 
   if (!canAccess) {
     return <div className="empty-state"><h2>Sezione riservata ad amministratori e formatori</h2></div>;
@@ -120,11 +126,35 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
 
   async function openDetail(observer, referee) {
     try {
-      const data = await api.getMatrixDetail({ season, competition, observerKey: observer.key, refereeId: referee.refereeId });
+      const data = await api.getMatrixDetail({
+        season,
+        competition,
+        phaseIds,
+        observerKey: observer.key,
+        refereeId: referee.refereeId
+      });
       setDetail({ observer, referee, ...data });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Dettaglio non disponibile.');
     }
+  }
+
+  function handleExport() {
+    const sort = view === 'coverage'
+      ? coverageSort
+      : view === 'employment'
+        ? employmentSort
+        : matrixSort;
+    downloadStatsExport({
+      view,
+      season,
+      competition,
+      band,
+      phaseIds,
+      search,
+      sortKey: sort.key,
+      sortDirection: sort.direction
+    });
   }
 
   const searchQuery = search.trim().toLowerCase();
@@ -143,9 +173,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
     return ({
       name: row.fullName,
       completed: row.completedCount || 0,
-      observers: row.distinctObservers || 0,
-      last: row.lastCompletedDate ? new Date(row.lastCompletedDate).getTime() : 0,
-      scheduled: row.scheduledCount || 0
+      last: row.lastCompletedDate ? new Date(row.lastCompletedDate).getTime() : 0
     })[key];
   });
   const visibleMatrixReferees = (matrix?.referees || []).filter(matchesSearch);
@@ -195,12 +223,15 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
               Impiego arbitri
             </button>
           </div>
+          <button type="button" className="ghost-button" onClick={handleExport} disabled={loading}>
+            Esporta vista XLSX
+          </button>
         </div>
         <div className="games-filters-row" style={{ marginTop: '12px' }}>
           <div style={{ flex: '0 1 220px' }}>
             <Select
               value={season}
-              onChange={setSeason}
+              onChange={(value) => { setSeason(value); setPhaseIds([]); }}
               placeholder="Stagione statistiche"
               options={seasons.map((item) => ({
                 value: item,
@@ -220,9 +251,21 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
           <div style={{ flex: '0 1 240px' }}>
             <Select
               value={competition}
-              onChange={setCompetition}
+              onChange={(value) => { setCompetition(value); setPhaseIds([]); }}
               placeholder="Tutti i campionati"
               options={competitionSelectOptions}
+            />
+          </div>
+          <div className="games-filter-fase">
+            <MultiSelect
+              values={phaseIds}
+              onChange={setPhaseIds}
+              allLabel={phaseOptions.length ? 'Tutte le fasi' : 'Nessuna fase disponibile'}
+              options={phaseOptions.map((item) => ({
+                value: String(item.id),
+                label: competition || !item.competition ? item.name : `${item.name} · ${item.competition}`
+              }))}
+              disabled={!phaseOptions.length}
             />
           </div>
           <div style={{ flex: '0 1 180px' }}>
@@ -255,9 +298,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                   <tr>
                     <SortableHeader label="Arbitro" sort={coverageSort} sortKey="name" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
                     <SortableHeader label="Compl." sort={coverageSort} sortKey="completed" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
-                    <SortableHeader label="Oss. diversi" sort={coverageSort} sortKey="observers" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
                     <SortableHeader label="Ultimo" sort={coverageSort} sortKey="last" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
-                    <SortableHeader label="Progr." sort={coverageSort} sortKey="scheduled" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
                     {coverage.matchdays.map((m) => (
                       <SortableHeader
                         key={m}
@@ -273,18 +314,15 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 </thead>
                 <tbody>
                   {sortedCoverageReferees.map((r) => (
-                    <tr key={r.refereeId} className={r.active ? '' : 'is-disabled'}>
+                    <tr key={r.refereeId}>
                       <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                         {r.fullName}
-                        {!r.active ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (inattivo)</span> : null}
                       </td>
                       <td style={{ fontWeight: 800, color: r.completedCount ? 'var(--blue)' : 'var(--muted-2)' }}>{r.completedCount}</td>
-                      <td>{r.distinctObservers || '—'}</td>
                       <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>
                         {formatDate(r.lastCompletedDate)}
                         {r.daysSinceLast !== null ? ` (${r.daysSinceLast} gg)` : ''}
                       </td>
-                      <td>{r.scheduledCount || '—'}</td>
                       {coverage.matchdays.map((m) => {
                         const entries = r.timeline?.[m] || [];
                         return (
@@ -346,11 +384,17 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
               return <div className="empty-state" style={{ padding: '24px' }}>Nessuna designazione in questa stagione.</div>;
             }
             return (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="referee-table">
+              <div className="stats-table-scroll">
+                <table className="referee-table stats-employment-table">
                   <thead>
                     <tr>
-                      <SortableHeader label="Arbitro" sort={employmentSort} sortKey="name" onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)} />
+                      <SortableHeader
+                        label="Arbitro"
+                        sort={employmentSort}
+                        sortKey="name"
+                        onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)}
+                        className="stats-sticky-column"
+                      />
                       <SortableHeader label="Gare" sort={employmentSort} sortKey="games" initialDirection="desc" onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)} />
                       <SortableHeader label="Ultima" sort={employmentSort} sortKey="last" initialDirection="desc" onSort={(key, direction) => updateSort(setEmploymentSort, key, direction)} />
                       {employment.matchdays.map((m) => (
@@ -368,8 +412,8 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                   </thead>
                   <tbody>
                     {visible.map((r) => (
-                      <tr key={r.refereeId} className={r.active ? '' : 'is-disabled'}>
-                        <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      <tr key={r.refereeId}>
+                        <td className="stats-sticky-column" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                           <button
                             type="button"
                             className="ghost-button"
@@ -378,7 +422,6 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                           >
                             {r.fullName}
                           </button>
-                          {!r.active ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (inattivo)</span> : null}
                         </td>
                         <td style={{ fontWeight: 800, color: r.totalGames ? 'var(--blue)' : 'var(--muted-2)' }}>{r.totalGames}</td>
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDate(r.lastDate)}</td>

@@ -4,26 +4,25 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'analisigara-test-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fischiolab-report-game-'));
 process.env.STORAGE_DIR = tempDir;
-process.env.DATABASE_PATH = path.join(tempDir, 'test.sqlite');
 
-const { initializeDatabase, getDb, closeDatabase } = await import('../src/database/connection.js');
+const { setupTestDatabase, closeTestDatabase, insertId, dbGet, dbRun } = await import('./helpers/testDatabase.js');
+const { initializeDatabase } = await import('../src/database/connection.js');
 const { createReport } = await import('../src/services/reportService.js');
 const { createGame, getGame } = await import('../src/services/gameService.js');
 
-initializeDatabase();
+await setupTestDatabase();
 
-const observerUserId = getDb()
-  .prepare("INSERT INTO users (username, password_hash, display_name, role) VALUES ('oss', 'x', 'Osservatore Test', 'observer')")
-  .run().lastInsertRowid;
-const otherUserId = getDb()
-  .prepare("INSERT INTO users (username, password_hash, display_name, role) VALUES ('admin', 'x', 'Amministratore', 'admin')")
-  .run().lastInsertRowid;
+const observerUserId = await insertId(
+  "INSERT INTO users (username, password_hash, display_name, role) VALUES ('oss', 'x', 'Osservatore Test', 'observer')"
+);
+const otherUserId = await insertId(
+  "INSERT INTO users (username, password_hash, display_name, role) VALUES ('admin', 'x', 'Amministratore', 'admin')"
+);
+const observerUser = { id: observerUserId, role: 'observer', displayName: 'Osservatore Test', username: 'oss' };
 
-const observerUser = { id: Number(observerUserId), role: 'observer', displayName: 'Osservatore Test', username: 'oss' };
-
-const game = createGame({
+const game = await createGame({
   data: {
     sportSeason: '2025/2026',
     matchNumber: '000311',
@@ -35,50 +34,45 @@ const game = createGame({
   source: 'manual'
 });
 
-test.after(() => {
-  closeDatabase();
+test.after(async () => {
+  await closeTestDatabase();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test('un rapporto creato dalla gara resta collegato e valorizza observer_id', () => {
-  const report = createReport({
+test('un rapporto creato dalla gara resta collegato e valorizza observer_id', async () => {
+  const report = await createReport({
     payload: { gameId: game.id, reportDate: '2025-12-17', matchNumber: '000311' },
     status: 'draft',
     user: observerUser
   });
 
   assert.equal(report.gameId, game.id);
-  assert.equal(report.observerId, observerUser.id, "per un osservatore l'observer_id coincide con l'autore");
+  assert.equal(report.observerId, observerUser.id);
   assert.equal(report.observerName, 'Osservatore Test');
 
-  const linked = getGame(game.id);
+  const linked = await getGame(game.id);
   assert.equal(linked.reportId, report.id);
   assert.equal(linked.derivedState, 'rapporto_bozza');
 });
 
-test('un secondo rapporto per la stessa gara richiede conferma esplicita', () => {
-  assert.throws(
-    () =>
-      createReport({
-        payload: { gameId: game.id, reportDate: '2025-12-17' },
-        status: 'draft',
-        user: observerUser
-      }),
-    (err) => err.statusCode === 409 && err.details?.requiresConfirmation === true
+test('un secondo rapporto per la stessa gara richiede conferma esplicita', async () => {
+  await assert.rejects(
+    () => createReport({ payload: { gameId: game.id, reportDate: '2025-12-17' }, status: 'draft', user: observerUser }),
+    (error) => error.statusCode === 409 && error.details?.requiresConfirmation === true
   );
 
-  const confirmed = createReport({
+  const confirmed = await createReport({
     payload: { gameId: game.id, reportDate: '2025-12-17' },
     status: 'draft',
     user: observerUser,
     allowDuplicate: true
   });
-  assert.ok(confirmed.id, 'con conferma esplicita il duplicato è consentito');
-  getDb().prepare('DELETE FROM reports WHERE id = ?').run(confirmed.id);
+  assert.ok(confirmed.id);
+  await dbRun('DELETE FROM reports WHERE id = ?', [confirmed.id]);
 });
 
-test('i rapporti senza gara continuano a funzionare come prima', () => {
-  const report = createReport({
+test('i rapporti senza gara continuano a funzionare come prima', async () => {
+  const report = await createReport({
     payload: { reportDate: '2025-11-02', matchNumber: '999999' },
     status: 'draft',
     user: observerUser
@@ -87,32 +81,20 @@ test('i rapporti senza gara continuano a funzionare come prima', () => {
   assert.equal(report.sportSeason, '2025/2026');
 });
 
-test('il backfill valorizza observer_id solo quando il nome coincide con il creatore', () => {
-  const db = getDb();
-  const certain = db
-    .prepare(
-      `INSERT INTO reports (status, observer_name, report_date, payload_json, created_by)
-       VALUES ('final', 'Osservatore Test', '2024-10-05', '{}', ?)`
-    )
-    .run(observerUserId).lastInsertRowid;
-  const uncertain = db
-    .prepare(
-      `INSERT INTO reports (status, observer_name, report_date, payload_json, created_by)
-       VALUES ('final', 'Persona Esterna', '2024-10-05', '{}', ?)`
-    )
-    .run(otherUserId).lastInsertRowid;
-
-  // Il backfill gira a ogni avvio: rieseguire l'inizializzazione lo applica.
-  initializeDatabase();
-
-  assert.equal(
-    db.prepare('SELECT observer_id FROM reports WHERE id = ?').get(certain).observer_id,
-    Number(observerUserId),
-    'nome coincidente con il display_name del creatore: backfill applicato'
+test('il backfill valorizza observer_id solo quando il nome coincide con il creatore', async () => {
+  const certain = await insertId(
+    `INSERT INTO reports (status, observer_name, report_date, payload_json, created_by)
+     VALUES ('final', 'Osservatore Test', '2024-10-05', '{}', ?)`,
+    [observerUserId]
   );
-  assert.equal(
-    db.prepare('SELECT observer_id FROM reports WHERE id = ?').get(uncertain).observer_id,
-    null,
-    'semantica incerta: nessun backfill'
+  const uncertain = await insertId(
+    `INSERT INTO reports (status, observer_name, report_date, payload_json, created_by)
+     VALUES ('final', 'Persona Esterna', '2024-10-05', '{}', ?)`,
+    [otherUserId]
   );
+
+  await initializeDatabase();
+
+  assert.equal((await dbGet('SELECT observer_id FROM reports WHERE id = ?', [certain])).observer_id, observerUserId);
+  assert.equal((await dbGet('SELECT observer_id FROM reports WHERE id = ?', [uncertain])).observer_id, null);
 });

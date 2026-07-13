@@ -33,6 +33,7 @@ const SYNC_STATUS_LABELS = {
 
 export default function AdminSourcesPage({ currentUser, season }) {
   const [sources, setSources] = useState([]);
+  const [scheduledSync, setScheduledSync] = useState(null);
   const [form, setForm] = useState(() => emptyForm(season));
   const [showForm, setShowForm] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
@@ -54,6 +55,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
     try {
       const data = await api.listSources({ season });
       setSources(data.sources || []);
+      setScheduledSync(data.scheduledSync || null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Impossibile caricare le sorgenti.');
     } finally {
@@ -211,6 +213,35 @@ export default function AdminSourcesPage({ currentUser, season }) {
 
       {error ? <div className="error-banner">{error}</div> : null}
       {success ? <div className="success-banner">{success}</div> : null}
+
+      {scheduledSync ? (
+        <section className="toolbar-card">
+          <div className="section-heading" style={{ marginBottom: 0 }}>
+            <div>
+              <h2>Sincronizzazione automatica</h2>
+              <p>
+                {scheduledSync.enabled
+                  ? `Attiva ogni giorno alle ${scheduledSync.time} (${scheduledSync.timezone}).`
+                  : 'Disattivata nelle variabili d’ambiente.'}
+                {' '}Vengono elaborate in sequenza soltanto le sorgenti attive.
+                {scheduledSync.alertsEnabled ? ' Gli errori vengono notificati via email.' : ''}
+              </p>
+              {scheduledSync.lastRunDate ? (
+                <p style={{ marginTop: '5px' }}>
+                  Ultima esecuzione: {scheduledSync.lastRunDate} ·{' '}
+                  {SYNC_STATUS_LABELS[scheduledSync.status] || scheduledSync.status}
+                  {scheduledSync.summary?.totals
+                    ? ` · ${scheduledSync.summary.totals.success} riuscite, ${scheduledSync.summary.totals.partial} con avvisi, ${scheduledSync.summary.totals.error} errori`
+                    : ''}
+                </p>
+              ) : null}
+            </div>
+            <span className={`status-pill status-${scheduledSync.enabled ? scheduledSync.status : 'idle'}`}>
+              {scheduledSync.enabled ? (SYNC_STATUS_LABELS[scheduledSync.status] || 'In attesa') : 'Disattivata'}
+            </span>
+          </div>
+        </section>
+      ) : null}
 
       {syncResult ? (
         <section className="common-card">

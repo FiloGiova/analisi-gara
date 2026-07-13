@@ -52,7 +52,17 @@ export const config = {
   aiEnabled: String(process.env.ENABLE_AI_FEATURES || 'false').toLowerCase() === 'true',
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   anthropicModel: 'claude-haiku-4-5-20251001',
-  anthropicApiVersion: '2023-06-01'
+  anthropicApiVersion: '2023-06-01',
+  scheduledSync: {
+    enabled: String(process.env.ENABLE_SCHEDULED_SYNC || 'false').toLowerCase() === 'true',
+    time: /^([01]\d|2[0-3]):[0-5]\d$/.test(process.env.SCHEDULED_SYNC_TIME || '')
+      ? process.env.SCHEDULED_SYNC_TIME
+      : '13:15',
+    timezone: process.env.SCHEDULED_SYNC_TIMEZONE || 'Europe/Rome',
+    sourceDelayMs: Math.max(0, Number(process.env.SCHEDULED_SYNC_SOURCE_DELAY_MS || 2000)),
+    pollMs: Math.max(30000, Number(process.env.SCHEDULED_SYNC_POLL_MS || 60000)),
+    alertEmail: process.env.SCHEDULED_SYNC_ALERT_EMAIL || ''
+  }
 };
 
 export function getSessionMaxAgeMs() {
