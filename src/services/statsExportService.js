@@ -62,7 +62,7 @@ function coverageRows(data, search, sort) {
     }
     return {
       name: row.fullName,
-      completed: row.completedCount || 0,
+      total: row.totalCount ?? ((row.completedCount || 0) + (row.draftCount || 0) + (row.scheduledCount || 0)),
       last: row.lastCompletedDate ? new Date(row.lastCompletedDate).getTime() : 0
     }[key];
   });
@@ -110,7 +110,8 @@ function decorateWorksheet(sheet, { title, filters, columnCount, headerRowNumber
   header.alignment = { vertical: 'middle', wrapText: true };
   header.height = 28;
 
-  sheet.views = [{ state: 'frozen', ySplit: headerRowNumber, xSplit: title === VIEW_LABELS.employment ? 1 : 0 }];
+  const frozenColumns = title === VIEW_LABELS.coverage ? 2 : 1;
+  sheet.views = [{ state: 'frozen', ySplit: headerRowNumber, xSplit: frozenColumns }];
   sheet.autoFilter = {
     from: { row: headerRowNumber, column: 1 },
     to: { row: headerRowNumber, column: columnCount }
@@ -186,17 +187,17 @@ export async function buildStatsWorkbook({
   let widths;
 
   if (view === 'coverage') {
-    headers = ['Arbitro', 'Completati', 'Ultimo', ...data.matchdays.map((matchday) => `G${matchday}`)];
+    headers = ['Arbitro', 'NUM', 'Ultimo', ...data.matchdays.map((matchday) => `G${matchday}`)];
     rows = coverageRows(data, search, sort).map((referee) => [
       referee.fullName,
-      referee.completedCount || 0,
+      referee.totalCount ?? ((referee.completedCount || 0) + (referee.draftCount || 0) + (referee.scheduledCount || 0)),
       referee.lastCompletedDate
         ? `${formatDate(referee.lastCompletedDate)}${referee.daysSinceLast !== null ? ` (${referee.daysSinceLast} gg)` : ''}`
         : '—',
       ...data.matchdays.map((matchday) => {
         const entries = referee.timeline?.[matchday] || [];
         return entries.length
-          ? entries.map((entry) => `${entry.type === 'scheduled' ? '○' : '✓'} ${entry.observerLabel}`).join('\n')
+          ? entries.map((entry) => `${entry.type === 'scheduled' ? '○' : entry.type === 'draft' ? '◐' : '✓'} ${entry.observerLabel}`).join('\n')
           : '—';
       })
     ]);

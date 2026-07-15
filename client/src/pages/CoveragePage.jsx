@@ -180,7 +180,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
     }
     return ({
       name: row.fullName,
-      completed: row.completedCount || 0,
+      total: row.totalCount ?? ((row.completedCount || 0) + (row.draftCount || 0) + (row.scheduledCount || 0)),
       last: row.lastCompletedDate ? new Date(row.lastCompletedDate).getTime() : 0
     })[key];
   });
@@ -293,7 +293,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
           <div className="section-heading">
             <div>
               <h2>Copertura arbitri ({visibleReferees.length})</h2>
-              <p>Nelle colonne giornata: nome osservatore — ✓ completato, ○ programmato.</p>
+              <p>Nelle colonne giornata: nome osservatore — ✓ completato, ◐ bozza, ○ programmato.</p>
             </div>
           </div>
           {visibleReferees.length === 0 ? (
@@ -308,9 +308,16 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                       sort={coverageSort}
                       sortKey="name"
                       onSort={(key, direction) => updateSort(setCoverageSort, key, direction)}
-                      className="stats-sticky-column"
+                      className="stats-sticky-column stats-sticky-name-column"
                     />
-                    <SortableHeader label="Compl." sort={coverageSort} sortKey="completed" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
+                    <SortableHeader
+                      label="NUM"
+                      sort={coverageSort}
+                      sortKey="total"
+                      initialDirection="desc"
+                      onSort={(key, direction) => updateSort(setCoverageSort, key, direction)}
+                      className="stats-sticky-num-column"
+                    />
                     <SortableHeader label="Ultimo" sort={coverageSort} sortKey="last" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
                     {coverage.matchdays.map((m) => (
                       <SortableHeader
@@ -328,17 +335,24 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 <tbody>
                   {sortedCoverageReferees.map((r) => (
                     <tr key={r.refereeId}>
-                      <td className="stats-sticky-column" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      <td className="stats-sticky-column stats-sticky-name-column" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                         <button
                           type="button"
                           className="ghost-button"
-                          style={{ padding: '1px 6px', fontWeight: 600 }}
+                          style={{ padding: '1px 6px', fontWeight: 600, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}
                           onClick={() => navigate(`/admin/referees/${r.refereeId}`)}
+                          title={r.fullName}
                         >
                           {r.fullName}
                         </button>
                       </td>
-                      <td style={{ fontWeight: 800, color: r.completedCount ? 'var(--blue)' : 'var(--muted-2)' }}>{r.completedCount}</td>
+                      <td
+                        className="stats-sticky-num-column"
+                        style={{ fontWeight: 800, color: r.totalCount ? 'var(--blue)' : 'var(--muted-2)', textAlign: 'center' }}
+                        title={`${r.completedCount || 0} completati · ${r.draftCount || 0} in bozza · ${r.scheduledCount || 0} programmati`}
+                      >
+                        {r.totalCount ?? ((r.completedCount || 0) + (r.draftCount || 0) + (r.scheduledCount || 0))}
+                      </td>
                       <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>
                         {formatDate(r.lastCompletedDate)}
                         {r.daysSinceLast !== null ? ` (${r.daysSinceLast} gg)` : ''}
@@ -358,16 +372,22 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                                       padding: '1px 6px',
                                       fontSize: '0.75rem',
                                       fontStyle: entry.type === 'scheduled' ? 'italic' : 'normal',
-                                      color: entry.type === 'scheduled' ? 'var(--muted)' : 'inherit'
+                                      color: entry.type === 'scheduled'
+                                        ? 'var(--muted)'
+                                        : entry.type === 'draft'
+                                          ? 'var(--draft)'
+                                          : 'inherit'
                                     }}
                                     onClick={() =>
                                       entry.reportId ? navigate(`/reports/${entry.reportId}`) : entry.gameId ? navigate(`/games/${entry.gameId}`) : null
                                     }
                                     title={entry.type === 'scheduled'
                                       ? 'Visionamento programmato · apri la gara'
-                                      : `Voto: ${entry.vote || 'non indicato'} · apri il rapporto`}
+                                      : entry.type === 'draft'
+                                        ? 'Rapporto in bozza · apri il rapporto'
+                                        : `Voto: ${entry.vote || 'non indicato'} · apri il rapporto`}
                                   >
-                                    {entry.type === 'scheduled' ? '○' : '✓'} {entry.observerLabel}
+                                    {entry.type === 'scheduled' ? '○' : entry.type === 'draft' ? '◐' : '✓'} {entry.observerLabel}
                                   </button>
                                 ))}
                           </td>
@@ -571,10 +591,15 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 <ul style={{ paddingLeft: '18px', display: 'grid', gap: '4px', marginTop: '6px' }}>
                   {detail.scheduled.map((item, i) => (
                     <li key={i} style={{ color: 'var(--muted)' }}>
-                      ○ {formatDate(item.date)} · gara {formatMatchNumber(item.matchNumber)} · {item.teams}{' '}
-                      {item.gameId ? (
-                        <button type="button" className="ghost-button" style={{ padding: '1px 8px' }} onClick={() => navigate(`/games/${item.gameId}`)}>
-                          Apri gara
+                      {item.type === 'draft' ? '◐' : '○'} {formatDate(item.date)} · gara {formatMatchNumber(item.matchNumber)} · {item.teams}{' '}
+                      {item.reportId || item.gameId ? (
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          style={{ padding: '1px 8px' }}
+                          onClick={() => navigate(item.reportId ? `/reports/${item.reportId}` : `/games/${item.gameId}`)}
+                        >
+                          {item.reportId ? 'Apri bozza' : 'Apri gara'}
                         </button>
                       ) : null}
                     </li>

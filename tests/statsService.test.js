@@ -44,19 +44,21 @@ await setOfficial(g2.id, { role: 'observer', userId: obs1, source: 'manual' }, {
 
 await addReport({ status: 'final', date: '2025-10-05', observerId: obs1, observerName: 'Primo Osservatore', ref1: refA, ref2: refB });
 await addReport({ status: 'final', date: '2025-11-02', observerId: obs2, observerName: 'Secondo Osservatore', ref1: refA, ref2: refC });
-await addReport({ status: 'draft', date: '2025-11-20', observerId: obs3, observerName: 'Terzo Osservatore', ref1: refA, ref2: refB });
+const draftReportId = await addReport({ status: 'draft', date: '2025-11-20', observerId: obs3, observerName: 'Terzo Osservatore', ref1: refA, ref2: refB });
 
 test.after(async () => {
   await closeTestDatabase();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test('la copertura conta i definitivi, esclude le bozze e distingue i programmati', async () => {
+test('la copertura distingue definitivi, bozze e programmati e ne espone il totale', async () => {
   const { referees } = await getCoverage({ season: SEASON });
   const alfa = referees.find((referee) => referee.refereeId === refA);
   assert.equal(alfa.completedCount, 2);
+  assert.equal(alfa.draftCount, 1);
   assert.equal(alfa.distinctObservers, 2);
   assert.equal(alfa.scheduledCount, 1);
+  assert.equal(alfa.totalCount, 4);
   assert.equal(alfa.lastCompletedDate, '2025-11-02');
   const completedEntry = Object.values(alfa.timeline).flat().find((entry) => entry.type === 'completed');
   assert.equal(completedEntry.vote, '68');
@@ -64,7 +66,11 @@ test('la copertura conta i definitivi, esclude le bozze e distingue i programmat
 
   const beta = referees.find((referee) => referee.refereeId === refB);
   assert.equal(beta.completedCount, 1);
+  assert.equal(beta.draftCount, 1);
   assert.equal(beta.scheduledCount, 1);
+  assert.equal(beta.totalCount, 3);
+  const draftEntry = Object.values(beta.timeline).flat().find((entry) => entry.type === 'draft');
+  assert.equal(draftEntry.reportId, draftReportId);
 });
 
 test('la matrice è calcolata e le celle riflettono completati e programmati', async () => {
@@ -76,7 +82,7 @@ test('la matrice è calcolata e le celle riflettono completati e programmati', a
   assert.equal(find(obs1, refA).completed, 1);
   assert.equal(find(obs1, refA).scheduled, 1);
   assert.equal(find(obs2, refC).completed, 1);
-  assert.equal(find(obs3, refA), undefined);
+  assert.equal(find(obs3, refA).scheduled, 1);
 });
 
 test('il dettaglio cella elenca gare e rapporti', async () => {
@@ -84,6 +90,11 @@ test('il dettaglio cella elenca gare e rapporti', async () => {
   assert.equal(detail.completed.length, 1);
   assert.equal(detail.scheduled.length, 1);
   assert.equal(detail.scheduled[0].matchNumber, '000202');
+
+  const draftDetail = await getMatrixDetail({ season: SEASON, observerKey: `u${obs3}`, refereeId: refA });
+  assert.equal(draftDetail.scheduled.length, 1);
+  assert.equal(draftDetail.scheduled[0].type, 'draft');
+  assert.equal(draftDetail.scheduled[0].reportId, draftReportId);
 });
 
 test('suggerimenti in diversificazione: chi non ha mai visto i due arbitri è in cima', async () => {
@@ -130,6 +141,20 @@ test('l’export XLSX replica vista, ricerca e ordinamento delle statistiche', a
 
   const buffer = await workbook.xlsx.writeBuffer();
   assert.ok(buffer.byteLength > 1000, 'il file XLSX è stato serializzato');
+});
+
+test('l’export copertura usa NUM come totale e blocca arbitro e conteggio', async () => {
+  const workbook = await buildStatsWorkbook({
+    view: 'coverage',
+    season: SEASON,
+    search: 'Alfa',
+    sortKey: 'total',
+    sortDirection: 'desc'
+  });
+  const sheet = workbook.getWorksheet('Copertura arbitri');
+  assert.deepEqual(sheet.getRow(5).values.slice(1, 4), ['Arbitro', 'NUM', 'Ultimo']);
+  assert.equal(sheet.getCell('B6').value, 4);
+  assert.equal(sheet.views[0].xSplit, 2);
 });
 
 test('un impegno lo stesso giorno penalizza pesantemente il candidato', async () => {

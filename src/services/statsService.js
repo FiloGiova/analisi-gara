@@ -3,17 +3,17 @@ import { HttpError } from '../utils/httpError.js';
 
 // Visionamenti derivati da rapporti e designazioni: mai registrati a mano.
 // - completato: rapporto DEFINITIVO (una riga per ciascuno dei due arbitri);
-// - programmato: gara con osservatore e arbitri designati, senza rapporto
-//   definitivo (le bozze restano "programmato");
+// - bozza: rapporto non ancora definitivo;
+// - programmato: gara con osservatore e arbitri designati, senza rapporto;
 // - le gare annullate non contano.
 
 function observerKeyOf(observerId, observerName) {
   return observerId ? `u${observerId}` : `n:${String(observerName || '').trim().toLowerCase()}`;
 }
 
-async function loadCompleted(season, competitions = [], phaseIds = []) {
-  const clauses = ["r.status = 'final'", 'r.sport_season = ?'];
-  const params = [season];
+async function loadReportEvaluations(status, type, season, competitions = [], phaseIds = []) {
+  const clauses = ['r.status = ?', 'r.sport_season = ?'];
+  const params = [status, season];
   // Filtrando per campionato/i si tiene solo ciò che è collegato a una gara di
   // quelle competizioni (i rapporti storici senza gara restano fuori).
   if (competitions.length) {
@@ -45,7 +45,7 @@ async function loadCompleted(season, competitions = [], phaseIds = []) {
     for (const { refereeId, vote } of evaluations) {
       if (!refereeId) continue;
       rows.push({
-        type: 'completed',
+        type,
         reportId: report.report_id,
         gameId: report.game_id,
         date: report.report_date,
@@ -61,6 +61,14 @@ async function loadCompleted(season, competitions = [], phaseIds = []) {
     }
   }
   return rows;
+}
+
+function loadCompleted(season, competitions = [], phaseIds = []) {
+  return loadReportEvaluations('final', 'completed', season, competitions, phaseIds);
+}
+
+function loadDrafts(season, competitions = [], phaseIds = []) {
+  return loadReportEvaluations('draft', 'draft', season, competitions, phaseIds);
 }
 
 async function loadScheduled(season, competitions = [], phaseIds = []) {
@@ -82,7 +90,7 @@ async function loadScheduled(season, competitions = [], phaseIds = []) {
        JOIN game_officials ref ON ref.game_id = g.id AND ref.role IN ('referee1','referee2','referee3') AND ref.referee_id IS NOT NULL
        JOIN users u ON u.id = obs.user_id
       WHERE ${clauses.join(' AND ')}
-        AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.game_id = g.id AND r.status = 'final')`,
+        AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.game_id = g.id)`,
     params
   );
   return rows.map((row) => ({
@@ -186,6 +194,7 @@ export async function listStatsPhases({ season, competitions = [] }) {
 // ---------------------------------------------------------------------------
 export async function getCoverage({ season, competitions = [], band = '', phaseIds = [] }) {
   const completed = await loadCompleted(season, competitions, phaseIds);
+  const drafts = await loadDrafts(season, competitions, phaseIds);
   const scheduled = await loadScheduled(season, competitions, phaseIds);
   const bandIds = await loadBandRefereeIds(season, competitions, band);
 
@@ -203,6 +212,7 @@ export async function getCoverage({ season, competitions = [], band = '', phaseI
         category: info?.season_category || '',
         active: isStatsActiveReferee(info),
         completedCount: 0,
+        draftCount: 0,
         distinctObservers: new Set(),
         lastCompletedDate: null,
         scheduledCount: 0,
@@ -218,7 +228,7 @@ export async function getCoverage({ season, competitions = [], band = '', phaseI
     if (isStatsActiveReferee(info) && shouldPadReferee(info, competitions) && (!bandIds || bandIds.has(info.id))) entryFor(info.id);
   }
 
-  const visibleRows = [...completed, ...scheduled].filter((row) => (
+  const visibleRows = [...completed, ...drafts, ...scheduled].filter((row) => (
     isStatsActiveReferee(refereeInfo.get(row.refereeId)) && (!bandIds || bandIds.has(row.refereeId))
   ));
   for (const row of visibleRows) {
@@ -227,6 +237,8 @@ export async function getCoverage({ season, competitions = [], band = '', phaseI
       entry.completedCount += 1;
       entry.distinctObservers.add(row.observerKey);
       if (!entry.lastCompletedDate || row.date > entry.lastCompletedDate) entry.lastCompletedDate = row.date;
+    } else if (row.type === 'draft') {
+      entry.draftCount += 1;
     } else {
       entry.scheduledCount += 1;
     }
@@ -253,6 +265,8 @@ export async function getCoverage({ season, competitions = [], band = '', phaseI
       category: entry.category,
       active: entry.active,
       completedCount: entry.completedCount,
+      draftCount: entry.draftCount,
+      totalCount: entry.completedCount + entry.draftCount + entry.scheduledCount,
       distinctObservers: entry.distinctObservers.size,
       lastCompletedDate: entry.lastCompletedDate,
       daysSinceLast: daysBetween(entry.lastCompletedDate),
@@ -363,6 +377,7 @@ export async function getEmployment({ season, competitions = [], band = '', phas
 // ---------------------------------------------------------------------------
 export async function getMatrix({ season, competitions = [], band = '', phaseIds = [] }) {
   const completed = await loadCompleted(season, competitions, phaseIds);
+  const drafts = await loadDrafts(season, competitions, phaseIds);
   const scheduled = await loadScheduled(season, competitions, phaseIds);
   const bandIds = await loadBandRefereeIds(season, competitions, band);
 
@@ -375,7 +390,7 @@ export async function getMatrix({ season, competitions = [], band = '', phaseIds
     refereeRows.map((r) => [r.id, { fullName: `${r.last_name} ${r.first_name}`.trim(), license: r.license_number || '' }])
   );
 
-  for (const row of [...completed, ...scheduled]) {
+  for (const row of [...completed, ...drafts, ...scheduled]) {
     if (!refereeInfo.has(row.refereeId)) continue;
     if (bandIds && !bandIds.has(row.refereeId)) continue;
     if (!observers.has(row.observerKey)) {
@@ -408,10 +423,13 @@ export async function getMatrixDetail({ season, competitions = [], phaseIds = []
   );
   if (!activeRefereeIds.has(refereeId)) return { completed: [], scheduled: [] };
   const completed = (await loadCompleted(season, competitions, phaseIds)).filter((r) => r.observerKey === observerKey && r.refereeId === refereeId);
-  const scheduled = (await loadScheduled(season, competitions, phaseIds)).filter((r) => r.observerKey === observerKey && r.refereeId === refereeId);
+  const pending = [
+    ...(await loadDrafts(season, competitions, phaseIds)),
+    ...(await loadScheduled(season, competitions, phaseIds))
+  ].filter((r) => r.observerKey === observerKey && r.refereeId === refereeId);
   return {
     completed: completed.map(({ reportId, gameId, date, matchNumber, teams }) => ({ reportId, gameId, date, matchNumber, teams })),
-    scheduled: scheduled.map(({ gameId, date, matchNumber, teams }) => ({ gameId, date, matchNumber, teams }))
+    scheduled: pending.map(({ type, reportId, gameId, date, matchNumber, teams }) => ({ type, reportId, gameId, date, matchNumber, teams }))
   };
 }
 
@@ -448,7 +466,11 @@ export async function getObserverSuggestions({ gameId }) {
 
   const season = game.sport_season;
   const gameDate = game.scheduled_at ? game.scheduled_at.slice(0, 10) : '';
-  const rows = [...(await loadCompleted(season)), ...(await loadScheduled(season))];
+  const rows = [
+    ...(await loadCompleted(season)),
+    ...(await loadDrafts(season)).filter((row) => row.gameId),
+    ...(await loadScheduled(season))
+  ];
 
   const candidates = await dbAll(
     `SELECT id, display_name, role FROM users WHERE active = 1 AND role != 'referee' ORDER BY display_name`

@@ -117,7 +117,9 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, c
               <p className="judgement-label">Potenzialità</p>
               <span className="potential-level-pill">{potential.level || 'Non indicata'}</span>
             </div>
-            <p className="judgement-text">{potential.comment || 'Motivazione non indicata.'}</p>
+            <p className="judgement-text">
+              {potential.comment || (potential.level ? 'Motivazione non indicata.' : 'Potenzialità non riportata.')}
+            </p>
           </div>
         ) : null}
       </div>
@@ -207,6 +209,7 @@ export default function ReportDetailPage({ id, currentUser }) {
   const canLinkReferee = currentUser?.role === 'admin' ||
     (currentUser?.role === 'instructor' && instructorCompetitionsForSeason(currentUser, report.sportSeason).length > 0);
   const canImportPdf = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
+  const canOpenGame = Boolean(report.gameId) && (currentUser?.role === 'admin' || currentUser?.role === 'instructor');
 
   const scoreHome = Number(data.scoreHome);
   const scoreAway = Number(data.scoreAway);
@@ -260,6 +263,11 @@ export default function ReportDetailPage({ id, currentUser }) {
             </div>
           </div>
           <div className="detail-hero-actions">
+            {canOpenGame && (
+              <button type="button" className="ghost-button" onClick={() => navigate(`/games/${report.gameId}`)}>
+                Vai alla gara
+              </button>
+            )}
             {canImportPdf && (
               <button type="button" className="accent-button" onClick={() => setShowPdfImporter(true)}>
                 Aggiorna da PDF federali

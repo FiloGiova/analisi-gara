@@ -3184,6 +3184,36 @@ dd {
   background: #fbfcfc;
 }
 
+.stats-coverage-table {
+  --stats-coverage-name-width: 230px;
+}
+
+.stats-coverage-table .stats-sticky-name-column {
+  width: var(--stats-coverage-name-width);
+  min-width: var(--stats-coverage-name-width);
+  max-width: var(--stats-coverage-name-width);
+  box-shadow: none;
+}
+
+.stats-coverage-table .stats-sticky-num-column {
+  position: sticky;
+  left: var(--stats-coverage-name-width);
+  z-index: 2;
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
+  background: var(--surface);
+  box-shadow: 8px 0 12px -12px rgba(14, 31, 38, 0.52);
+}
+
+.stats-coverage-table thead .stats-sticky-num-column {
+  z-index: 3;
+}
+
+.stats-coverage-table tbody tr:hover .stats-sticky-num-column {
+  background: #fbfcfc;
+}
+
 .employment-matchup-button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
