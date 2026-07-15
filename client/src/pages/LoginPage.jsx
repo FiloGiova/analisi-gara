@@ -41,12 +41,13 @@ export default function LoginPage({ onLogin }) {
             </span>
             <span className="brand-copy">
               <strong className="brand-wordmark"><span>Fischio</span><span>Lab</span></strong>
-              <small>Compila, archivia, esporta</small>
+              <small>Gare, arbitri e rapporti</small>
             </span>
           </div>
-          <h1>Entra nel tuo taccuino gara.</h1>
+          <h1>La stagione arbitrale, tutta in un unico posto.</h1>
           <p>
-            Un posto ordinato per trasformare appunti, valutazioni e giudizi in PDF pronti da condividere.
+            Gare, designazioni, arbitri, rapporti e statistiche: FischioLab organizza il lavoro
+            quotidiano e mantiene tutto sempre consultabile.
           </p>
         </div>
       </section>

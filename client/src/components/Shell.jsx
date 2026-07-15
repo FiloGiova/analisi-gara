@@ -74,7 +74,7 @@ export default function Shell({
           </span>
           <span className="brand-copy">
             <strong className="brand-wordmark"><span>Fischio</span><span>Lab</span></strong>
-            <small>Valutazioni gara</small>
+            <small>Gare, arbitri e rapporti</small>
           </span>
         </button>
 
