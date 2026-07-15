@@ -320,8 +320,12 @@ export async function parseFederationPdfBuffer(buffer) {
   let data;
   try {
     data = await pdfParse(buffer);
-  } catch (_error) {
-    throw new FederationPdfParseError('PDF non leggibile o protetto da password.', 'unreadable_pdf');
+  } catch (_firstError) {
+    try {
+      data = await pdfParse(buffer);
+    } catch (_secondError) {
+      throw new FederationPdfParseError('PDF non leggibile o protetto da password.', 'unreadable_pdf');
+    }
   }
   return { ...parseFederationReportText(data.text || ''), pageCount: data.numpages || null };
 }
