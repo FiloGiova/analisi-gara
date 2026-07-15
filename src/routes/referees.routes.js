@@ -20,15 +20,16 @@ import {
 } from '../services/refereeService.js';
 import { buildRefereeRankingWorkbook, buildRefereesWorkbook } from '../services/refereesExportService.js';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
+import {
+  instructorAssignmentsForUser,
+  instructorCompetitionsForSeason
+} from '../../shared/instructorAssignments.js';
 
 export const refereesRouter = express.Router();
 
-function scopedCompetitions(req) {
-  if (req.user?.role === 'instructor' && req.user?.instructorCompetitions?.length) {
-    return req.user.instructorCompetitions;
-  }
-  if (req.user?.role === 'instructor' && req.user?.instructorCompetition) {
-    return [req.user.instructorCompetition];
+function scopedCompetitions(req, season = '') {
+  if (req.user?.role === 'instructor') {
+    return instructorCompetitionsForSeason(req.user, season || String(req.query.season || '').trim() || currentSportSeason());
   }
   const competition = String(req.query.competition || '').trim();
   return competition ? [competition] : [];
@@ -52,9 +53,14 @@ refereesRouter.get(
       res.json({ referees: [] });
       return;
     }
+    const competitions = scopedCompetitions(req, String(season).trim());
+    if (req.user?.role === 'instructor' && !competitions.length) {
+      res.json({ referees: [] });
+      return;
+    }
     res.json({
       referees: await listReferees({
-        competitions: scopedCompetitions(req),
+        competitions,
         season: String(season).trim(),
         activeOnly: activeOnly === 'true'
       })
@@ -66,6 +72,10 @@ refereesRouter.get(
   '/seasons',
   asyncHandler(async (req, res) => {
     requireRefereeInspection(req);
+    if (req.user?.role === 'instructor' && Array.isArray(req.user.instructorAssignments)) {
+      res.json({ seasons: instructorAssignmentsForUser(req.user).map((assignment) => assignment.sportSeason) });
+      return;
+    }
     res.json({ seasons: await listSeasons({ competitions: scopedCompetitions(req) }) });
   })
 );
@@ -77,7 +87,7 @@ refereesRouter.get(
     res.json({
       ranking: await getRefereeRanking({
         season: String(req.query.season || '').trim(),
-        competitions: scopedCompetitions(req)
+        competitions: scopedCompetitions(req, String(req.query.season || '').trim())
       })
     });
   })
@@ -90,7 +100,7 @@ refereesRouter.get(
     const season = String(req.query.season || '').trim() || currentSportSeason();
     const workbook = await buildRefereeRankingWorkbook({
       season,
-      competitions: scopedCompetitions(req)
+      competitions: scopedCompetitions(req, season)
     });
     const fileName = `classifica_arbitri_${season.replace('/', '-')}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -111,7 +121,7 @@ refereesRouter.get(
       : '';
     const workbook = await buildRefereesWorkbook({
       season,
-      competitions: scopedCompetitions(req),
+      competitions: scopedCompetitions(req, season),
       activeFilter,
       band: REFEREE_BANDS.includes(requestedBand) ? requestedBand : '',
       search: String(req.query.search || '')
@@ -129,9 +139,7 @@ refereesRouter.get(
 function effectiveBandCompetitions(req) {
   const requested = String(req.query.competition || '').trim();
   if (req.user?.role === 'instructor') {
-    const allowed = req.user.instructorCompetitions?.length
-      ? req.user.instructorCompetitions
-      : (req.user.instructorCompetition ? [req.user.instructorCompetition] : []);
+    const allowed = scopedCompetitions(req);
     if (requested) {
       if (!allowed.includes(requested)) throw new HttpError(403, 'Campionato non assegnato alla tua utenza.');
       return [requested];
@@ -141,12 +149,10 @@ function effectiveBandCompetitions(req) {
   return requested ? [requested] : [];
 }
 
-function assertBandManage(req, competition) {
+function assertBandManage(req, competition, season = '') {
   if (req.user?.role === 'admin') return;
   if (req.user?.role === 'instructor') {
-    const comps = req.user.instructorCompetitions?.length
-      ? req.user.instructorCompetitions
-      : [req.user.instructorCompetition].filter(Boolean);
+    const comps = scopedCompetitions(req, season);
     if (comps.includes(competition)) return;
     throw new HttpError(403, 'Campionato non assegnato alla tua utenza.');
   }
@@ -166,7 +172,7 @@ refereesRouter.get('/bands', asyncHandler(async (req, res) => {
 
 refereesRouter.post('/:id/bands', asyncHandler(async (req, res) => {
   const competition = String(req.body?.competition || '').trim();
-  assertBandManage(req, competition);
+  assertBandManage(req, competition, String(req.body?.sportSeason || '').trim());
   const members = await addBandMember({
     refereeId: Number(req.params.id),
     competition,
@@ -182,7 +188,7 @@ refereesRouter.delete('/bands/:bandId', asyncHandler(async (req, res) => {
     res.json({ ok: true });
     return;
   }
-  assertBandManage(req, row.competition);
+  assertBandManage(req, row.competition, row.sport_season);
   await removeBandMember(Number(req.params.bandId));
   res.json({ ok: true });
 }));
@@ -197,9 +203,18 @@ refereesRouter.get('/:id/progress', asyncHandler(async (req, res) => {
   } else {
     requireRefereeInspection(req);
     // Verifica visibilità per l'instructor
-    await getReferee(id, { competitions: scopedCompetitions(req) });
+    await getReferee(id, {
+      season: String(req.query.season || '').trim(),
+      competitions: scopedCompetitions(req, String(req.query.season || '').trim())
+    });
   }
-  res.json({ progress: await getRefereeProgress(id, { season: String(req.query.season || '').trim() }) });
+  const season = String(req.query.season || '').trim();
+  res.json({
+    progress: await getRefereeProgress(id, {
+      season,
+      competitions: req.user?.role === 'instructor' ? scopedCompetitions(req, season) : []
+    })
+  });
 }));
 
 refereesRouter.get('/:id', asyncHandler(async (req, res) => {
@@ -207,7 +222,7 @@ refereesRouter.get('/:id', asyncHandler(async (req, res) => {
   res.json({
     referee: await getReferee(Number(req.params.id), {
       season: String(req.query.season || '').trim(),
-      competitions: scopedCompetitions(req)
+      competitions: scopedCompetitions(req, String(req.query.season || '').trim())
     })
   });
 }));
@@ -222,7 +237,7 @@ refereesRouter.put('/:id', asyncHandler(async (req, res) => {
     throw new HttpError(403, 'Permessi insufficienti per modificare l’arbitro.');
   }
   if (req.user.role === 'instructor') {
-    const competitions = scopedCompetitions(req);
+    const competitions = scopedCompetitions(req, String(req.body?.sportSeason || '').trim());
     await getReferee(Number(req.params.id), {
       season: String(req.body?.sportSeason || '').trim(),
       competitions
@@ -232,14 +247,33 @@ refereesRouter.put('/:id', asyncHandler(async (req, res) => {
       throw new HttpError(403, 'Puoi assegnare solo uno dei tuoi campionati.');
     }
   }
-  const referee = await updateReferee(Number(req.params.id), req.body);
-  res.json({ referee });
+  const id = Number(req.params.id);
+  await updateReferee(id, req.body);
+  const season = String(req.body?.sportSeason || '').trim();
+  res.json({
+    referee: await getReferee(id, {
+      season,
+      competitions: req.user?.role === 'instructor' ? scopedCompetitions(req, season) : []
+    })
+  });
 }));
 
 refereesRouter.get('/:id/rosters', asyncHandler(async (req, res) => {
   requireRefereeInspection(req);
-  await getReferee(Number(req.params.id), { competitions: scopedCompetitions(req) });
-  res.json({ rosters: await listRosters(Number(req.params.id)) });
+  await getReferee(Number(req.params.id), {
+    season: String(req.query.season || '').trim(),
+    competitions: scopedCompetitions(req, String(req.query.season || '').trim())
+  });
+  const rosters = await listRosters(Number(req.params.id));
+  if (req.user?.role === 'instructor') {
+    const season = String(req.query.season || '').trim() || currentSportSeason();
+    const competitions = scopedCompetitions(req, season);
+    res.json({
+      rosters: rosters.filter((roster) => roster.sport_season === season && competitions.includes(roster.competition))
+    });
+    return;
+  }
+  res.json({ rosters });
 }));
 
 refereesRouter.post('/:id/rosters', requireAdmin, asyncHandler(async (req, res) => {

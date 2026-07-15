@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { COMPETITIONS } from '../../../shared/reportTemplate.js';
 import { api, ApiError } from '../lib/api.js';
 import PhotoUploader from '../components/PhotoUploader.jsx';
+import { instructorAssignmentsForUser } from '../../../shared/instructorAssignments.js';
 
 function roleLabel(role) {
   if (role === 'admin') return 'Admin';
@@ -15,6 +16,12 @@ function competitionLabel(value) {
 }
 
 function formatCompetitions(user) {
+  const assignments = instructorAssignmentsForUser(user);
+  if (assignments.length) {
+    return assignments
+      .map((assignment) => `${assignment.sportSeason}: ${assignment.competitions.map(competitionLabel).join(', ')}`)
+      .join(' · ');
+  }
   const values = user.instructorCompetitions?.length
     ? user.instructorCompetitions
     : [user.instructorCompetition || user.formatterCompetition].filter(Boolean);
@@ -119,7 +126,7 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
           <InfoItem label="Nome visualizzato" value={currentUser.displayName} />
           <InfoItem label="Ruolo" value={roleLabel(currentUser.role)} />
           {currentUser.role === 'instructor' ? (
-            <InfoItem label="Campionati" value={formatCompetitions(currentUser)} />
+            <InfoItem label="Storico campionati" value={formatCompetitions(currentUser)} />
           ) : null}
           {currentUser.role === 'referee' ? (
             <InfoItem label="ID arbitro collegato" value={currentUser.refereeId} />

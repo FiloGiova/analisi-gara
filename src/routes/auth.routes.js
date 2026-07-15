@@ -5,55 +5,10 @@ import { buildClearSessionCookie, buildSessionCookie, getCookie } from '../utils
 import { createSessionToken, hashSessionToken, verifyPassword } from '../utils/passwords.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 import { config } from '../config.js';
-import { changeOwnPassword } from '../services/userService.js';
+import { changeOwnPassword, publicUserFromRow } from '../services/userService.js';
 import { logAccess } from '../services/accessLogService.js';
-import { COMPETITIONS } from '../../shared/reportTemplate.js';
 
 export const authRouter = express.Router();
-
-function parseInstructorCompetitions(value) {
-  const clean = String(value || '').trim();
-  if (!clean) return [];
-  if (clean.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(clean);
-      return Array.isArray(parsed) ? parsed.map((item) => String(item || '').trim()).filter(Boolean) : [];
-    } catch (_) {
-      return [];
-    }
-  }
-  return clean.split('|').map((item) => item.trim()).filter(Boolean);
-}
-
-function normalizeRole(role, competitions, refereeId) {
-  const clean = String(role || '').trim();
-  if (clean === 'referee') return 'referee';
-  if (clean === 'admin' || clean === 'instructor' || clean === 'observer') return clean;
-  if (clean === 'formatter' || clean === 'formatore') return 'instructor';
-  if (clean === 'user') return parseInstructorCompetitions(competitions).length ? 'instructor' : 'observer';
-  return 'observer';
-}
-
-function publicUser(user) {
-  const allowed = new Set(COMPETITIONS.map((competition) => competition.value));
-  const refereeId = user.referee_id || null;
-  const role = normalizeRole(user.role, user.formatter_competition, refereeId);
-  const instructorCompetitions = role === 'instructor'
-    ? parseInstructorCompetitions(user.formatter_competition).filter((competition) => allowed.has(competition))
-    : [];
-  return {
-    id: user.id,
-    username: user.username,
-    displayName: user.display_name,
-    role,
-    refereeId: role === 'referee' ? refereeId : null,
-    photoPath: user.photo_path || null,
-    instructorCompetition: instructorCompetitions[0] || '',
-    instructorCompetitions,
-    formatterCompetition: instructorCompetitions[0] || '',
-    formatterCompetitions: instructorCompetitions
-  };
-}
 
 authRouter.get('/me', (req, res) => {
   res.json({
@@ -84,7 +39,7 @@ authRouter.post(
     await logAccess(user.id, req.ip, req.headers['user-agent']);
 
     res.setHeader('Set-Cookie', buildSessionCookie(token));
-    res.json({ user: publicUser(user) });
+    res.json({ user: await publicUserFromRow(user) });
   })
 );
 

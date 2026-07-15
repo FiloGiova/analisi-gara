@@ -9,6 +9,7 @@ import { formatMatchNumber } from '../lib/formatters.js';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
+import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
 const CURRENT_SEASON = currentSportSeason();
 const BAND_OPTIONS = [
@@ -19,12 +20,6 @@ const BAND_OPTIONS = [
 
 function competitionLabel(value) {
   return COMPETITIONS.find((item) => item.value === value)?.label || value;
-}
-
-function instructorCompetitionsForUser(user) {
-  if (user?.role !== 'instructor') return [];
-  if (user.instructorCompetitions?.length) return user.instructorCompetitions;
-  return [user.instructorCompetition || user.formatterCompetition].filter(Boolean);
 }
 
 function refereeForm(referee) {
@@ -56,10 +51,10 @@ function InfoItem({ label, value }) {
   );
 }
 
-function canInspectReferees(user) {
+function canInspectReferees(user, season) {
   if (user?.role === 'admin') return true;
   if (user?.role !== 'instructor') return false;
-  return Boolean(user.instructorCompetitions?.length || user.instructorCompetition);
+  return instructorCompetitionsForSeason(user, season).length > 0;
 }
 
 const ROLE_LABELS = { referee1: '1° arbitro', referee2: '2° arbitro', referee3: '3° arbitro' };
@@ -93,8 +88,8 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
   const [selectedBands, setSelectedBands] = useState([]);
   const [bandsBusy, setBandsBusy] = useState(false);
   const [error, setError] = useState('');
-  const canInspect = canInspectReferees(currentUser);
-  const instructorCompetitions = instructorCompetitionsForUser(currentUser);
+  const canInspect = canInspectReferees(currentUser, selectedSeason);
+  const instructorCompetitions = instructorCompetitionsForSeason(currentUser, selectedSeason);
   const manageableCompetitions = instructorCompetitions.length
     ? instructorCompetitions
     : COMPETITIONS.map((item) => item.value);

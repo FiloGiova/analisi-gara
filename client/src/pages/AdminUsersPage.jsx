@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { COMPETITIONS } from '../../../shared/reportTemplate.js';
+import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
 import { api, ApiError } from '../lib/api.js';
 import Select from '../components/Select.jsx';
 
@@ -9,7 +9,7 @@ const emptyNewUser = {
   displayName: '',
   password: '',
   role: 'observer',
-  instructorCompetitions: []
+  instructorAssignments: []
 };
 
 const emptyPasswordForm = {
@@ -22,7 +22,7 @@ const emptyEditForm = {
   displayName: '',
   role: 'observer',
   active: true,
-  instructorCompetitions: []
+  instructorAssignments: []
 };
 
 const ROLE_OPTIONS = [
@@ -41,11 +41,12 @@ function UserStatusBadge({ active }) {
   return <span className={`status-badge ${active ? 'status-final' : 'status-draft'}`}>{active ? 'Attivo' : 'Disattivo'}</span>;
 }
 
-function instructorCompetitions(user) {
-  if (Array.isArray(user?.instructorCompetitions)) return user.instructorCompetitions;
-  if (user?.instructorCompetition) return [user.instructorCompetition];
-  if (Array.isArray(user?.formatterCompetitions)) return user.formatterCompetitions;
-  return user?.formatterCompetition ? [user.formatterCompetition] : [];
+function instructorAssignments(user) {
+  if (Array.isArray(user?.instructorAssignments)) return user.instructorAssignments;
+  const competitions = Array.isArray(user?.instructorCompetitions)
+    ? user.instructorCompetitions
+    : [user?.instructorCompetition || user?.formatterCompetition].filter(Boolean);
+  return competitions.length ? [{ sportSeason: currentSportSeason(), competitions }] : [];
 }
 
 function competitionLabel(value) {
@@ -54,6 +55,22 @@ function competitionLabel(value) {
 
 function formatCompetitions(values = []) {
   return values.length ? values.map(competitionLabel).join(', ') : '-';
+}
+
+function formatAssignments(assignments = []) {
+  return assignments.length
+    ? assignments.map((assignment) => `${assignment.sportSeason}: ${formatCompetitions(assignment.competitions)}`).join(' · ')
+    : '-';
+}
+
+function defaultAssignment() {
+  return { sportSeason: currentSportSeason(), competitions: [] };
+}
+
+function validAssignments(assignments) {
+  return assignments.length > 0 && assignments.every((assignment) => (
+    /^\d{4}\/\d{4}$/.test(assignment.sportSeason) && assignment.competitions.length > 0
+  ));
 }
 
 function Modal({ title, children, onClose }) {
@@ -100,6 +117,52 @@ function CompetitionChoices({ value, onChange }) {
   );
 }
 
+function InstructorAssignmentsEditor({ value, onChange }) {
+  const assignments = Array.isArray(value) ? value : [];
+
+  function update(index, field, nextValue) {
+    onChange(assignments.map((assignment, itemIndex) => (
+      itemIndex === index ? { ...assignment, [field]: nextValue } : assignment
+    )));
+  }
+
+  return (
+    <div className="instructor-assignments-editor">
+      {assignments.map((assignment, index) => (
+        <div className="instructor-assignment-row" key={`${index}-${assignment.sportSeason}`}>
+          <label className="field">
+            Stagione
+            <input
+              value={assignment.sportSeason}
+              onChange={(event) => update(index, 'sportSeason', event.target.value)}
+              placeholder="2025/2026"
+              pattern="\d{4}/\d{4}"
+              required
+            />
+          </label>
+          <div className="field instructor-assignment-competitions">
+            <span>Campionati</span>
+            <CompetitionChoices
+              value={assignment.competitions}
+              onChange={(competitions) => update(index, 'competitions', competitions)}
+            />
+          </div>
+          <button
+            type="button"
+            className="ghost-button instructor-assignment-remove"
+            onClick={() => onChange(assignments.filter((_, itemIndex) => itemIndex !== index))}
+          >
+            Rimuovi
+          </button>
+        </div>
+      ))}
+      <button type="button" className="ghost-button" onClick={() => onChange([...assignments, defaultAssignment()])}>
+        + Aggiungi stagione
+      </button>
+    </div>
+  );
+}
+
 export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState(emptyNewUser);
@@ -141,7 +204,10 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     setNewUser((previous) => ({
       ...previous,
       [field]: value,
-      ...(field === 'role' && value !== 'instructor' ? { instructorCompetitions: [] } : {})
+      ...(field === 'role' && value !== 'instructor' ? { instructorAssignments: [] } : {}),
+      ...(field === 'role' && value === 'instructor' && previous.instructorAssignments.length === 0
+        ? { instructorAssignments: [defaultAssignment()] }
+        : {})
     }));
   }
 
@@ -153,7 +219,10 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     setEditForm((previous) => ({
       ...previous,
       [field]: value,
-      ...(field === 'role' && value !== 'instructor' ? { instructorCompetitions: [] } : {})
+      ...(field === 'role' && value !== 'instructor' ? { instructorAssignments: [] } : {}),
+      ...(field === 'role' && value === 'instructor' && previous.instructorAssignments.length === 0
+        ? { instructorAssignments: [defaultAssignment()] }
+        : {})
     }));
   }
 
@@ -161,7 +230,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     return {
       displayName: user.displayName,
       role: user.role,
-      instructorCompetition: instructorCompetitions(user),
+      instructorAssignments: instructorAssignments(user),
       active: user.active,
       ...updates
     };
@@ -197,15 +266,15 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     event.preventDefault();
     setError('');
     setSuccess('');
-    if (newUser.role === 'instructor' && newUser.instructorCompetitions.length === 0) {
-      setError('Assegna almeno un campionato al formatore.');
+    if (newUser.role === 'instructor' && !validAssignments(newUser.instructorAssignments)) {
+      setError('Completa almeno una stagione e un campionato per il formatore.');
       return;
     }
     setBusy(true);
     try {
       await api.createUser({
         ...newUser,
-        instructorCompetition: newUser.role === 'instructor' ? newUser.instructorCompetitions : []
+        instructorAssignments: newUser.role === 'instructor' ? newUser.instructorAssignments : []
       });
       setNewUser(emptyNewUser);
       setShowCreateModal(false);
@@ -224,7 +293,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
       displayName: user.displayName || user.username,
       role: user.role,
       active: Boolean(user.active),
-      instructorCompetitions: instructorCompetitions(user)
+      instructorAssignments: instructorAssignments(user)
     });
     setOpenActionsId(null);
   }
@@ -235,8 +304,8 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
 
     setError('');
     setSuccess('');
-    if (editForm.role === 'instructor' && editForm.instructorCompetitions.length === 0) {
-      setError('Assegna almeno un campionato al formatore.');
+    if (editForm.role === 'instructor' && !validAssignments(editForm.instructorAssignments)) {
+      setError('Completa almeno una stagione e un campionato per il formatore.');
       return;
     }
     setBusy(true);
@@ -245,7 +314,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
         displayName: editForm.displayName,
         role: editForm.role,
         active: editUser.id === currentUser.id ? true : editForm.active,
-        instructorCompetition: editForm.role === 'instructor' ? editForm.instructorCompetitions : []
+        instructorAssignments: editForm.role === 'instructor' ? editForm.instructorAssignments : []
       }));
       setEditUser(null);
       setEditForm(emptyEditForm);
@@ -359,10 +428,10 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
             </label>
             {newUser.role === 'instructor' ? (
               <div className="field">
-                <span>Campionati formatore</span>
-                <CompetitionChoices
-                  value={newUser.instructorCompetitions}
-                  onChange={(value) => updateNewUser('instructorCompetitions', value)}
+                <span>Storico campionati formatore</span>
+                <InstructorAssignmentsEditor
+                  value={newUser.instructorAssignments}
+                  onChange={(value) => updateNewUser('instructorAssignments', value)}
                 />
               </div>
             ) : null}
@@ -482,10 +551,10 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
             </label>
             {editForm.role === 'instructor' ? (
               <div className="field">
-                <span>Campionati formatore</span>
-                <CompetitionChoices
-                  value={editForm.instructorCompetitions}
-                  onChange={(value) => updateEditForm('instructorCompetitions', value)}
+                <span>Storico campionati formatore</span>
+                <InstructorAssignmentsEditor
+                  value={editForm.instructorAssignments}
+                  onChange={(value) => updateEditForm('instructorAssignments', value)}
                 />
               </div>
             ) : null}
@@ -536,7 +605,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                   <th>Nome</th>
                   <th>Ruolo</th>
                   <th>Stato</th>
-                  <th>Campionati formatore</th>
+                  <th>Storico formatore</th>
                   <th>Creato</th>
                   <th>Azioni</th>
                 </tr>
@@ -552,7 +621,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                     <td><UserStatusBadge active={user.active} /></td>
                     <td>
                       {user.role === 'instructor'
-                        ? formatCompetitions(instructorCompetitions(user))
+                        ? formatAssignments(instructorAssignments(user))
                         : user.role === 'referee'
                           ? `Arbitro #${user.refereeId || '-'}`
                           : '-'}

@@ -15,9 +15,8 @@ function formatDate(value) {
   try { return new Date(value).toLocaleDateString('it-IT'); } catch (_) { return value; }
 }
 
-function surname(fullName) {
-  if (!fullName) return null;
-  return fullName.trim().split(/\s+/)[0];
+function surname(lastName, fullName) {
+  return String(lastName || fullName || '').trim() || null;
 }
 
 function SortTh({ col, label, sortColumn, sortDir, onSort, style }) {
@@ -72,8 +71,8 @@ export default function WorkbenchTable({ reports, sortColumn, sortDir, onSort, o
           {reports.map((report) => {
             const [teamHome, teamAway] = (report.teams || '').split(' - ');
             const exporting = exportingId === report.id;
-            const surnameFirst = surname(report.firstRefereeName);
-            const surnameSecond = surname(report.secondRefereeName);
+            const surnameFirst = surname(report.firstRefereeSurname, report.firstRefereeName);
+            const surnameSecond = surname(report.secondRefereeSurname, report.secondRefereeName);
             return (
               <tr key={report.id} onClick={() => onNavigate(report.id)}>
                 <td className="match-num-cell">#{formatMatchNumber(report.matchNumber, report.id)}</td>

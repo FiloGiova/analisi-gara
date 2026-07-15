@@ -111,8 +111,8 @@ export default function App() {
   if (!isReferee && route.name === 'coverage') {
     page = <CoveragePage currentUser={user} globalSeason={season} seasons={seasons} />;
   }
-  if (!isReferee && route.name === 'newReport') page = <ReportFormPage currentUser={user} features={features} gameId={route.gameId} />;
-  if (!isReferee && route.name === 'editReport') page = <ReportFormPage id={route.id} currentUser={user} features={features} />;
+  if (!isReferee && route.name === 'newReport') page = <ReportFormPage currentUser={user} features={features} gameId={route.gameId} season={season} />;
+  if (!isReferee && route.name === 'editReport') page = <ReportFormPage id={route.id} currentUser={user} features={features} season={season} />;
   if (route.name === 'reportDetail') page = <ReportDetailPage id={route.id} currentUser={user} />;
   if (route.name === 'account') page = (
     <AccountPage

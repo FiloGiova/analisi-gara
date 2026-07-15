@@ -6,6 +6,7 @@ import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
+import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
 function formatDateTime(iso) {
   if (!iso) return '—';
@@ -25,7 +26,9 @@ function refereeLabel(official) {
 }
 
 export default function DesignateObserversPage({ currentUser, season }) {
-  const canManage = currentUser.role === 'admin' || currentUser.role === 'instructor';
+  const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
+  const canManage = currentUser.role === 'admin' ||
+    (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
   const [games, setGames] = useState([]);
   const [observers, setObservers] = useState([]);
   const [competition, setCompetition] = useState('');
@@ -68,14 +71,11 @@ export default function DesignateObserversPage({ currentUser, season }) {
   // Il formatore sceglie solo tra i propri campionati; l'admin tra quelli presenti.
   const competitionOptions = useMemo(() => {
     if (currentUser.role === 'instructor') {
-      const mine = currentUser.instructorCompetitions?.length
-        ? currentUser.instructorCompetitions
-        : [currentUser.instructorCompetition, currentUser.formatterCompetition].filter(Boolean);
-      return mine;
+      return assignedCompetitions;
     }
     const present = Array.from(new Set(games.map((g) => g.competition).filter(Boolean)));
     return present.length ? present : COMPETITIONS.map((c) => c.value);
-  }, [currentUser, games]);
+  }, [assignedCompetitions.join('|'), currentUser.role, games]);
 
   const gamesInCompetition = useMemo(
     () => (competition ? games.filter((g) => g.competition === competition) : games),
@@ -140,7 +140,11 @@ export default function DesignateObserversPage({ currentUser, season }) {
   }
 
   if (!canManage) {
-    return <div className="empty-state"><h2>Sezione riservata ad amministratori e formatori</h2></div>;
+    return (
+      <div className="empty-state">
+        <h2>{currentUser.role === 'instructor' ? `Nessun campionato assegnato per la stagione ${season}` : 'Sezione riservata ad amministratori e formatori'}</h2>
+      </div>
+    );
   }
 
   const observerOptions = observers.map((o) => ({ value: String(o.id), label: o.displayName }));

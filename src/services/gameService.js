@@ -510,7 +510,7 @@ export async function listAssignableObservers() {
   const rows = await dbAll(
     `SELECT id, display_name, role
        FROM users
-      WHERE active = 1 AND role != 'referee'
+      WHERE active = 1 AND role IN ('observer', 'instructor')
       ORDER BY display_name`
   );
   return rows.map((row) => ({ id: row.id, displayName: row.display_name, role: row.role }));

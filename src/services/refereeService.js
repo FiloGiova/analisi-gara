@@ -167,7 +167,7 @@ export async function getReferee(id, { season = '', competition = '', competitio
 
   const allCategories = await listSeasonCategories(id);
   const categoryHistory = cleanCompetitions.length
-    ? allCategories.filter((item) => cleanCompetitions.includes(item.category))
+    ? allCategories.filter((item) => item.sportSeason === sportSeason && cleanCompetitions.includes(item.category))
     : allCategories;
 
   return {
@@ -337,8 +337,10 @@ export async function getRefereeStats(refereeId, { season = '', competition = ''
   };
 }
 
-export async function getRefereeProgress(refereeId, { season = '' } = {}) {
+export async function getRefereeProgress(refereeId, { season = '', competitions = [] } = {}) {
   const sportSeason = normalizeSeason(season);
+  const cleanCompetitions = normalizeCompetitions({ competitions });
+  const competitionClause = cleanCompetitions.length ? `AND ${inClause('competition', cleanCompetitions)}` : '';
   const rows = await dbAll(
     `SELECT id, status, report_date, sport_season, match_number, competition,
             first_referee_id, second_referee_id, first_referee_vote, second_referee_vote,
@@ -347,8 +349,9 @@ export async function getRefereeProgress(refereeId, { season = '' } = {}) {
      WHERE (first_referee_id = ? OR second_referee_id = ?)
        AND sport_season = ?
        AND status = 'final'
+       ${competitionClause}
      ORDER BY report_date ASC, id ASC`,
-    [refereeId, refereeId, sportSeason]
+    [refereeId, refereeId, sportSeason, ...cleanCompetitions]
   );
 
   const matches = [];

@@ -52,6 +52,7 @@ const DATA_TABLES = [
   'referee_rosters',
   'referee_season_categories',
   'sessions',
+  'instructor_competition_assignments',
   'users',
   'referees'
 ];

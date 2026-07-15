@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+CREATE TABLE IF NOT EXISTS instructor_competition_assignments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  sport_season TEXT NOT NULL,
+  competition TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS'),
+  UNIQUE(user_id, sport_season, competition),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id SERIAL PRIMARY KEY,
   token_hash TEXT NOT NULL UNIQUE,
@@ -276,6 +286,7 @@ CREATE INDEX IF NOT EXISTS idx_referee_bands_lookup ON referee_bands(sport_seaso
 CREATE INDEX IF NOT EXISTS idx_access_logs_user_id ON access_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_users_referee_id ON users(referee_id);
+CREATE INDEX IF NOT EXISTS idx_instructor_assignments_user_season ON instructor_competition_assignments(user_id, sport_season);
 CREATE INDEX IF NOT EXISTS idx_reports_game_id ON reports(game_id);
 CREATE INDEX IF NOT EXISTS idx_reports_observer_id ON reports(observer_id);
 CREATE INDEX IF NOT EXISTS idx_games_sport_season ON games(sport_season);

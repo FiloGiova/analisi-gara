@@ -43,6 +43,7 @@ async function runBackfills() {
   await backfillOfficialExternalNames();
   await cleanupLegacyExportRows();
   await migrateUserRoles();
+  await backfillInstructorAssignments();
 }
 
 // I CREATE TABLE IF NOT EXISTS non aggiornano i CHECK già presenti su Supabase.
@@ -197,6 +198,57 @@ async function migrateUserRoles() {
         END
       WHERE role IN ('user', 'formatter', 'formatore')`
   );
+}
+
+function legacyInstructorCompetitions(value) {
+  const clean = String(value || '').trim();
+  if (!clean) return [];
+  if (clean.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(clean);
+      return Array.isArray(parsed) ? parsed.map((item) => String(item || '').trim()).filter(Boolean) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return clean.split('|').map((item) => item.trim()).filter(Boolean);
+}
+
+// Prima dello storico i campionati erano globali. Per non togliere visibilità
+// sui dati già consultabili, la prima migrazione li replica su tutte le stagioni
+// presenti; da quel momento l'admin può differenziare ogni stagione.
+async function backfillInstructorAssignments() {
+  const seasons = new Set([currentSportSeason()]);
+  const seasonRows = await dbAll(`
+    SELECT sport_season FROM games
+    UNION SELECT sport_season FROM reports
+    UNION SELECT sport_season FROM competition_sources
+    UNION SELECT sport_season FROM referee_season_categories
+  `);
+  for (const row of seasonRows) {
+    if (String(row.sport_season || '').trim()) seasons.add(String(row.sport_season).trim());
+  }
+
+  const instructors = await dbAll(
+    `SELECT id, formatter_competition
+       FROM users
+      WHERE role = 'instructor'
+        AND NOT EXISTS (
+          SELECT 1 FROM instructor_competition_assignments a WHERE a.user_id = users.id
+        )`
+  );
+  for (const instructor of instructors) {
+    for (const competition of legacyInstructorCompetitions(instructor.formatter_competition)) {
+      for (const sportSeason of seasons) {
+        await dbRun(
+          `INSERT INTO instructor_competition_assignments (user_id, sport_season, competition)
+           VALUES (?, ?, ?)
+           ON CONFLICT (user_id, sport_season, competition) DO NOTHING`,
+          [instructor.id, sportSeason, competition]
+        );
+      }
+    }
+  }
 }
 
 export async function closeDatabase() {

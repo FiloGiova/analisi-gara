@@ -11,6 +11,10 @@ import {
 import { config } from '../config.js';
 import { dbGet, dbAll, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
+import {
+  instructorAssignmentsForUser,
+  instructorCompetitionsForSeason
+} from '../../shared/instructorAssignments.js';
 
 const REPORT_ROLES = ['first', 'second'];
 
@@ -64,34 +68,6 @@ function isAdmin(user) {
   return user?.role === 'admin';
 }
 
-function parseInstructorCompetitions(value) {
-  if (Array.isArray(value)) {
-    return value.map((item) => asText(item)).filter(Boolean);
-  }
-  const clean = asText(value);
-  if (!clean) return [];
-  if (clean.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(clean);
-      return Array.isArray(parsed) ? parsed.map((item) => asText(item)).filter(Boolean) : [];
-    } catch (_) {
-      return [];
-    }
-  }
-  return clean.split('|').map((item) => item.trim()).filter(Boolean);
-}
-
-function instructorCompetitionsForUser(user) {
-  if (user?.role !== 'instructor') return [];
-  return parseInstructorCompetitions(
-    user?.instructorCompetitions ||
-    user?.instructorCompetition ||
-    user?.formatterCompetitions ||
-    user?.formatterCompetition ||
-    user?.formatter_competition
-  );
-}
-
 function isInstructor(user) {
   return Boolean(user) && user.role === 'instructor';
 }
@@ -131,10 +107,31 @@ function appendUserVisibilityClause(clauses, params, user) {
     params.push(user.refereeId, user.refereeId);
     return;
   }
-  const competitions = instructorCompetitionsForUser(user);
-  if (isInstructor(user) && competitions.length) {
-    clauses.push(`competition IN (${competitions.map(() => '?').join(', ')})`);
-    params.push(...competitions);
+  if (isInstructor(user)) {
+    const assignments = instructorAssignmentsForUser(user);
+    let scopeClause = '1=0';
+    const scopeParams = [];
+    if (Array.isArray(user.instructorAssignments)) {
+      if (assignments.length) {
+        scopeClause = `(${assignments.map((assignment) => (
+          `(sport_season = ? AND competition IN (${assignment.competitions.map(() => '?').join(', ')}))`
+        )).join(' OR ')})`;
+        for (const assignment of assignments) scopeParams.push(assignment.sportSeason, ...assignment.competitions);
+      }
+    } else {
+      const competitions = instructorCompetitionsForSeason(user);
+      if (competitions.length) {
+        scopeClause = `competition IN (${competitions.map(() => '?').join(', ')})`;
+        scopeParams.push(...competitions);
+      }
+    }
+    clauses.push(
+      `(${scopeClause} OR created_by = ? OR observer_id = ? OR EXISTS (
+          SELECT 1 FROM game_officials go
+           WHERE go.game_id = reports.game_id AND go.role = 'observer' AND go.user_id = ?
+        ))`
+    );
+    params.push(...scopeParams, user.id, user.id, user.id);
     return;
   }
   // Osservatore: i rapporti creati da lui + quelli di cui è l'osservatore
@@ -155,8 +152,12 @@ async function assertReportAccess(report, user) {
     if (myId && (report.firstRefereeId === myId || report.secondRefereeId === myId)) return;
     throw new HttpError(403, 'Non puoi accedere a questo rapporto.');
   }
-  const competitions = instructorCompetitionsForUser(user);
-  if (isInstructor(user) && competitions.includes(report.competition)) return;
+  const competitions = instructorCompetitionsForSeason(user, report.sportSeason);
+  if (isInstructor(user)) {
+    if (competitions.includes(report.competition)) return;
+    if (report.createdBy === user.id || await isDesignatedObserver(report, user)) return;
+    throw new HttpError(403, 'Rapporto fuori dai campionati assegnati per questa stagione.');
+  }
   if (report.createdBy === user.id) return;
   if (await isDesignatedObserver(report, user)) return;
   throw new HttpError(403, 'Non puoi accedere a questo rapporto.');
@@ -232,20 +233,32 @@ function assertReportCreationAccess(user) {
   }
 }
 
-function applyUserReportRules(payload, user) {
+async function applyUserReportRules(payload, user) {
   if (!isRestrictedUser(user)) return payload;
-  const competitions = instructorCompetitionsForUser(user);
+  const competitions = instructorCompetitionsForSeason(user, deriveSeason(payload.reportDate));
   const requestedCompetition = asText(payload.competition);
-  if (isInstructor(user) && !competitions.length) {
+  let designatedOutsideScope = false;
+  if (isInstructor(user) && !competitions.includes(requestedCompetition) && payload.gameId) {
+    designatedOutsideScope = Boolean(await dbGet(
+      `SELECT 1
+         FROM game_officials
+        WHERE game_id = ? AND role = 'observer' AND user_id = ?`,
+      [payload.gameId, user.id]
+    ));
+  }
+  if (isInstructor(user) && !competitions.length && !designatedOutsideScope) {
     throw new HttpError(403, 'Nessun campionato assegnato a questa utenza formatore.');
   }
-  if (isInstructor(user) && competitions.length > 1 && !competitions.includes(requestedCompetition)) {
+  if (isInstructor(user) && !designatedOutsideScope && competitions.length > 1 && !competitions.includes(requestedCompetition)) {
     throw new HttpError(403, 'Puoi creare rapporti solo per i campionati assegnati alla tua utenza.');
   }
   return {
     ...payload,
-    observerName: observerNameForUser(user),
-    ...(isInstructor(user) && competitions.length === 1 ? { competition: competitions[0] } : {})
+    ...(!isInstructor(user) ? {
+      observerName: observerNameForUser(user),
+      observerUserId: user?.id || null
+    } : {}),
+    ...(isInstructor(user) && !designatedOutsideScope && competitions.length === 1 ? { competition: competitions[0] } : {})
   };
 }
 
@@ -257,7 +270,8 @@ function applyUserViewRules(report, user) {
     observerName,
     data: {
       ...report.data,
-      observerName
+      observerName,
+      observerUserId: user?.id || null
     }
   };
 }
@@ -383,16 +397,34 @@ export function collectFinalValidationErrors(payload) {
 
 // observer_id: chi ha osservato la gara (distinto da created_by, chi ha
 // inserito il rapporto). Per gli utenti osservatori coincide con l'autore;
-// per admin/formatori si risolve dal nome solo se univoco.
-async function resolveObserverId(payload, user) {
+// admin e formatori lo scelgono dall'elenco degli utenti abilitati.
+async function resolveObserver(payload, user) {
+  if (isRestrictedUser(user) && !isInstructor(user)) {
+    return { id: user?.id || null, name: observerNameForUser(user) };
+  }
   const explicit = asNullableInteger(payload.observerUserId);
-  if (explicit) return explicit;
-  if (isRestrictedUser(user) && !isInstructor(user)) return user?.id || null;
+  if (explicit) {
+    const selected = await dbGet(
+      `SELECT id, display_name
+         FROM users
+        WHERE id = ? AND active = 1 AND role IN ('observer', 'instructor')`,
+      [explicit]
+    );
+    if (!selected) throw new HttpError(400, 'L’osservatore selezionato non è più disponibile.');
+    return { id: selected.id, name: selected.display_name };
+  }
   const name = asText(payload.observerName);
-  if (!name) return user?.id || null;
-  const matches = await dbAll('SELECT id FROM users WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?))', [name]);
-  if (matches.length === 1) return matches[0].id;
-  return null;
+  if (!name) return { id: null, name: '' };
+  const matches = await dbAll(
+    `SELECT id, display_name
+       FROM users
+      WHERE active = 1
+        AND role IN ('observer', 'instructor')
+        AND LOWER(TRIM(display_name)) = LOWER(TRIM(?))`,
+    [name]
+  );
+  if (matches.length === 1) return { id: matches[0].id, name: matches[0].display_name };
+  throw new HttpError(400, 'Seleziona l’osservatore dall’elenco degli utenti disponibili.');
 }
 
 async function assertGameLink(payload, { existingReportId = null, allowDuplicate = false } = {}) {
@@ -418,6 +450,7 @@ function rowToReport(row) {
   const dataWithDbLinks = {
     ...data,
     gameId: row.game_id || data.gameId || null,
+    observerUserId: row.observer_id || data.observerUserId || null,
     firstRefereeId: row.first_referee_id || data.firstRefereeId || null,
     secondRefereeId: row.second_referee_id || data.secondRefereeId || null,
     evaluations: {
@@ -496,7 +529,7 @@ export async function listReports({ search = '', status = '', season = '', obser
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = await dbAll(
-    `SELECT id,
+    `SELECT reports.id,
             status,
             observer_name,
             report_date,
@@ -515,12 +548,16 @@ export async function listReports({ search = '', status = '', season = '', obser
             created_by,
             observer_id,
             game_id,
-            created_at,
-            updated_at,
-            finalized_at
+            reports.created_at,
+            reports.updated_at,
+            finalized_at,
+            first_referee.last_name AS first_referee_surname,
+            second_referee.last_name AS second_referee_surname
        FROM reports
+       LEFT JOIN referees first_referee ON first_referee.id = reports.first_referee_id
+       LEFT JOIN referees second_referee ON second_referee.id = reports.second_referee_id
        ${where}
-      ORDER BY updated_at DESC, id DESC`,
+      ORDER BY reports.updated_at DESC, reports.id DESC`,
     params
   );
   return rows.map((row) => {
@@ -534,8 +571,10 @@ export async function listReports({ search = '', status = '', season = '', obser
         teams: `${row.team_home} - ${row.team_away}`.trim(),
         result: `${row.score_home} - ${row.score_away}`.trim(),
         firstRefereeName: row.first_referee_name,
+        firstRefereeSurname: row.first_referee_surname || '',
         firstRefereeId: row.first_referee_id || null,
         secondRefereeName: row.second_referee_name,
+        secondRefereeSurname: row.second_referee_surname || '',
         secondRefereeId: row.second_referee_id || null,
         firstRefereeVote: row.first_referee_vote || '',
         secondRefereeVote: row.second_referee_vote || '',
@@ -584,16 +623,19 @@ export async function getReport(id, user = null) {
 export async function createReport({ payload, status = 'draft', user, allowDuplicate = false }) {
   assertReportCreationAccess(user);
   const normalizedStatus = status === 'final' ? 'final' : 'draft';
-  const normalizedPayload = applyUserReportRules(normalizeReportPayload(payload), user);
+  const normalizedPayload = await applyUserReportRules(normalizeReportPayload(payload), user);
   assertIsoDate(normalizedPayload.reportDate, 'Data');
   await assertGameLink(normalizedPayload, { allowDuplicate });
+  const observer = await resolveObserver(normalizedPayload, user);
+  normalizedPayload.observerUserId = observer.id;
+  normalizedPayload.observerName = observer.name;
   const validationErrors = normalizedStatus === 'final' ? collectFinalValidationErrors(normalizedPayload) : [];
   if (validationErrors.length) {
     throw new HttpError(422, 'Completa i campi obbligatori prima del salvataggio definitivo.', validationErrors);
   }
 
   const sportSeason = deriveSeason(normalizedPayload.reportDate);
-  const observerId = await resolveObserverId(normalizedPayload, user);
+  const observerId = observer.id;
   const result = await dbRun(
     `INSERT INTO reports (
        status, observer_name, report_date, match_number, competition,
@@ -637,18 +679,21 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
   await assertReportMutationAccess(existingReport, user);
   const requestedStatus = status === 'final' ? 'final' : 'draft';
   const normalizedStatus = existingReport.status === 'final' ? 'final' : requestedStatus;
-  const normalizedPayload = applyUserReportRules(normalizeReportPayload(payload), user);
+  const normalizedPayload = await applyUserReportRules(normalizeReportPayload(payload), user);
   // Il collegamento alla gara non si cambia in modifica: resta quello esistente.
   normalizedPayload.gameId = existingReport.gameId || normalizedPayload.gameId;
   assertIsoDate(normalizedPayload.reportDate, 'Data');
   await assertGameLink(normalizedPayload, { existingReportId: id, allowDuplicate: true });
+  const observer = await resolveObserver(normalizedPayload, user);
+  normalizedPayload.observerUserId = observer.id;
+  normalizedPayload.observerName = observer.name;
   const validationErrors = normalizedStatus === 'final' ? collectFinalValidationErrors(normalizedPayload) : [];
   if (validationErrors.length) {
     throw new HttpError(422, 'Completa i campi obbligatori prima del salvataggio definitivo.', validationErrors);
   }
 
   const sportSeason = deriveSeason(normalizedPayload.reportDate);
-  const observerId = await resolveObserverId(normalizedPayload, user);
+  const observerId = observer.id;
   await dbRun(
     `UPDATE reports
         SET status = ?,
@@ -669,7 +714,7 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
             payload_json = ?,
             sport_season = ?,
             game_id = ?,
-            observer_id = COALESCE(observer_id, ?),
+            observer_id = ?,
             updated_at = ts_now(),
             finalized_at = CASE
               WHEN ? = 'final' AND finalized_at IS NULL THEN ts_now()

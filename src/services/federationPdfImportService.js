@@ -3,6 +3,7 @@ import { createEmptyReport, deriveSeason } from '../../shared/reportTemplate.js'
 import { dbAll, dbGet, dbRun, dbTx } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 import { cleanExternalName, normalizedNameKey } from '../utils/personNames.js';
+import { instructorCompetitionsForSeason } from '../../shared/instructorAssignments.js';
 import {
   resolveObserverName,
   resolveRefereeName
@@ -49,19 +50,15 @@ function matchNumberKey(value) {
   return clean.replace(/^0+(?=\d)/, '');
 }
 
-function instructorCompetitions(user) {
-  return user?.role === 'instructor' ? user.instructorCompetitions || [] : [];
-}
-
 function assertImportAccess(user) {
   if (!user || !['admin', 'instructor'].includes(user.role)) {
     throw new HttpError(403, 'L’importazione PDF è riservata ad amministratori e formatori.');
   }
 }
 
-function assertCompetitionAccess(user, ...competitions) {
+function assertCompetitionAccess(user, sportSeason, ...competitions) {
   if (user?.role !== 'instructor') return;
-  const allowed = instructorCompetitions(user);
+  const allowed = instructorCompetitionsForSeason(user, sportSeason);
   if (!allowed.length || competitions.filter(Boolean).some((competition) => !allowed.includes(competition))) {
     throw new HttpError(403, 'Il PDF o la gara appartengono a un campionato non assegnato alla tua utenza.');
   }
@@ -163,7 +160,7 @@ async function loadGameCandidates(header, user, contextGameId = null) {
   if (contextGameId) {
     rows = await dbAll('SELECT * FROM games WHERE id = ?', [contextGameId]);
   } else {
-    const allowed = instructorCompetitions(user);
+    const allowed = instructorCompetitionsForSeason(user, header.sportSeason);
     const clauses = ['sport_season = ?'];
     const params = [header.sportSeason];
     if (allowed.length) {
@@ -179,6 +176,9 @@ async function loadGameCandidates(header, user, contextGameId = null) {
         LIMIT 1000`,
       [...params, matchNumberKey(header.matchNumber)]
     );
+  }
+  for (const row of rows) {
+    assertCompetitionAccess(user, row.sport_season, row.competition);
   }
   return rows.map(rowToGameCandidate);
 }
@@ -196,11 +196,11 @@ async function attachReportCandidates(games, header, user, contextReportId = nul
   );
   if (contextReportId && !rows.some((row) => row.id === contextReportId)) {
     const context = await dbGet(
-      `SELECT id, status, game_id, observer_name, updated_at, competition FROM reports WHERE id = ?`,
+      `SELECT id, status, game_id, observer_name, updated_at, competition, sport_season FROM reports WHERE id = ?`,
       [contextReportId]
     );
     if (!context) throw new HttpError(404, 'Rapporto di contesto non trovato.');
-    assertCompetitionAccess(user, context.competition);
+    assertCompetitionAccess(user, context.sport_season, context.competition);
     rows.unshift(context);
   }
   return games.map((game) => ({
@@ -266,9 +266,9 @@ async function resolveHeaderPeople(header) {
 
 async function contextGameIdFromReport(reportId, user) {
   if (!reportId) return null;
-  const report = await dbGet('SELECT id, game_id, competition FROM reports WHERE id = ?', [reportId]);
+  const report = await dbGet('SELECT id, game_id, competition, sport_season FROM reports WHERE id = ?', [reportId]);
   if (!report) throw new HttpError(404, 'Rapporto di contesto non trovato.');
-  assertCompetitionAccess(user, report.competition);
+  assertCompetitionAccess(user, report.sport_season, report.competition);
   return report.game_id || null;
 }
 
@@ -286,7 +286,7 @@ export async function previewFederationPdfImport({ files, contextGameId = null, 
     const differences = sharedDifferences(items);
     const representative = items.find((item) => item.parsed.role === 'first') || items[0];
     const header = representative.parsed.header;
-    assertCompetitionAccess(user, header.competition);
+    assertCompetitionAccess(user, header.sportSeason, header.competition);
 
     const peopleBySource = {};
     for (const item of items) {
@@ -498,7 +498,7 @@ async function applyOneGroup({ items, decision, user, syncRunId, contextGameId =
   return dbTx(async (client) => {
     const game = await client.get('SELECT * FROM games WHERE id = ?', [gameId]);
     if (!game) throw new HttpError(404, 'Gara selezionata non trovata.');
-    assertCompetitionAccess(user, header.competition, game.competition);
+    assertCompetitionAccess(user, game.sport_season, header.competition, game.competition);
 
     const firstReferee = await client.get('SELECT id, first_name, last_name FROM referees WHERE id = ?', [firstRefereeId]);
     const secondReferee = await client.get('SELECT id, first_name, last_name FROM referees WHERE id = ?', [secondRefereeId]);

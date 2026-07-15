@@ -6,6 +6,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { formatMatchNumber } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
+import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
 function DownloadIcon() {
   return (
@@ -204,7 +205,7 @@ export default function ReportDetailPage({ id, currentUser }) {
     (report.observerId && report.observerId === currentUser?.id)
   );
   const canLinkReferee = currentUser?.role === 'admin' ||
-    (currentUser?.role === 'instructor' && Boolean(currentUser?.instructorCompetitions?.length || currentUser?.instructorCompetition));
+    (currentUser?.role === 'instructor' && instructorCompetitionsForSeason(currentUser, report.sportSeason).length > 0);
   const canImportPdf = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
 
   const scoreHome = Number(data.scoreHome);

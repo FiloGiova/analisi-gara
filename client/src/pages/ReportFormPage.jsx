@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { COMMON_MATCH_CHARACTERISTICS, COMPETITIONS, EVALUATION_SECTIONS, createEmptyReport, getRefereeLabel, deriveSeason } from '../../../shared/reportTemplate.js';
+import { COMMON_MATCH_CHARACTERISTICS, COMPETITIONS, EVALUATION_SECTIONS, createEmptyReport, getRefereeLabel, deriveSeason, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { Field, TextArea, TextInput } from '../components/Field.jsx';
@@ -14,22 +15,15 @@ function observerNameForUser(user) {
   return user?.displayName || user?.username || '';
 }
 
-function instructorCompetitionsForUser(user) {
-  if (user?.role !== 'instructor') return [];
-  if (Array.isArray(user?.instructorCompetitions)) return user.instructorCompetitions;
-  if (user?.instructorCompetition) return [user.instructorCompetition];
-  if (Array.isArray(user?.formatterCompetitions)) return user.formatterCompetitions;
-  return user?.formatterCompetition ? [user.formatterCompetition] : [];
-}
-
-function createInitialReport(currentUser) {
+function createInitialReport(currentUser, season) {
   const report = createEmptyReport();
-  const instructorCompetitions = instructorCompetitionsForUser(currentUser);
+  const instructorCompetitions = instructorCompetitionsForSeason(currentUser, season);
   if (instructorCompetitions.length === 1) {
     report.competition = instructorCompetitions[0];
   }
   if (currentUser?.role !== 'admin') {
     report.observerName = observerNameForUser(currentUser);
+    report.observerUserId = currentUser?.id || null;
   }
   return report;
 }
@@ -73,16 +67,22 @@ function computeSectionProgress(report) {
 }
 
 function canEditReport(report, currentUser) {
-  return currentUser?.role === 'admin' || report?.createdBy === currentUser?.id;
+  return currentUser?.role === 'admin' ||
+    report?.createdBy === currentUser?.id ||
+    (report?.observerId && report.observerId === currentUser?.id);
 }
 
-export default function ReportFormPage({ id, currentUser, features, gameId }) {
+export default function ReportFormPage({ id, currentUser, features, gameId, season }) {
   const isEdit = Boolean(id);
-  const observerLocked = currentUser?.role !== 'admin';
-  const instructorCompetitions = currentUser?.role === 'instructor' ? instructorCompetitionsForUser(currentUser) : [];
-  const lockedCompetition = instructorCompetitions.length === 1 ? instructorCompetitions[0] : '';
+  const canChooseObserver = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
+  const observerLocked = !canChooseObserver;
   const lockedObserverName = observerNameForUser(currentUser);
-  const [report, setReport] = useState(() => createInitialReport(currentUser));
+  const [report, setReport] = useState(() => createInitialReport(currentUser, season));
+  const reportSeason = deriveSeason(report.reportDate) || season || currentSportSeason();
+  const instructorCompetitions = currentUser?.role === 'instructor'
+    ? instructorCompetitionsForSeason(currentUser, reportSeason)
+    : [];
+  const lockedCompetition = instructorCompetitions.length === 1 ? instructorCompetitions[0] : '';
   const [activeRole, setActiveRole] = useState(() => {
     if (!id) return 'first';
     const storedRole = sessionStorage.getItem(`report-edit-role-${id}`);
@@ -98,6 +98,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
   const [autoSaveMsg, setAutoSaveMsg] = useState('');
   const [refereeSuggestions, setRefereeSuggestions] = useState([]);
   const [availableReferees, setAvailableReferees] = useState([]);
+  const [availableObservers, setAvailableObservers] = useState([]);
   const [activeSection, setActiveSection] = useState('section-data');
   const [gameInfo, setGameInfo] = useState(null);
   const [duplicateConfirm, setDuplicateConfirm] = useState(null);
@@ -125,13 +126,24 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
   }
 
   useEffect(() => {
-    if (isEdit || !observerLocked) return;
+    if (!observerLocked) return;
     updateReport((current) => ({
       ...current,
       observerName: lockedObserverName,
+      observerUserId: currentUser?.id || null,
       ...(lockedCompetition ? { competition: lockedCompetition } : {})
     }));
-  }, [isEdit, observerLocked, lockedObserverName, lockedCompetition]);
+  }, [observerLocked, lockedObserverName, lockedCompetition, currentUser?.id]);
+
+  useEffect(() => {
+    if (!canChooseObserver) {
+      setAvailableObservers([]);
+      return;
+    }
+    api.listGameObservers()
+      .then((data) => setAvailableObservers(data.observers || []))
+      .catch(() => setAvailableObservers([]));
+  }, [canChooseObserver]);
 
   // Precompilazione da gara (pulsante "Compila rapporto" nel dettaglio gara).
   useEffect(() => {
@@ -145,10 +157,10 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
         updateReport((current) => ({
           ...current,
           gameId: prefill.gameId,
-          observerUserId: prefill.observerUserId || null,
+          observerUserId: observerLocked ? (currentUser?.id || null) : (prefill.observerUserId || null),
           reportDate: prefill.reportDate || current.reportDate,
           matchNumber: prefill.matchNumber || current.matchNumber,
-          competition: lockedCompetition || prefill.competition || current.competition,
+          competition: prefill.competition || current.competition,
           teamHome: prefill.teamHome || current.teamHome,
           teamAway: prefill.teamAway || current.teamAway,
           scoreHome: prefill.scoreHome || current.scoreHome,
@@ -157,12 +169,14 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
           firstRefereeName: prefill.firstRefereeName || current.firstRefereeName,
           secondRefereeId: prefill.secondRefereeId || current.secondRefereeId,
           secondRefereeName: prefill.secondRefereeName || current.secondRefereeName,
-          ...(observerLocked ? {} : { observerName: prefill.observerName || current.observerName })
+          ...(observerLocked
+            ? { observerName: lockedObserverName }
+            : { observerName: prefill.observerName || current.observerName })
         }));
       })
       .catch(() => setGameInfo(null));
     return () => { alive = false; };
-  }, [isEdit, gameId, observerLocked, lockedCompetition]);
+  }, [isEdit, gameId, observerLocked, currentUser?.id, lockedObserverName]);
 
   useEffect(() => {
     if (!isEdit) return;
@@ -177,13 +191,13 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
         setEditForbidden(false);
         setLoadError('');
         updateReport(observerLocked
-          ? { ...data.report.data, observerName: lockedObserverName, ...(lockedCompetition ? { competition: lockedCompetition } : {}) }
+          ? { ...data.report.data, observerName: lockedObserverName }
           : data.report.data);
       })
       .catch((err) => setLoadError(err.message || 'Impossibile caricare il rapporto.'))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [id, isEdit, observerLocked, lockedObserverName, lockedCompetition, currentUser]);
+  }, [id, isEdit, observerLocked, lockedObserverName, currentUser]);
 
   useEffect(() => {
     const season = deriveSeason(report.reportDate);
@@ -200,7 +214,11 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
     const interval = setInterval(async () => {
       if (editForbiddenRef.current || statusRef.current === 'final') return;
       const payload = observerLockedRef.current
-        ? { ...reportRef.current, observerName: lockedObserverNameRef.current }
+        ? {
+            ...reportRef.current,
+            observerName: lockedObserverNameRef.current,
+            observerUserId: currentUser?.id || null
+          }
         : { ...reportRef.current };
       if (lockedCompetition) payload.competition = lockedCompetition;
       try {
@@ -222,7 +240,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
       }
     }, 60000);
     return () => clearInterval(interval);
-  }, [lockedCompetition]);
+  }, [lockedCompetition, currentUser?.id]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -262,7 +280,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
   }
 
   function setCompetition(value) {
-    if (lockedCompetition || (instructorCompetitions.length && !instructorCompetitions.includes(value))) return;
+    if (lockedCompetition || (currentUser?.role === 'instructor' && !instructorCompetitions.includes(value))) return;
     updateReport((current) => ({
       ...current,
       competition: value,
@@ -271,6 +289,15 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
       secondRefereeId: null,
       secondRefereeName: ''
     }));
+  }
+
+  function selectObserver(value) {
+    const observerUserId = value ? Number(value) : null;
+    const observer = availableObservers.find((item) => item.id === observerUserId);
+    setFields({
+      observerUserId,
+      observerName: observer?.displayName || ''
+    });
   }
 
   function selectReferee(role, value) {
@@ -318,7 +345,12 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
     try {
       const currentReport = reportRef.current;
       const reportToSave = observerLocked
-        ? { ...currentReport, observerName: lockedObserverName, ...(lockedCompetition ? { competition: lockedCompetition } : {}) }
+        ? {
+            ...currentReport,
+            observerName: lockedObserverName,
+            observerUserId: currentUser?.id || null,
+            ...(lockedCompetition ? { competition: lockedCompetition } : {})
+          }
         : currentReport;
       const currentId = reportIdRef.current;
       const response = currentId
@@ -462,11 +494,25 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
             </div>
             <div className="common-grid">
               <Field label="Osservatore" className="field-span-2">
-                <TextInput
-                  value={observerLocked ? lockedObserverName : report.observerName}
-                  onChange={(e) => setField('observerName', e.target.value)}
-                  disabled={observerLocked}
-                />
+                {observerLocked ? (
+                  <TextInput value={lockedObserverName} disabled />
+                ) : (
+                  <Select
+                    value={report.observerUserId ? String(report.observerUserId) : ''}
+                    onChange={selectObserver}
+                    placeholder="— Seleziona osservatore —"
+                    options={[
+                      ...availableObservers.map((observer) => ({
+                        value: String(observer.id),
+                        label: `${observer.displayName} · ${observer.role === 'instructor' ? 'Formatore' : 'Osservatore'}`
+                      })),
+                      report.observerUserId && !availableObservers.some((observer) => observer.id === report.observerUserId)
+                        ? { value: String(report.observerUserId), label: report.observerName || 'Utente selezionato' }
+                        : null
+                    ].filter(Boolean)}
+                    searchable
+                  />
+                )}
               </Field>
               <Field label="Data">
                 <TextInput
@@ -486,7 +532,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId }) {
                   onChange={setCompetition}
                   placeholder="— Seleziona —"
                   options={COMPETITIONS
-                    .filter((c) => !instructorCompetitions.length || instructorCompetitions.includes(c.value))
+                    .filter((c) => currentUser?.role !== 'instructor' || instructorCompetitions.includes(c.value))
                     .map((c) => ({ value: c.value, label: c.label }))}
                   disabled={Boolean(lockedCompetition)}
                 />

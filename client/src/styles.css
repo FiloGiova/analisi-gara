@@ -739,10 +739,15 @@ select:focus {
 
 .dashboard-controls input,
 .dashboard-controls .custom-select-trigger {
+  --select-inline-padding: 11px;
   min-height: 38px;
   padding: 8px 11px;
   border-radius: 12px;
   font-size: 0.84rem;
+}
+
+.dashboard-controls .custom-select-trigger-input {
+  padding: 0 var(--select-inline-padding) 0 0;
 }
 
 .dashboard-controls .ghost-button {
@@ -2260,6 +2265,44 @@ dd {
   width: auto;
 }
 
+.instructor-assignments-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.instructor-assignment-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(220px, 1.5fr);
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.instructor-assignment-competitions {
+  min-width: 0;
+}
+
+.instructor-assignment-remove {
+  grid-column: 2;
+  justify-self: end;
+  margin-bottom: 1px;
+}
+
+@media (max-width: 720px) {
+  .instructor-assignment-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .instructor-assignment-remove {
+    grid-column: 1;
+    justify-self: start;
+  }
+}
+
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0);    }
@@ -2803,12 +2846,13 @@ dd {
 }
 
 .custom-select-trigger {
+  --select-inline-padding: 14px;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 13px 14px;
+  padding: 13px var(--select-inline-padding);
   border: 1px solid var(--line);
   border-radius: 16px;
   background: #fff;
@@ -2821,7 +2865,7 @@ dd {
 }
 
 .custom-select-trigger-input {
-  padding: 0;
+  padding: 0 var(--select-inline-padding) 0 0;
   overflow: hidden;
 }
 
@@ -2833,7 +2877,7 @@ dd {
   color: var(--blue);
   font-weight: 500;
   box-shadow: none;
-  padding: 13px 0 13px 14px;
+  padding: 13px 0 13px var(--select-inline-padding);
 }
 
 .custom-select-search-input:focus {
@@ -3872,9 +3916,14 @@ dd {
 
 /* Select più compatti dentro il filter drawer */
 .filter-drawer .custom-select-trigger {
+  --select-inline-padding: 12px;
   padding: 8px 12px;
   font-size: 0.82rem;
   border-radius: 10px;
+}
+
+.filter-drawer .custom-select-trigger-input {
+  padding: 0 var(--select-inline-padding) 0 0;
 }
 
 .filter-drawer .custom-select-search-input {

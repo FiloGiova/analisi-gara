@@ -5,6 +5,7 @@ import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import { api, ApiError, downloadRefereeRankingExport, downloadRefereesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -49,16 +50,8 @@ function activeForSeason(referee, season) {
   return season === CURRENT_SEASON ? referee.active : referee.seasonActive;
 }
 
-function instructorCompetitionsForUser(user) {
-  if (user?.role !== 'instructor') return [];
-  if (Array.isArray(user?.instructorCompetitions)) return user.instructorCompetitions;
-  if (user?.instructorCompetition) return [user.instructorCompetition];
-  if (Array.isArray(user?.formatterCompetitions)) return user.formatterCompetitions;
-  return user?.formatterCompetition ? [user.formatterCompetition] : [];
-}
-
 export default function AdminRefereesPage({ currentUser, season: selectedSeason }) {
-  const assignedCompetitions = instructorCompetitionsForUser(currentUser);
+  const assignedCompetitions = instructorCompetitionsForSeason(currentUser, selectedSeason);
   const canAccess = currentUser.role === 'admin' || assignedCompetitions.length > 0;
   const [referees, setReferees] = useState([]);
   const [ranking, setRanking] = useState([]);
@@ -84,6 +77,12 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (!bandCompetitions.includes(bandCompetition)) {
+      setBandCompetition(bandCompetitions[0] || '');
+    }
+  }, [bandCompetition, bandCompetitions.join('|')]);
 
   async function loadReferees(season = selectedSeason) {
     setLoading(true);
@@ -168,7 +167,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     loadReferees(selectedSeason);
     loadRanking(selectedSeason);
     loadAllBands();
-  }, [canAccess, currentUser.instructorCompetition, currentUser.instructorCompetitions, selectedSeason]);
+  }, [canAccess, currentUser.instructorAssignments, currentUser.instructorCompetition, currentUser.instructorCompetitions, selectedSeason]);
 
   useEffect(() => {
     if (!canAccess || view !== 'bands') return;

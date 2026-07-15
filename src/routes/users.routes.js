@@ -25,6 +25,7 @@ usersRouter.post(
       displayName: req.body?.displayName,
       role: req.body?.role,
       refereeId: req.body?.refereeId,
+      instructorAssignments: req.body?.instructorAssignments,
       instructorCompetition: req.body?.instructorCompetition,
       formatterCompetition: req.body?.formatterCompetition
     });
@@ -43,6 +44,7 @@ usersRouter.put(
       displayName: req.body?.displayName,
       role: req.body?.role,
       refereeId: req.body?.refereeId,
+      instructorAssignments: req.body?.instructorAssignments,
       instructorCompetition: req.body?.instructorCompetition,
       formatterCompetition: req.body?.formatterCompetition,
       active: req.body?.active

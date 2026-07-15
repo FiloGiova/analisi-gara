@@ -12,6 +12,8 @@ export async function listAvailableSeasons() {
       SELECT sport_season FROM competition_sources
       UNION
       SELECT sport_season FROM referee_season_categories
+      UNION
+      SELECT sport_season FROM instructor_competition_assignments
     ) seasons
     WHERE sport_season IS NOT NULL AND TRIM(sport_season) <> ''
     ORDER BY sport_season DESC

@@ -5,6 +5,7 @@ import Select from '../components/Select.jsx';
 import { api, ApiError, downloadStatsExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
+import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -76,7 +77,6 @@ function SortableHeader({ label, sort, sortKey, onSort, initialDirection = 'asc'
 }
 
 export default function CoveragePage({ currentUser, globalSeason, seasons }) {
-  const canAccess = currentUser.role === 'admin' || currentUser.role === 'instructor';
   const [view, setView] = useState('coverage');
   const [season, setSeason] = useState(globalSeason);
   const [competition, setCompetition] = useState(''); // '' = tutti i campionati
@@ -93,9 +93,13 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   const [matrixSort, setMatrixSort] = useState({ key: 'observer', direction: 'asc' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
+  const canAccess = currentUser.role === 'admin' ||
+    (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
 
   useEffect(() => {
     setSeason(globalSeason);
+    setCompetition('');
     setPhaseIds([]);
   }, [globalSeason]);
 
@@ -121,7 +125,11 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   }, [canAccess, season, competition, phaseIds, band]);
 
   if (!canAccess) {
-    return <div className="empty-state"><h2>Sezione riservata ad amministratori e formatori</h2></div>;
+    return (
+      <div className="empty-state">
+        <h2>{currentUser.role === 'instructor' ? `Nessun campionato assegnato per la stagione ${season}` : 'Sezione riservata ad amministratori e formatori'}</h2>
+      </div>
+    );
   }
 
   async function openDetail(observer, referee) {
@@ -186,9 +194,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
 
   // Il formatore vede solo i propri campionati; l'admin tutti.
   const myCompetitions = currentUser.role === 'instructor'
-    ? (currentUser.instructorCompetitions?.length
-        ? currentUser.instructorCompetitions
-        : [currentUser.instructorCompetition, currentUser.formatterCompetition].filter(Boolean))
+    ? assignedCompetitions
     : COMPETITIONS.map((c) => c.value);
   const competitionSelectOptions = [
     { value: '', label: 'Tutti i campionati' },
@@ -231,7 +237,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
           <div style={{ flex: '0 1 220px' }}>
             <Select
               value={season}
-              onChange={(value) => { setSeason(value); setPhaseIds([]); }}
+              onChange={(value) => { setSeason(value); setCompetition(''); setPhaseIds([]); }}
               placeholder="Stagione statistiche"
               options={seasons.map((item) => ({
                 value: item,

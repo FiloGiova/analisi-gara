@@ -6,6 +6,7 @@ import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError, downloadGamesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
+import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -59,7 +60,9 @@ function officialLabel(official) {
 }
 
 export default function GamesPage({ currentUser, season }) {
-  const canManage = currentUser.role === 'admin' || currentUser.role === 'instructor';
+  const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
+  const canManage = currentUser.role === 'admin' ||
+    (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
   const [games, setGames] = useState([]);
   const [matchday, setMatchday] = useState('');
   const [stateFilter, setStateFilter] = useState([]); // più stati selezionabili insieme (checkbox)
@@ -91,8 +94,10 @@ export default function GamesPage({ currentUser, season }) {
     setStateFilter([]);
     setSourceFilter([]);
     setRefereeFilter('');
+    setForm(EMPTY_FORM);
+    setShowForm(false);
     if (canManage) loadGames();
-  }, [season]);
+  }, [canManage, season]);
 
   const matchdays = useMemo(
     () => Array.from(new Set(games.map((g) => g.matchday).filter((m) => m !== null))).sort((a, b) => a - b),
@@ -198,7 +203,11 @@ export default function GamesPage({ currentUser, season }) {
   }
 
   if (!canManage) {
-    return <div className="empty-state"><h2>Sezione riservata ad amministratori e formatori</h2></div>;
+    return (
+      <div className="empty-state">
+        <h2>{currentUser.role === 'instructor' ? `Nessun campionato assegnato per la stagione ${season}` : 'Sezione riservata ad amministratori e formatori'}</h2>
+      </div>
+    );
   }
 
   return (
@@ -249,7 +258,9 @@ export default function GamesPage({ currentUser, season }) {
                 value={form.competition}
                 onChange={(v) => updateForm('competition', v)}
                 placeholder="— Seleziona —"
-                options={COMPETITIONS.map((c) => ({ value: c.value, label: c.label }))}
+                options={COMPETITIONS
+                  .filter((competition) => currentUser.role !== 'instructor' || assignedCompetitions.includes(competition.value))
+                  .map((c) => ({ value: c.value, label: c.label }))}
               />
             </label>
             <label className="field field-span-2">

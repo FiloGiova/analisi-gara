@@ -1,5 +1,5 @@
-import { dbGet, dbAll, dbRun } from '../database/db.js';
-import { COMPETITIONS } from '../../shared/reportTemplate.js';
+import { dbGet, dbAll, dbRun, dbTx } from '../database/db.js';
+import { COMPETITIONS, currentSportSeason } from '../../shared/reportTemplate.js';
 import { hashPassword, verifyPassword } from '../utils/passwords.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -59,24 +59,75 @@ function normalizeStoredInstructorCompetitions(value) {
   return unique;
 }
 
-function serializeInstructorCompetitions(value) {
-  const competitions = normalizeInstructorCompetitions(value);
-  return competitions.length ? JSON.stringify(competitions) : null;
-}
-
-function serializeStoredInstructorCompetitions(value) {
-  const competitions = normalizeStoredInstructorCompetitions(value);
-  return competitions.length ? JSON.stringify(competitions) : null;
-}
-
 function instructorCompetitionInput({ instructorCompetition, formatterCompetition }) {
   return instructorCompetition !== undefined ? instructorCompetition : formatterCompetition;
 }
 
-function validateRoleConfiguration(role, competitions) {
-  if (role === 'instructor' && !competitions.length) {
-    throw new HttpError(400, 'Assegna almeno un campionato al formatore.');
+function normalizeSportSeason(value) {
+  const clean = String(value || '').trim();
+  const match = clean.match(/^(\d{4})\/(\d{4})$/);
+  if (!match || Number(match[2]) !== Number(match[1]) + 1) {
+    throw new HttpError(400, 'Stagione formatore non valida: usa il formato 2025/2026.');
   }
+  return clean;
+}
+
+function normalizeInstructorAssignments(value, legacyCompetitionInput) {
+  const source = value === undefined
+    ? [{ sportSeason: currentSportSeason(), competitions: normalizeInstructorCompetitions(legacyCompetitionInput) }]
+    : value;
+  if (!Array.isArray(source)) throw new HttpError(400, 'Storico formatore non valido.');
+
+  const grouped = new Map();
+  for (const item of source) {
+    const sportSeason = normalizeSportSeason(item?.sportSeason || item?.season);
+    const competitions = normalizeInstructorCompetitions(item?.competitions);
+    if (!competitions.length) continue;
+    const existing = grouped.get(sportSeason) || [];
+    grouped.set(sportSeason, [...new Set([...existing, ...competitions])]);
+  }
+  return [...grouped.entries()]
+    .map(([sportSeason, competitions]) => ({ sportSeason, competitions }))
+    .sort((a, b) => b.sportSeason.localeCompare(a.sportSeason));
+}
+
+function validateRoleConfiguration(role, assignments) {
+  if (role === 'instructor' && !assignments.length) {
+    throw new HttpError(400, 'Assegna almeno una stagione e un campionato al formatore.');
+  }
+}
+
+function assignmentCompetitions(assignments) {
+  return [...new Set(assignments.flatMap((assignment) => assignment.competitions))];
+}
+
+async function replaceInstructorAssignments(client, userId, assignments) {
+  await client.run('DELETE FROM instructor_competition_assignments WHERE user_id = ?', [userId]);
+  for (const assignment of assignments) {
+    for (const competition of assignment.competitions) {
+      await client.run(
+        `INSERT INTO instructor_competition_assignments (user_id, sport_season, competition)
+         VALUES (?, ?, ?)`,
+        [userId, assignment.sportSeason, competition]
+      );
+    }
+  }
+}
+
+async function loadInstructorAssignments(userId) {
+  const rows = await dbAll(
+    `SELECT sport_season, competition
+       FROM instructor_competition_assignments
+      WHERE user_id = ?
+      ORDER BY sport_season DESC, competition ASC`,
+    [userId]
+  );
+  const grouped = new Map();
+  for (const row of rows) {
+    if (!grouped.has(row.sport_season)) grouped.set(row.sport_season, []);
+    grouped.get(row.sport_season).push(row.competition);
+  }
+  return [...grouped.entries()].map(([sportSeason, competitions]) => ({ sportSeason, competitions }));
 }
 
 function normalizeRefereeId(value) {
@@ -112,11 +163,16 @@ function validatePassword(password) {
   }
 }
 
-function publicUser(row) {
+export async function publicUserFromRow(row) {
   const role = normalizeRole(row.role, row.formatter_competition);
-  const instructorCompetitions = role === 'instructor'
-    ? normalizeStoredInstructorCompetitions(row.formatter_competition)
-    : [];
+  const storedAssignments = role === 'instructor' ? await loadInstructorAssignments(row.id) : [];
+  const instructorAssignments = role === 'instructor' && storedAssignments.length
+    ? storedAssignments
+    : role === 'instructor'
+      ? [{ sportSeason: currentSportSeason(), competitions: normalizeStoredInstructorCompetitions(row.formatter_competition) }]
+          .filter((assignment) => assignment.competitions.length)
+      : [];
+  const instructorCompetitions = assignmentCompetitions(instructorAssignments);
   return {
     id: row.id,
     username: row.username,
@@ -126,6 +182,7 @@ function publicUser(row) {
     photoPath: row.photo_path || null,
     instructorCompetition: instructorCompetitions[0] || '',
     instructorCompetitions,
+    instructorAssignments,
     formatterCompetition: instructorCompetitions[0] || '',
     formatterCompetitions: instructorCompetitions,
     active: Boolean(row.active),
@@ -165,6 +222,7 @@ export async function upsertUser({
   displayName = username,
   role = 'admin',
   instructorCompetition,
+  instructorAssignments,
   formatterCompetition = '',
   refereeId = null
 }) {
@@ -174,8 +232,11 @@ export async function upsertUser({
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
   const cleanRole = normalizeRole(role, competitionInput);
-  const instructorCompetitions = cleanRole === 'instructor' ? normalizeInstructorCompetitions(competitionInput) : [];
-  validateRoleConfiguration(cleanRole, instructorCompetitions);
+  const assignments = cleanRole === 'instructor'
+    ? normalizeInstructorAssignments(instructorAssignments, competitionInput)
+    : [];
+  validateRoleConfiguration(cleanRole, assignments);
+  const instructorCompetitions = assignmentCompetitions(assignments);
   const cleanInstructorCompetition = instructorCompetitions.length ? JSON.stringify(instructorCompetitions) : null;
   const existing = await dbGet('SELECT id FROM users WHERE username = ?', [cleanUsername]);
   const cleanRefereeId = await validateRefereeConfiguration({
@@ -187,8 +248,9 @@ export async function upsertUser({
 
   if (existing) {
     await ensureCanChangeAdminState({ id: existing.id, nextRole: cleanRole, nextActive: true });
-    await dbRun(
-      `UPDATE users
+    await dbTx(async (client) => {
+      await client.run(
+        `UPDATE users
           SET password_hash = ?,
               display_name = ?,
               role = ?,
@@ -197,17 +259,22 @@ export async function upsertUser({
               active = 1,
               updated_at = ts_now()
         WHERE id = ?`,
-      [passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId, existing.id]
-    );
+        [passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId, existing.id]
+      );
+      await replaceInstructorAssignments(client, existing.id, assignments);
+    });
     return existing.id;
   }
 
-  const result = await dbRun(
-    `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id)
-     VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-    [cleanUsername, passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId]
-  );
-  return result.rows[0].id;
+  return dbTx(async (client) => {
+    const result = await client.run(
+      `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+      [cleanUsername, passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId]
+    );
+    await replaceInstructorAssignments(client, result.rows[0].id, assignments);
+    return result.rows[0].id;
+  });
 }
 
 export async function listUsers() {
@@ -216,7 +283,7 @@ export async function listUsers() {
        FROM users
       ORDER BY active DESC, role ASC, LOWER(display_name) ASC`
   );
-  return rows.map(publicUser);
+  return Promise.all(rows.map(publicUserFromRow));
 }
 
 export async function createUser({
@@ -225,6 +292,7 @@ export async function createUser({
   displayName,
   role = 'observer',
   instructorCompetition,
+  instructorAssignments,
   formatterCompetition = '',
   refereeId = null
 }) {
@@ -237,24 +305,31 @@ export async function createUser({
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
   const cleanRole = normalizeRole(role, competitionInput);
-  const instructorCompetitions = cleanRole === 'instructor' ? normalizeInstructorCompetitions(competitionInput) : [];
-  validateRoleConfiguration(cleanRole, instructorCompetitions);
+  const assignments = cleanRole === 'instructor'
+    ? normalizeInstructorAssignments(instructorAssignments, competitionInput)
+    : [];
+  validateRoleConfiguration(cleanRole, assignments);
+  const instructorCompetitions = assignmentCompetitions(assignments);
   const cleanRefereeId = await validateRefereeConfiguration({ role: cleanRole, refereeId });
 
-  const result = await dbRun(
-    `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id, active)
-     VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
-    [
-      cleanUsername,
-      hashPassword(password),
-      String(displayName || cleanUsername).trim(),
-      cleanRole,
-      instructorCompetitions.length ? JSON.stringify(instructorCompetitions) : null,
-      cleanRefereeId
-    ]
-  );
+  const id = await dbTx(async (client) => {
+    const result = await client.run(
+      `INSERT INTO users (username, password_hash, display_name, role, formatter_competition, referee_id, active)
+       VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
+      [
+        cleanUsername,
+        hashPassword(password),
+        String(displayName || cleanUsername).trim(),
+        cleanRole,
+        instructorCompetitions.length ? JSON.stringify(instructorCompetitions) : null,
+        cleanRefereeId
+      ]
+    );
+    await replaceInstructorAssignments(client, result.rows[0].id, assignments);
+    return result.rows[0].id;
+  });
 
-  return getUser(result.rows[0].id);
+  return getUser(id);
 }
 
 export async function getUser(id) {
@@ -263,22 +338,25 @@ export async function getUser(id) {
     [id]
   );
   if (!row) throw new HttpError(404, 'Utente non trovato.');
-  return publicUser(row);
+  return publicUserFromRow(row);
 }
 
-export async function updateUser({ id, displayName, role, active, instructorCompetition, formatterCompetition, refereeId }) {
+export async function updateUser({ id, displayName, role, active, instructorCompetition, instructorAssignments, formatterCompetition, refereeId }) {
   const current = await dbGet('SELECT id, display_name, role, formatter_competition, referee_id, active FROM users WHERE id = ?', [id]);
   if (!current) throw new HttpError(404, 'Utente non trovato.');
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
   const nextRole = normalizeRole(role || current.role, competitionInput ?? current.formatter_competition);
   const nextActive = active === undefined ? Boolean(current.active) : Boolean(active);
-  const nextInstructorCompetition = nextRole !== 'instructor'
-    ? null
-    : competitionInput === undefined
-      ? serializeStoredInstructorCompetitions(current.formatter_competition)
-      : serializeInstructorCompetitions(competitionInput);
-  validateRoleConfiguration(nextRole, normalizeStoredInstructorCompetitions(nextInstructorCompetition));
+  const currentAssignments = nextRole === 'instructor' ? await loadInstructorAssignments(id) : [];
+  const nextAssignments = nextRole !== 'instructor'
+    ? []
+    : instructorAssignments === undefined && competitionInput === undefined
+      ? currentAssignments
+      : normalizeInstructorAssignments(instructorAssignments, competitionInput);
+  validateRoleConfiguration(nextRole, nextAssignments);
+  const nextCompetitions = assignmentCompetitions(nextAssignments);
+  const nextInstructorCompetition = nextCompetitions.length ? JSON.stringify(nextCompetitions) : null;
   const nextRefereeId = nextRole === 'referee'
     ? await validateRefereeConfiguration({
         role: nextRole,
@@ -288,8 +366,9 @@ export async function updateUser({ id, displayName, role, active, instructorComp
     : null;
   await ensureCanChangeAdminState({ id, nextRole, nextActive });
 
-  await dbRun(
-    `UPDATE users
+  await dbTx(async (client) => {
+    await client.run(
+      `UPDATE users
         SET display_name = ?,
             role = ?,
             formatter_competition = ?,
@@ -297,12 +376,13 @@ export async function updateUser({ id, displayName, role, active, instructorComp
             active = ?,
             updated_at = ts_now()
       WHERE id = ?`,
-    [String(displayName || current.display_name).trim(), nextRole, nextInstructorCompetition, nextRefereeId, nextActive ? 1 : 0, id]
-  );
-
-  if (!nextActive) {
-    await dbRun('DELETE FROM sessions WHERE user_id = ?', [id]);
-  }
+      [String(displayName || current.display_name).trim(), nextRole, nextInstructorCompetition, nextRefereeId, nextActive ? 1 : 0, id]
+    );
+    await replaceInstructorAssignments(client, id, nextAssignments);
+    if (!nextActive) {
+      await client.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+    }
+  });
 
   return getUser(id);
 }

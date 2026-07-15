@@ -7,9 +7,9 @@ import path from 'node:path';
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fischiolab-access-'));
 process.env.STORAGE_DIR = tempDir;
 
-const { setupTestDatabase, closeTestDatabase, insertId } = await import('./helpers/testDatabase.js');
-const { listReports, getReport } = await import('../src/services/reportService.js');
-const { createGame, setOfficial, listPendingAssignmentsForUser } = await import('../src/services/gameService.js');
+const { setupTestDatabase, closeTestDatabase, insertId, dbRun } = await import('./helpers/testDatabase.js');
+const { listReports, getReport, createReport, updateReport } = await import('../src/services/reportService.js');
+const { createGame, setOfficial, listPendingAssignmentsForUser, listAssignableObservers } = await import('../src/services/gameService.js');
 
 await setupTestDatabase();
 
@@ -71,4 +71,79 @@ test('la coda esclude la gara una volta che ha un rapporto, e listReports espone
   assert.ok(!(await listPendingAssignmentsForUser(obs1, SEASON)).some((item) => item.gameId === game.id));
   const row = (await listReports({ season: SEASON, user: U(obs1, 'observer') })).find((report) => report.id === reportId);
   assert.equal(row?.observerId, obs1);
+});
+
+test('la lista rapporti espone per intero i cognomi composti degli arbitri collegati', async () => {
+  const refereeId = await insertId(
+    'INSERT INTO referees (first_name, last_name) VALUES (?, ?)',
+    ['Mario', 'De Santis Rossi']
+  );
+  await dbRun(
+    'UPDATE reports SET first_referee_id = ?, first_referee_name = ? WHERE id = ?',
+    [refereeId, 'De Santis Rossi Mario', reportId]
+  );
+  const row = (await listReports({ season: SEASON, user: U(adminId, 'admin') })).find((report) => report.id === reportId);
+  assert.equal(row?.firstRefereeSurname, 'De Santis Rossi');
+});
+
+test('admin e formatore scelgono l’osservatore tra utenti osservatori e formatori', async () => {
+  const available = await listAssignableObservers();
+  assert.ok(available.some((user) => user.id === obs1 && user.role === 'observer'));
+  assert.ok(available.some((user) => user.id === instrId && user.role === 'instructor'));
+  assert.ok(!available.some((user) => user.id === adminId));
+
+  const adminReport = await createReport({
+    payload: {
+      reportDate: '2026-02-01',
+      matchNumber: 'observer-admin',
+      observerUserId: obs2,
+      observerName: 'testo ignorato'
+    },
+    status: 'draft',
+    user: U(adminId, 'admin')
+  });
+  assert.equal(adminReport.observerId, obs2);
+  assert.equal(adminReport.observerName, 'obs2');
+  assert.equal(adminReport.data.observerUserId, obs2);
+
+  const reassigned = await updateReport({
+    id: adminReport.id,
+    payload: {
+      ...adminReport.data,
+      observerUserId: instrId,
+      observerName: 'nome non canonico'
+    },
+    status: 'draft',
+    user: U(adminId, 'admin')
+  });
+  assert.equal(reassigned.observerId, instrId);
+  assert.equal(reassigned.observerName, 'instr');
+  await assert.doesNotReject(() => getReport(reassigned.id, U(instrId, 'instructor', 'DR1')));
+
+  const instructorReport = await createReport({
+    payload: {
+      reportDate: '2026-02-02',
+      matchNumber: 'observer-instructor',
+      competition: 'DR1',
+      observerUserId: obs1,
+      observerName: 'altro testo ignorato'
+    },
+    status: 'draft',
+    user: U(instrId, 'instructor', 'DR1')
+  });
+  assert.equal(instructorReport.observerId, obs1);
+  assert.equal(instructorReport.observerName, 'obs1');
+
+  await assert.rejects(
+    () => createReport({
+      payload: {
+        reportDate: '2026-02-03',
+        observerUserId: adminId,
+        observerName: 'Admin'
+      },
+      status: 'draft',
+      user: U(adminId, 'admin')
+    }),
+    /non è più disponibile/
+  );
 });
