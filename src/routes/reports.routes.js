@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import {
   createReport,
   deleteReport,
@@ -13,8 +14,49 @@ import { generateReportPdfs, getPdfFileInfo, generatePdfForRole, buildReportPdf 
 import { listPendingAssignmentsForUser } from '../services/gameService.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 import { sendReportToReferee, isEmailEnabled } from '../services/emailService.js';
+import { requireAdminOrInstructor } from '../middleware/auth.js';
+import {
+  applyFederationPdfImport,
+  previewFederationPdfImport
+} from '../services/federationPdfImportService.js';
 
 export const reportsRouter = express.Router();
+
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024, files: 20 },
+  fileFilter: (_req, file, callback) => {
+    if (file.mimetype !== 'application/pdf') {
+      callback(new HttpError(400, 'Sono ammessi soltanto file PDF.'));
+      return;
+    }
+    callback(null, true);
+  }
+}).array('files', 20);
+
+function receivePdfFiles(req, _res, next) {
+  pdfUpload(req, _res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      next(new HttpError(413, 'Ogni PDF può pesare al massimo 4 MB.'));
+      return;
+    }
+    if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
+      next(new HttpError(413, 'Puoi caricare al massimo 20 PDF per volta.'));
+      return;
+    }
+    next(error);
+  });
+}
+
+function requirePdfFiles(req) {
+  if (!Array.isArray(req.files) || !req.files.length) {
+    throw new HttpError(400, 'Seleziona almeno un rapporto PDF.');
+  }
+}
 
 reportsRouter.get(
   '/',
@@ -28,6 +70,45 @@ reportsRouter.get(
         user: req.user
       })
     });
+  })
+);
+
+reportsRouter.post(
+  '/pdf-import/preview',
+  requireAdminOrInstructor,
+  receivePdfFiles,
+  asyncHandler(async (req, res) => {
+    requirePdfFiles(req);
+    const preview = await previewFederationPdfImport({
+      files: req.files,
+      contextGameId: req.body?.gameId,
+      contextReportId: req.body?.reportId,
+      user: req.user
+    });
+    res.json({ preview });
+  })
+);
+
+reportsRouter.post(
+  '/pdf-import/apply',
+  requireAdminOrInstructor,
+  receivePdfFiles,
+  asyncHandler(async (req, res) => {
+    requirePdfFiles(req);
+    let decisions;
+    try {
+      decisions = JSON.parse(String(req.body?.decisions || '[]'));
+    } catch (_error) {
+      throw new HttpError(400, 'Conferma importazione non valida.');
+    }
+    const result = await applyFederationPdfImport({
+      files: req.files,
+      decisions,
+      contextGameId: req.body?.gameId,
+      contextReportId: req.body?.reportId,
+      user: req.user
+    });
+    res.json({ result });
   })
 );
 

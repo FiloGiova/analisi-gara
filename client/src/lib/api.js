@@ -27,6 +27,28 @@ async function request(path, options = {}) {
   return data;
 }
 
+async function multipartRequest(path, form) {
+  const response = await fetch(path, {
+    method: 'POST',
+    body: form,
+    credentials: 'include'
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ApiError(data?.message || 'Caricamento non riuscito.', data?.details, response.status);
+  }
+  return data;
+}
+
+function federationPdfForm(files, { gameId = null, reportId = null, decisions = null } = {}) {
+  const form = new FormData();
+  for (const file of files) form.append('files', file);
+  if (gameId) form.append('gameId', String(gameId));
+  if (reportId) form.append('reportId', String(reportId));
+  if (decisions) form.append('decisions', JSON.stringify(decisions));
+  return form;
+}
+
 export const api = {
   me: () => request('/api/auth/me'),
   myReports: ({ search = '', status = '', season = '' } = {}) => {
@@ -95,6 +117,10 @@ export const api = {
     return request(`/api/reports/pending-games${params.toString() ? `?${params}` : ''}`);
   },
   getReport: (id) => request(`/api/reports/${id}`),
+  previewFederationPdfImport: (files, context = {}) =>
+    multipartRequest('/api/reports/pdf-import/preview', federationPdfForm(files, context)),
+  applyFederationPdfImport: (files, decisions, context = {}) =>
+    multipartRequest('/api/reports/pdf-import/apply', federationPdfForm(files, { ...context, decisions })),
   createReport: (report, status, { allowDuplicate = false } = {}) => request('/api/reports', {
     method: 'POST',
     body: JSON.stringify({ report, status, allowDuplicate })

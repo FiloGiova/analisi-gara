@@ -2285,6 +2285,288 @@ dd {
   gap: 10px;
 }
 
+/* ── Importazione rapporti PDF federali ──────────────────────── */
+
+.pdf-import-overlay {
+  align-items: flex-start;
+  overflow-y: auto;
+}
+
+.pdf-import-modal {
+  width: min(980px, 100%);
+  max-width: 980px;
+  margin: 24px auto;
+  padding: 28px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.pdf-import-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.pdf-import-heading h3 {
+  margin: 2px 0 6px;
+  font-size: 1.5rem;
+}
+
+.pdf-import-heading p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.pdf-import-close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(18, 60, 105, 0.14);
+  border-radius: 50%;
+  background: var(--paper-2);
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.pdf-import-start,
+.pdf-import-preview,
+.pdf-import-result {
+  display: grid;
+  gap: 14px;
+}
+
+.pdf-dropzone {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  border: 2px dashed rgba(18, 60, 105, 0.25);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, rgba(225, 239, 250, 0.7), rgba(255, 255, 255, 0.85));
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.pdf-dropzone:hover {
+  border-color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.pdf-dropzone strong {
+  font-size: 1.05rem;
+}
+
+.pdf-dropzone span,
+.pdf-file-list span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.pdf-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pdf-file-list span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--paper-2);
+}
+
+.pdf-import-summary,
+.pdf-result-success,
+.pdf-result-partial {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(42, 132, 93, 0.09);
+  color: #1f6c4b;
+}
+
+.pdf-import-summary span,
+.pdf-result-success span,
+.pdf-result-partial span {
+  font-size: 0.82rem;
+}
+
+.pdf-result-partial {
+  background: rgba(207, 133, 33, 0.1);
+  color: #8b5b18;
+}
+
+.pdf-import-group {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(18, 60, 105, 0.13);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.pdf-import-group.is-ready {
+  border-color: rgba(42, 132, 93, 0.3);
+}
+
+.pdf-import-group.needs-input {
+  border-color: rgba(207, 133, 33, 0.32);
+}
+
+.pdf-import-group-title,
+.pdf-import-group-title label,
+.pdf-import-files,
+.pdf-result-link {
+  display: flex;
+  align-items: center;
+}
+
+.pdf-import-group-title {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pdf-import-group-title label {
+  gap: 10px;
+}
+
+.pdf-import-group-title input,
+.pdf-replace-confirm input {
+  width: auto;
+}
+
+.pdf-import-group-title span span {
+  display: grid;
+  gap: 2px;
+}
+
+.pdf-import-group-title small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.status-badge.pdf-ready {
+  background: rgba(42, 132, 93, 0.12);
+  color: #1f6c4b;
+}
+
+.status-badge.pdf-warning {
+  background: rgba(207, 133, 33, 0.12);
+  color: #8b5b18;
+}
+
+.pdf-import-files {
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pdf-import-files > div {
+  min-width: 220px;
+  flex: 1;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--paper-2);
+}
+
+.pdf-import-files span {
+  font-size: 0.88rem;
+}
+
+.pdf-import-files small {
+  color: var(--muted);
+}
+
+.pdf-inline-warning {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(207, 133, 33, 0.1);
+  color: #74501d;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.pdf-import-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pdf-import-grid .field-span-2 {
+  grid-column: span 2;
+}
+
+.pdf-replace-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(180, 68, 58, 0.07);
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.pdf-result-link {
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(18, 60, 105, 0.14);
+  border-radius: var(--radius-md);
+  background: var(--paper-2);
+  color: var(--blue);
+  font-weight: 700;
+  text-align: left;
+}
+
+.pdf-import-error {
+  margin-top: 14px;
+}
+
+.pdf-import-actions {
+  position: sticky;
+  bottom: -28px;
+  margin: 22px -28px -28px;
+  padding: 16px 28px;
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 1px solid rgba(18, 60, 105, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 760px) {
+  .pdf-import-overlay { padding: 0; }
+  .pdf-import-modal {
+    margin: 0;
+    min-height: 100vh;
+    max-height: none;
+    border-radius: 0;
+    padding: 20px;
+  }
+  .pdf-import-grid { grid-template-columns: 1fr; }
+  .pdf-import-grid .field-span-2 { grid-column: span 1; }
+  .pdf-import-summary,
+  .pdf-result-success,
+  .pdf-result-partial { align-items: flex-start; flex-direction: column; }
+  .pdf-import-actions {
+    bottom: -20px;
+    margin: 20px -20px -20px;
+    padding: 14px 20px;
+    flex-wrap: wrap;
+  }
+}
+
 /* ── Auto-save notice ─────────────────────────────────────────── */
 
 .autosave-banner {

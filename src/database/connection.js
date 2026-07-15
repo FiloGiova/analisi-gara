@@ -35,6 +35,7 @@ export async function initializeDatabase() {
 }
 
 async function runBackfills() {
+  await migrateFederationPdfSources();
   await ensureDefaultSeasonCategories();
   await backfillReportSeasons();
   await backfillReportVotes();
@@ -42,6 +43,40 @@ async function runBackfills() {
   await backfillOfficialExternalNames();
   await cleanupLegacyExportRows();
   await migrateUserRoles();
+}
+
+// I CREATE TABLE IF NOT EXISTS non aggiornano i CHECK già presenti su Supabase.
+// Allarga una sola volta i vincoli delle installazioni esistenti per registrare
+// in modo esplicito l'origine PDF federale e i relativi batch di importazione.
+async function migrateFederationPdfSources() {
+  const constraints = [
+    {
+      table: 'game_officials',
+      name: 'game_officials_source_check',
+      expression: "source IN ('fip_public', 'xlsx', 'federation_pdf', 'manual')"
+    },
+    {
+      table: 'game_changes',
+      name: 'game_changes_source_check',
+      expression: "source IN ('fip_public', 'xlsx', 'federation_pdf', 'manual')"
+    },
+    {
+      table: 'sync_runs',
+      name: 'sync_runs_type_check',
+      expression: "type IN ('fip_sync', 'xlsx_import', 'pdf_report_import')"
+    }
+  ];
+  for (const constraint of constraints) {
+    const row = await dbGet(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = ?::regclass AND conname = ?`,
+      [constraint.table, constraint.name]
+    );
+    if (row?.definition?.includes('federation_pdf') || row?.definition?.includes('pdf_report_import')) continue;
+    await getPool().query(`ALTER TABLE ${constraint.table} DROP CONSTRAINT IF EXISTS ${constraint.name}`);
+    await getPool().query(`ALTER TABLE ${constraint.table} ADD CONSTRAINT ${constraint.name} CHECK (${constraint.expression})`);
+  }
 }
 
 async function ensureDefaultSeasonCategories() {

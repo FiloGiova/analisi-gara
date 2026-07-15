@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS game_officials (
   referee_id    INTEGER,
   user_id       INTEGER,
   external_name TEXT NOT NULL DEFAULT '',
-  source        TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('fip_public', 'xlsx', 'manual')),
+  source        TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('fip_public', 'xlsx', 'federation_pdf', 'manual')),
   status        TEXT NOT NULL DEFAULT 'provisional' CHECK (status IN ('provisional', 'confirmed')),
   manual_lock   INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS person_aliases (
 
 CREATE TABLE IF NOT EXISTS sync_runs (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-  type                  TEXT NOT NULL DEFAULT 'fip_sync' CHECK (type IN ('fip_sync', 'xlsx_import')),
+  type                  TEXT NOT NULL DEFAULT 'fip_sync' CHECK (type IN ('fip_sync', 'xlsx_import', 'pdf_report_import')),
   competition_source_id INTEGER,
   started_by            INTEGER,
   started_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
@@ -230,7 +230,7 @@ CREATE TABLE IF NOT EXISTS game_changes (
   field       TEXT NOT NULL,
   old_value   TEXT,
   new_value   TEXT,
-  source      TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('fip_public', 'xlsx', 'manual')),
+  source      TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('fip_public', 'xlsx', 'federation_pdf', 'manual')),
   changed_by  INTEGER,
   sync_run_id INTEGER,
   reason      TEXT,

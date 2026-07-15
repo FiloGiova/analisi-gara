@@ -6,6 +6,7 @@ import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
+import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
 
 const REFEREE_ROLES = [
   { role: 'referee1', label: '1° arbitro' },
@@ -16,6 +17,7 @@ const REFEREE_ROLES = [
 const SOURCE_LABELS = {
   fip_public: 'FIP',
   xlsx: 'XLSX',
+  federation_pdf: 'PDF federale',
   manual: 'Manuale'
 };
 
@@ -68,6 +70,7 @@ export default function GameDetailPage({ id, currentUser }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showPdfImporter, setShowPdfImporter] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -285,6 +288,13 @@ export default function GameDetailPage({ id, currentUser }) {
 
   return (
     <div className="page-stack">
+      {showPdfImporter ? (
+        <FederationPdfImporter
+          gameId={game.id}
+          onClose={() => setShowPdfImporter(false)}
+          onImported={() => load()}
+        />
+      ) : null}
       <section className="dashboard-hero admin-hero">
         <div>
           <p className="eyebrow">
@@ -309,6 +319,11 @@ export default function GameDetailPage({ id, currentUser }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          {canManage ? (
+            <button type="button" className="accent-button" onClick={() => setShowPdfImporter(true)}>
+              Importa rapporti PDF
+            </button>
+          ) : null}
           {game.reportId ? (
             <button type="button" className="hero-button" onClick={() => navigate(`/reports/${game.reportId}`)}>
               Apri rapporto

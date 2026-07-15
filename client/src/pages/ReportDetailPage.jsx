@@ -5,6 +5,7 @@ import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { formatMatchNumber } from '../lib/formatters.js';
+import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
 
 function DownloadIcon() {
   return (
@@ -142,11 +143,16 @@ export default function ReportDetailPage({ id, currentUser }) {
   const [exporting, setExporting] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPdfImporter, setShowPdfImporter] = useState(false);
+
+  function loadReport() {
+    return api.getReport(id)
+      .then((data) => { setReport(data.report); setError(''); })
+      .catch((err) => setError(err.message || 'Rapporto non trovato.'));
+  }
 
   useEffect(() => {
-    api.getReport(id)
-      .then((data) => setReport(data.report))
-      .catch((err) => setError(err.message || 'Rapporto non trovato.'));
+    loadReport();
     api.isEmailEnabled()
       .then((data) => setEmailEnabled(data.enabled))
       .catch(() => {});
@@ -187,6 +193,7 @@ export default function ReportDetailPage({ id, currentUser }) {
   );
   const canLinkReferee = currentUser?.role === 'admin' ||
     (currentUser?.role === 'instructor' && Boolean(currentUser?.instructorCompetitions?.length || currentUser?.instructorCompetition));
+  const canImportPdf = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
 
   const scoreHome = Number(data.scoreHome);
   const scoreAway = Number(data.scoreAway);
@@ -198,6 +205,14 @@ export default function ReportDetailPage({ id, currentUser }) {
 
   return (
     <div className="page-stack">
+      {showPdfImporter ? (
+        <FederationPdfImporter
+          gameId={report.gameId}
+          reportId={report.id}
+          onClose={() => setShowPdfImporter(false)}
+          onImported={() => loadReport()}
+        />
+      ) : null}
       {showDeleteConfirm ? (
         <ConfirmModal
           title="Cancella rapporto"
@@ -232,6 +247,11 @@ export default function ReportDetailPage({ id, currentUser }) {
             </div>
           </div>
           <div className="detail-hero-actions">
+            {canImportPdf && (
+              <button type="button" className="accent-button" onClick={() => setShowPdfImporter(true)}>
+                Aggiorna da PDF federali
+              </button>
+            )}
             {canManageReport && (
               <button type="button" className="ghost-button" onClick={() => navigate(`/reports/${report.id}/edit`)}>
                 Modifica

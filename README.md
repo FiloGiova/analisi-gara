@@ -12,6 +12,8 @@ Produzione: [https://fischiolab.onrender.com](https://fischiolab.onrender.com)
 - gestione gare, arbitri e osservatori, con export XLSX della vista filtrata;
 - designazione osservatori singola o in blocco;
 - rapporti in bozza/definitivi e PDF separato per ciascun arbitro;
+- import deterministico dei rapporti PDF federali, con abbinamento da numero
+  gara e campo `ARBITRO` interno al documento;
 - anagrafica arbitri per stagione, campionato e fascia, esportabile in XLSX con
   i filtri correnti e le appartenenze alle fasce;
 - statistiche Copertura, Matrice incroci e Impiego arbitri, esportabili in XLSX
@@ -142,7 +144,7 @@ npm test
 Il database di test viene svuotato prima di ciascun file. GitHub Actions crea
 automaticamente un PostgreSQL effimero ed esegue test e build a ogni push.
 
-I test puri del parser FIP, che non richiedono database, possono essere eseguiti
+I test puri dei parser FIP e dei rapporti PDF, che non richiedono database, possono essere eseguiti
 con:
 
 ```bash
@@ -211,6 +213,24 @@ errori generano anche una notifica email.
 
 La sincronizzazione FIP aggiorna gare e arbitri, ma non modifica mai gli
 osservatori interni né i valori bloccati manualmente.
+
+## Importazione rapporti PDF federali
+
+Admin e formatori possono caricare fino a 20 PDF digitali dalla pagina
+**Rapporti** oppure dai dettagli di una gara o di un rapporto. L'anteprima
+abbina gara, arbitri e osservatore usando il contenuto del documento; il nome
+del file non partecipa mai al riconoscimento.
+
+L'importazione aggiorna le designazioni confermate e registra le variazioni
+nello storico gara. Un solo PDF produce una bozza, mentre una coppia completa e
+valida produce un rapporto definitivo. I PDF originali vengono elaborati in
+memoria e non sono archiviati.
+
+Il comando locale usa lo stesso parser:
+
+```bash
+npm run import:legacy-pdfs -- --dry-run rapporto1.pdf rapporto2.pdf
+```
 
 ## PDF e storage
 

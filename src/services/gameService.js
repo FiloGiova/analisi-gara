@@ -2,7 +2,7 @@ import { dbGet, dbAll, dbRun, dbTx } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 
 export const OFFICIAL_ROLES = ['referee1', 'referee2', 'referee3', 'observer'];
-export const GAME_SOURCES = ['fip_public', 'xlsx', 'manual'];
+export const GAME_SOURCES = ['fip_public', 'xlsx', 'federation_pdf', 'manual'];
 export const GAME_STATUSES = ['scheduled', 'played', 'postponed', 'cancelled'];
 
 function asText(value) {

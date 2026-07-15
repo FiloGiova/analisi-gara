@@ -6,6 +6,7 @@ import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import WorkbenchTable from '../components/WorkbenchTable.jsx';
 import { formatMatchNumber } from '../lib/formatters.js';
+import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
 
 function dateValue(value) {
   const t = new Date(value || '').getTime();
@@ -50,6 +51,7 @@ export default function DashboardPage({ currentUser, season }) {
   const [error, setError] = useState('');
   const [exportingId, setExportingId] = useState(null);
   const [reportToDelete, setReportToDelete] = useState(null);
+  const [showPdfImporter, setShowPdfImporter] = useState(false);
   const filterRef = useRef(null);
   const [sparkline] = useState(() => buildSparkline(0, 0));
 
@@ -121,6 +123,7 @@ export default function DashboardPage({ currentUser, season }) {
 
   const canFilterObservers = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
   const isReferee = currentUser?.role === 'referee';
+  const canImportPdf = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
   const filterCount = [competition, observer].filter(Boolean).length;
   const hasFilters = Boolean(search || filterCount);
   const availableCompetitions = Array.from(new Set(reports.map((r) => r.competition).filter(Boolean))).sort();
@@ -186,6 +189,16 @@ export default function DashboardPage({ currentUser, season }) {
 
   return (
     <div className="page-stack">
+      {showPdfImporter ? (
+        <FederationPdfImporter
+          onClose={() => setShowPdfImporter(false)}
+          onImported={() => {
+            loadReports();
+            api.getReportStats({ season }).then((data) => setStats(data.stats)).catch(() => {});
+            api.getPendingGames({ season }).then((data) => setPendingGames(data.games || [])).catch(() => {});
+          }}
+        />
+      ) : null}
       {reportToDelete ? (
         <ConfirmModal
           title="Cancella rapporto"
@@ -204,9 +217,16 @@ export default function DashboardPage({ currentUser, season }) {
           <p className="eyebrow">Workbench · stagione {season}</p>
           <h1>{stats?.total ?? '—'} rapporti, sotto controllo.</h1>
         </div>
-        <button type="button" className="accent-button" onClick={() => navigate('/reports/new')}>
-          Nuovo rapporto
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {canImportPdf ? (
+            <button type="button" className="hero-button" onClick={() => setShowPdfImporter(true)}>
+              Importa PDF
+            </button>
+          ) : null}
+          <button type="button" className="accent-button" onClick={() => navigate('/reports/new')}>
+            Nuovo rapporto
+          </button>
+        </div>
       </section>
 
       {/* KPI strip */}

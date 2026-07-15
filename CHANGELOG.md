@@ -7,6 +7,21 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-07-15 — Importazione rapporti PDF federali
+
+- Nuovo parser deterministico del template federale digitale: numero gara,
+  arbitro valutato, sezioni, note, voto e potenzialità vengono letti dal
+  contenuto del PDF e mai dal nome file.
+- Anteprima batch fino a 20 PDF con associazione di gara, arbitri, osservatore,
+  alias e scelta esplicita in presenza di conflitti o rapporti esistenti.
+- Applicazione atomica per gara: creazione/aggiornamento del rapporto,
+  designazioni confermate e bloccate, storico modifiche e reset dell'invio email
+  per le sole valutazioni sostituite.
+- Import disponibile da Rapporti, dettaglio Gara e dettaglio Rapporto per admin
+  e formatori nel perimetro dei campionati assegnati.
+- PDF originali elaborati soltanto in memoria; nessuna AI, OCR o persistenza del
+  documento sorgente.
+
 ## 2026-07-13 — Statistiche, test PostgreSQL, sync automatico e template designatore
 
 ### Statistiche
