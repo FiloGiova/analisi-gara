@@ -326,10 +326,18 @@ export default function FederationPdfImporter({ gameId = null, reportId = null, 
                       <div key={file.hash}>
                         <strong>{ROLE_LABELS[file.role]}</strong>
                         <span>{file.targetRefereeName}</span>
-                        <small>Voto {file.vote || '—'} · {file.originalName}</small>
+                        <small>
+                          {file.voteAvailable ? `Voto ${file.vote || '—'}` : 'Voto non presente'} · {file.originalName}
+                        </small>
                       </div>
                     ))}
                   </div>
+
+                  {group.files.some((file) => file.potentialAvailable === false || file.voteAvailable === false) ? (
+                    <div className="pdf-inline-warning">
+                      Uno o più PDF non contengono Potenzialità o Voto: se il rapporto non li contiene già, i campi resteranno vuoti e potranno essere aggiunti in seguito.
+                    </div>
+                  ) : null}
 
                   {group.duplicateRoles.length ? (
                     <div className="error-banner">Sono presenti due PDF per lo stesso ruolo.</div>

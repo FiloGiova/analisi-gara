@@ -2,6 +2,7 @@ export function federationReportText({
   target = 'ROSSI MARIO',
   vote = '68',
   potential = 'Alta',
+  includePotentialAndVote = true,
   errors = '',
   observer = 'VERDI LUCA',
   matchDate = '17/11/2025',
@@ -106,12 +107,13 @@ Aree di miglioramento: continuità.
 EVENTUALI ERRORI TECNICI
 Indicare tipo di errore e riferimento tempo di gioco
 ${errors}
+${includePotentialAndVote ? `
 POTENZIALITA'
 ${potential}
 Motivazione
 Percorso di crescita positivo.
 VOTO
-${vote}
+${vote}` : ''}
 Pagina 7 di 7
 28/11/2025 02:17Data stampa:
 `;

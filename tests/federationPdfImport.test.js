@@ -62,6 +62,13 @@ const game342 = await insertId(
    ) VALUES ('2025/2026', 'manual', '342', 'DR1', '2025-11-19T20:30',
      'SQUADRA CASA', 'SQUADRA OSPITE', 'played', '76', '65')`
 );
+const game343 = await insertId(
+  `INSERT INTO games (
+     sport_season, external_source, match_number, competition, scheduled_at,
+     team_home, team_away, status, score_home, score_away
+   ) VALUES ('2025/2026', 'manual', '343', 'DR1', '2025-11-21T20:30',
+     'SQUADRA CASA', 'SQUADRA OSPITE', 'played', '76', '65')`
+);
 const admin = { id: adminId, role: 'admin', displayName: 'Admin PDF' };
 
 test.after(async () => {
@@ -137,6 +144,34 @@ test('un solo PDF crea una bozza mantenendo il ruolo mancante vuoto', async () =
   assert.equal(JSON.parse(report.payload_json).evaluations.second.vote, '');
 });
 
+test('importa una coppia di PDF abbreviati lasciando potenzialità e voto vuoti', async () => {
+  const common = {
+    matchNumber: '343',
+    matchDate: '21/11/2025',
+    evaluationDate: '22/11/2025',
+    includePotentialAndVote: false
+  };
+  const files = [
+    await pdfFile('abbreviato-primo.pdf', { ...common, target: 'ROSSI MARIO' }),
+    await pdfFile('abbreviato-secondo.pdf', { ...common, target: 'BIANCHI ANNA' })
+  ];
+  const preview = await previewFederationPdfImport({ files, user: admin });
+  const group = preview.groups[0];
+  assert.equal(group.automaticGameId, game343);
+  assert.equal(group.ready, true);
+  assert.ok(group.files.every((file) => file.potentialAvailable === false && file.voteAvailable === false));
+
+  const result = await applyFederationPdfImport({ files, decisions: [decisionFor(group)], user: admin });
+  assert.equal(result.status, 'success');
+  assert.equal(result.results[0].status, 'final');
+  const report = await dbGet('SELECT * FROM reports WHERE id = ?', [result.results[0].reportId]);
+  const payload = JSON.parse(report.payload_json);
+  assert.equal(report.first_referee_vote, '');
+  assert.equal(report.second_referee_vote, '');
+  assert.deepEqual(payload.evaluations.first.potential, { level: '', comment: '' });
+  assert.deepEqual(payload.evaluations.second.potential, { level: '', comment: '' });
+});
+
 test('la sostituzione parziale preserva l’altro arbitro e azzera solo il relativo invio', async () => {
   const existing = await dbGet("SELECT * FROM reports WHERE game_id = ? AND status = 'final'", [game341]);
   await dbRun(
@@ -159,6 +194,32 @@ test('la sostituzione parziale preserva l’altro arbitro e azzera solo il relat
   assert.equal(updated.second_referee_vote, '66');
   assert.equal(updated.first_referee_sent_at, null);
   assert.equal(updated.second_referee_sent_at, '2026-01-02');
+});
+
+test('un PDF abbreviato non cancella voto e potenzialità già acquisiti', async () => {
+  const existing = await dbGet("SELECT * FROM reports WHERE game_id = ? AND status = 'final'", [game341]);
+  const before = JSON.parse(existing.payload_json).evaluations.first;
+  const files = [await pdfFile('versione-precedente.pdf', {
+    target: 'ROSSI MARIO',
+    includePotentialAndVote: false
+  })];
+  const preview = await previewFederationPdfImport({
+    files,
+    user: admin,
+    contextGameId: game341,
+    contextReportId: existing.id
+  });
+  const group = preview.groups[0];
+  const result = await applyFederationPdfImport({
+    files,
+    decisions: [decisionFor(group, { reportId: existing.id, replaceExisting: true })],
+    user: admin
+  });
+  assert.equal(result.status, 'success');
+  const updated = await dbGet('SELECT * FROM reports WHERE id = ?', [existing.id]);
+  const after = JSON.parse(updated.payload_json).evaluations.first;
+  assert.equal(after.vote, before.vote);
+  assert.deepEqual(after.potential, before.potential);
 });
 
 test('un formatore non può importare PDF fuori dai campionati assegnati', async () => {

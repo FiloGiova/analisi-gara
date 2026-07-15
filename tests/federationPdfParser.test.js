@@ -56,6 +56,16 @@ test('separa gli errori tecnici dalla potenzialità', () => {
   assert.equal(parsed.evaluation.vote, '68');
 });
 
+test('accetta il template abbreviato senza potenzialità e voto', () => {
+  const parsed = parseFederationReportText(fixture({ includePotentialAndVote: false }));
+  assert.equal(parsed.evaluation.globalJudgement, 'Punti di forza: presenza. Aree di miglioramento: continuità.');
+  assert.equal(parsed.evaluation.technicalErrors, 'NO');
+  assert.equal(parsed.evaluation.potential.level, '');
+  assert.equal(parsed.evaluation.potential.comment, '');
+  assert.equal(parsed.evaluation.vote, '');
+  assert.deepEqual(parsed.fieldAvailability, { potential: false, vote: false });
+});
+
 test('rifiuta un arbitro target non presente nei due ruoli', () => {
   assert.throws(
     () => parseFederationReportText(fixture({ target: 'NOME SCONOSCIUTO' })),

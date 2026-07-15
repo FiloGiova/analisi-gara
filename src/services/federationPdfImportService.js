@@ -329,7 +329,9 @@ export async function previewFederationPdfImport({ files, contextGameId = null, 
         role: item.parsed.role,
         targetRefereeName: item.parsed.header.targetRefereeName,
         vote: item.parsed.evaluation.vote,
-        potential: item.parsed.evaluation.potential.level
+        potential: item.parsed.evaluation.potential.level,
+        potentialAvailable: item.parsed.fieldAvailability?.potential !== false,
+        voteAvailable: item.parsed.fieldAvailability?.vote !== false
       })),
       presentRoles: [...new Set(roles)],
       duplicateRoles,
@@ -384,6 +386,21 @@ function payloadFromReportRow(row) {
       first: { ...payload.evaluations.first, vote: row.first_referee_vote || payload.evaluations.first.vote || '' },
       second: { ...payload.evaluations.second, vote: row.second_referee_vote || payload.evaluations.second.vote || '' }
     }
+  };
+}
+
+function importedEvaluation(item, fallback) {
+  if (!item) return fallback;
+  const incoming = item.parsed.evaluation;
+  const availability = item.parsed.fieldAvailability || {};
+  return {
+    ...incoming,
+    potential: availability.potential === false
+      ? fallback.potential
+      : incoming.potential,
+    vote: availability.vote === false
+      ? fallback.vote
+      : incoming.vote
   };
 }
 
@@ -566,8 +583,14 @@ async function applyOneGroup({ items, decision, user, syncRunId, contextGameId =
       secondRefereeName: secondName,
       matchCharacteristics: shared.parsed.matchCharacteristics,
       evaluations: {
-        first: items.find((item) => item.parsed.role === 'first')?.parsed.evaluation || base.evaluations.first,
-        second: items.find((item) => item.parsed.role === 'second')?.parsed.evaluation || base.evaluations.second
+        first: importedEvaluation(
+          items.find((item) => item.parsed.role === 'first'),
+          base.evaluations.first
+        ),
+        second: importedEvaluation(
+          items.find((item) => item.parsed.role === 'second'),
+          base.evaluations.second
+        )
       }
     });
     const validationErrors = collectFinalValidationErrors(payload);

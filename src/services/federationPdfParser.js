@@ -284,27 +284,41 @@ function parseStructuredEvaluation(lines) {
 
   const errorsHint = findLine(lines, /Indicare tipo di errore/i, errorsHeading + 1);
   const potentialHeading = findLine(lines, /^POTENZIALITA['’]?$/i, errorsHeading + 1);
-  if (errorsHint < 0 || potentialHeading < 0) {
-    throw new FederationPdfParseError('Sezioni errori tecnici o potenzialità non riconosciute nel PDF.');
+  const voteHeading = findLine(lines, /^VOTO$/i, errorsHeading + 1);
+  if (errorsHint < 0) {
+    throw new FederationPdfParseError('Sezione errori tecnici non riconosciuta nel PDF.');
   }
-  evaluation.technicalErrors = textBetween(lines, errorsHint + 1, potentialHeading) || 'NO';
+  const errorsEnd = [potentialHeading, voteHeading]
+    .filter((index) => index >= 0)
+    .sort((first, second) => first - second)[0] ?? lines.length;
+  evaluation.technicalErrors = textBetween(lines, errorsHint + 1, errorsEnd) || 'NO';
 
-  const motivationHeading = findLine(lines, /^Motivazione$/i, potentialHeading + 1);
-  const voteHeading = findLine(lines, /^VOTO$/i, potentialHeading + 1);
-  const potentialValue = cleanLines(lines.slice(potentialHeading + 1, motivationHeading < 0 ? voteHeading : motivationHeading))
-    .map((line) => POTENTIAL_LEVELS.find((value) => normalizeFederationText(value) === normalizeFederationText(line)))
-    .find(Boolean) || '';
-  evaluation.potential.level = potentialValue;
-  evaluation.potential.comment = motivationHeading >= 0 && voteHeading > motivationHeading
-    ? textBetween(lines, motivationHeading + 1, voteHeading)
-    : '';
+  if (potentialHeading >= 0) {
+    const potentialEnd = voteHeading > potentialHeading ? voteHeading : lines.length;
+    const motivationHeading = findLine(lines, /^Motivazione$/i, potentialHeading + 1, potentialEnd);
+    const potentialValueEnd = motivationHeading >= 0 ? motivationHeading : potentialEnd;
+    const potentialValue = cleanLines(lines.slice(potentialHeading + 1, potentialValueEnd))
+      .map((line) => POTENTIAL_LEVELS.find((value) => normalizeFederationText(value) === normalizeFederationText(line)))
+      .find(Boolean) || '';
+    evaluation.potential.level = potentialValue;
+    evaluation.potential.comment = motivationHeading >= 0
+      ? textBetween(lines, motivationHeading + 1, potentialEnd)
+      : '';
+  }
 
   const voteLine = voteHeading >= 0
     ? cleanLines(lines.slice(voteHeading + 1)).find((line) => /^\d{1,2}$/.test(line))
     : '';
   evaluation.vote = voteLine || '';
 
-  return { evaluation, matchCharacteristics };
+  return {
+    evaluation,
+    matchCharacteristics,
+    fieldAvailability: {
+      potential: potentialHeading >= 0,
+      vote: voteHeading >= 0
+    }
+  };
 }
 
 export function parseFederationReportText(text) {
@@ -316,7 +330,7 @@ export function parseFederationReportText(text) {
   const header = parseStructuredHeader(lines, cleanText);
   const parsed = parseStructuredEvaluation(lines);
   return {
-    parserVersion: 2,
+    parserVersion: 3,
     groupKey: `${header.sportSeason}|${header.matchNumber}`,
     role: header.role,
     header,
