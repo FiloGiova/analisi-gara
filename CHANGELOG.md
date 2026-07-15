@@ -33,6 +33,8 @@ sezione "Storico modifiche" del dettaglio gara.
   non porta più nella webapp ritorni a capo artificiali; descrizioni comuni
   quasi identiche non bloccano l'import, mentre differenze sostanziali
   richiedono ancora la scelta esplicita della fonte.
+- Aggiornato `pdf-parse` alla versione 2.4.5: ogni documento usa un'istanza
+  isolata del parser, evitando contaminazioni tra file nei batch su Node 22.
 - In Copertura la colonna arbitri resta fissa; passando sui visionamenti
   completati compare il voto e il clic apre il relativo rapporto.
 - Nella Classifica arbitri ogni voto mostra al passaggio del mouse

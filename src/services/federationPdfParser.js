@@ -1,4 +1,4 @@
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { PDFParse } from 'pdf-parse';
 import {
   COMMON_MATCH_CHARACTERISTICS,
   EVALUATION_SECTIONS,
@@ -16,6 +16,15 @@ const COMPETITION_MAP = new Map([
 ]);
 
 const POTENTIAL_LEVELS = ['Nessuna', 'Bassa', 'Media', 'Alta'];
+
+async function extractPdfText(buffer) {
+  const parser = new PDFParse({ data: Uint8Array.from(buffer) });
+  try {
+    return await parser.getText({ pageJoiner: '\n' });
+  } finally {
+    await parser.destroy();
+  }
+}
 
 export class FederationPdfParseError extends Error {
   constructor(message, code = 'invalid_pdf_template') {
@@ -74,7 +83,7 @@ function findLine(lines, pattern, start = 0, end = lines.length) {
 }
 
 function isPageNoise(line) {
-  return /^Pagina \d+ di \d+$/i.test(line) ||
+  return /^Pagina \d+ di \d+(?:\s+.*Data stampa:)?$/i.test(line) ||
     /^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}\s*Data stampa:$/i.test(line) ||
     /^Data stampa:/i.test(line);
 }
@@ -146,8 +155,8 @@ function parseStructuredHeader(lines, text) {
     throw new FederationPdfParseError('Template PDF federale non riconosciuto.');
   }
 
-  const evaluatorLine = lines.find((line) => /^VALUTATORE:DATA:/i.test(line)) || '';
-  const evaluator = evaluatorLine.match(/^VALUTATORE:DATA:(.+?)(\d{1,2}\/\d{1,2}\/\d{4})$/i);
+  const evaluatorLine = lines.find((line) => /^VALUTATORE:\s*DATA:/i.test(line)) || '';
+  const evaluator = evaluatorLine.match(/^VALUTATORE:\s*DATA:\s*(.+?)\s*(\d{1,2}\/\d{1,2}\/\d{4})$/i);
   const dateIndex = lines.findIndex((line, index) => index < 35 && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(line));
   const squadsIndex = findLine(lines, /^SQUADRE:/i, 0, 45);
   const thirdRefereeIndex = findLine(lines, /^3°\s*ARBITRO:/i, 0, 45);
@@ -161,6 +170,11 @@ function parseStructuredHeader(lines, text) {
     throw new FederationPdfParseError('Intestazione PDF federale incompleta o non riconosciuta.');
   }
 
+  const inlineCompetition = competitionIndex >= 0
+    ? compact(lines[competitionIndex].replace(/^CAMPIONATO:\s*/i, ''))
+    : '';
+  const competitionValue = inlineCompetition || lines[competitionIndex + 1];
+  const matchNumberValue = lines[competitionIndex + (inlineCompetition ? 1 : 2)];
   const header = {
     observerName: compact(evaluator[1]),
     reportDate: parseItalianDate(lines[dateIndex]),
@@ -168,8 +182,8 @@ function parseStructuredHeader(lines, text) {
     secondRefereeName: compact(lines[squadsIndex + 1]),
     teamHome: compact(lines[thirdRefereeIndex + 1]),
     teamAway: compact(lines[squadsIndex + 3]),
-    competition: mapCompetition(lines[competitionIndex + 1]),
-    matchNumber: compact(lines[competitionIndex + 2]),
+    competition: mapCompetition(competitionValue),
+    matchNumber: compact(matchNumberValue),
     scoreHome: score[1],
     scoreAway: score[2],
     targetRefereeName: compact(targetMatch[1])
@@ -319,13 +333,13 @@ export async function parseFederationPdfBuffer(buffer) {
   }
   let data;
   try {
-    data = await pdfParse(buffer);
+    data = await extractPdfText(buffer);
   } catch (_firstError) {
     try {
-      data = await pdfParse(buffer);
+      data = await extractPdfText(buffer);
     } catch (_secondError) {
       throw new FederationPdfParseError('PDF non leggibile o protetto da password.', 'unreadable_pdf');
     }
   }
-  return { ...parseFederationReportText(data.text || ''), pageCount: data.numpages || null };
+  return { ...parseFederationReportText(data.text || ''), pageCount: data.total || null };
 }

@@ -93,7 +93,12 @@ test('anteprima e import completo creano un rapporto definitivo e aggiornano gli
   assert.equal(fileErrors.length, 0);
   assert.equal(groups.length, 1);
   assert.equal(groups[0].automaticGameId, game341);
-  assert.equal(groups[0].ready, true);
+  assert.equal(groups[0].ready, true, JSON.stringify({
+    duplicateRoles: groups[0].duplicateRoles,
+    sharedDifferences: groups[0].sharedDifferences,
+    people: groups[0].people,
+    reportCandidates: groups[0].reportCandidates
+  }));
   assert.equal(groups[0].files.find((file) => file.role === 'first').originalName, 'nome-casuale-a.pdf');
 
   const result = await applyFederationPdfImport({ files, decisions: [decisionFor(groups[0])], user: admin });
