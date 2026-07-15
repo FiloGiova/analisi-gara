@@ -1,6 +1,6 @@
 # Next steps FischioLab
 
-Aggiornato al 14 luglio 2026. Le attività concluse sono depennate e restano
+Aggiornato al 15 luglio 2026. Le attività concluse sono depennate e restano
 documentate nel [CHANGELOG.md](CHANGELOG.md); questa pagina contiene soltanto
 la roadmap operativa corrente.
 
@@ -42,6 +42,16 @@ la roadmap operativa corrente.
   Arbitro 1/2 e selezione multipla delle fasi da consegnare.
 - [x] ~~Export XLSX delle viste operative~~ per Statistiche, Gare e Anagrafica
   arbitri, coerenti con i filtri impostati.
+- [x] ~~Export XLSX della classifica arbitri~~ con posizione, categoria, voti,
+  numero di valutazioni e media, nel perimetro del campionato consentito.
+- [x] ~~Potenzialità nel riepilogo del rapporto~~ per entrambi gli arbitri,
+  riservate ai ruoli autorizzati e sempre escluse dai PDF.
+- [x] ~~Colonna osservatori fissa nella Matrice incroci~~ durante lo scorrimento
+  orizzontale.
+- [x] ~~Colonna arbitri fissa nella Copertura~~ e collegamenti dai visionamenti
+  ai rapporti con voto visibile al passaggio del mouse.
+- [x] ~~Voti interattivi nella Classifica arbitri~~ con osservatore nel tooltip
+  e collegamento diretto al rapporto.
 
 ## Priorità consigliate
 

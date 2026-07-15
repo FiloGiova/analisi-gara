@@ -3108,14 +3108,18 @@ dd {
   overscroll-behavior-inline: contain;
 }
 
-.stats-employment-table {
+.stats-employment-table,
+.stats-coverage-table,
+.stats-matrix-table {
   width: max-content;
   min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
 }
 
-.stats-employment-table .stats-sticky-column {
+.stats-employment-table .stats-sticky-column,
+.stats-coverage-table .stats-sticky-column,
+.stats-matrix-table .stats-sticky-column {
   position: sticky;
   left: 0;
   z-index: 2;
@@ -3124,11 +3128,15 @@ dd {
   box-shadow: 8px 0 12px -12px rgba(14, 31, 38, 0.52);
 }
 
-.stats-employment-table thead .stats-sticky-column {
+.stats-employment-table thead .stats-sticky-column,
+.stats-coverage-table thead .stats-sticky-column,
+.stats-matrix-table thead .stats-sticky-column {
   z-index: 3;
 }
 
-.stats-employment-table tbody tr:hover .stats-sticky-column {
+.stats-employment-table tbody tr:hover .stats-sticky-column,
+.stats-coverage-table tbody tr:hover .stats-sticky-column,
+.stats-matrix-table tbody tr:hover .stats-sticky-column {
   background: #fbfcfc;
 }
 
@@ -3337,7 +3345,8 @@ dd {
   gap: 6px;
 }
 
-.vote-list span {
+.vote-list span,
+.vote-list button {
   display: inline-flex;
   min-width: 28px;
   justify-content: center;
@@ -3347,6 +3356,21 @@ dd {
   color: var(--blue);
   font-weight: 800;
   font-size: 0.78rem;
+}
+
+.vote-list button {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.vote-list button:hover,
+.vote-list button:focus-visible {
+  background: var(--blue);
+  color: #fff;
+  outline: none;
+  transform: translateY(-1px);
 }
 
 .metric-grid {
@@ -4029,20 +4053,55 @@ dd {
   flex-direction: column;
   justify-content: center;
   min-height: 80px;
+}
+
+.ref-card-judgement {
+  border-radius: 9px;
   transition: background 120ms ease;
 }
 
-.ref-card-body.is-clickable {
+.ref-card-judgement.is-clickable {
   cursor: pointer;
 }
 
-.ref-card-body.is-clickable:hover {
+.ref-card-judgement.is-clickable:hover {
   background: var(--paper);
 }
 
-.ref-card-body.is-clickable:focus-visible {
+.ref-card-judgement.is-clickable:focus-visible {
   outline: 2px solid var(--teal);
-  outline-offset: -2px;
+  outline-offset: 4px;
+}
+
+.ref-card-potential {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.potential-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.potential-summary-heading .judgement-label {
+  margin-bottom: 0;
+}
+
+.potential-level-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .judgement-label {

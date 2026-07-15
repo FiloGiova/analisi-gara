@@ -8,9 +8,9 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'analisigara-bands-'));
 process.env.STORAGE_DIR = tempDir;
 
 const { setupTestDatabase, closeTestDatabase, insertId, dbRun } = await import('./helpers/testDatabase.js');
-const { listBandMembers, addBandMember, removeBandMember, getBandRow } = await import('../src/services/refereeService.js');
+const { listBandMembers, addBandMember, removeBandMember, getBandRow, getRefereeRanking } = await import('../src/services/refereeService.js');
 const { getCoverage } = await import('../src/services/statsService.js');
-const { buildRefereesWorkbook } = await import('../src/services/refereesExportService.js');
+const { buildRefereeRankingWorkbook, buildRefereesWorkbook } = await import('../src/services/refereesExportService.js');
 
 await setupTestDatabase();
 const SEASON = '2025/2026';
@@ -83,4 +83,41 @@ test('rimozione membro fascia', async () => {
   assert.equal((await getBandRow(member.bandId)).competition, 'DR1');
   await removeBandMember(member.bandId);
   assert.equal((await listBandMembers({ competition: 'DR1', season: SEASON, band: 'esordiente' })).length, 0);
+});
+
+test('l’export classifica mantiene posizione, voti e media della vista', async () => {
+  await dbRun(
+    `INSERT INTO reports
+       (status, sport_season, competition, observer_name, first_referee_id, first_referee_vote,
+        second_referee_id, second_referee_vote, payload_json)
+     VALUES ('final', ?, 'DR1', 'Osservatore Uno', ?, '69', ?, '67', '{}')`,
+    [SEASON, refA, refB]
+  );
+  await dbRun(
+    `INSERT INTO reports
+       (status, sport_season, competition, observer_name, first_referee_id, first_referee_vote,
+        second_referee_id, second_referee_vote, payload_json)
+     VALUES ('final', ?, 'DR1', 'Osservatore Due', ?, '68', ?, '66', '{}')`,
+    [SEASON, refA, refC]
+  );
+
+  const workbook = await buildRefereeRankingWorkbook({ season: SEASON, competitions: ['DR1'] });
+  const sheet = workbook.getWorksheet('Classifica arbitri');
+  assert.deepEqual(
+    sheet.getRow(5).values.slice(1),
+    ['Posizione', 'Cognome', 'Nome', 'Categoria', 'Voti', 'Valutazioni', 'Media']
+  );
+  assert.equal(sheet.getCell('A6').value, 1);
+  assert.equal(sheet.getCell('B6').text, 'Alfa');
+  assert.deepEqual(sheet.getCell('E6').text.split(', ').sort(), ['68', '69']);
+  assert.equal(sheet.getCell('F6').value, 2);
+  assert.equal(sheet.getCell('G6').value, 68.5);
+  assert.equal(sheet.getCell('B7').text, 'Beta');
+  assert.ok((await workbook.xlsx.writeBuffer()).byteLength > 1000);
+
+  const [leader] = await getRefereeRanking({ season: SEASON, competitions: ['DR1'] });
+  assert.equal(leader.id, refA);
+  assert.equal(leader.voteDetails.length, 2);
+  assert.ok(leader.voteDetails.every((detail) => detail.reportId));
+  assert.deepEqual(leader.voteDetails.map((detail) => detail.observerName).sort(), ['Osservatore Due', 'Osservatore Uno']);
 });

@@ -27,7 +27,8 @@ async function loadCompleted(season, competitions = [], phaseIds = []) {
   const reports = await dbAll(
     `SELECT r.id AS report_id, r.game_id, r.report_date, r.match_number, r.team_home, r.team_away,
             r.observer_id, r.observer_name, COALESCE(u.display_name, r.observer_name) AS observer_label,
-            g.matchday, r.first_referee_id, r.second_referee_id
+            g.matchday, r.first_referee_id, r.second_referee_id,
+            r.first_referee_vote, r.second_referee_vote
        FROM reports r
        LEFT JOIN users u ON u.id = r.observer_id
        LEFT JOIN games g ON g.id = r.game_id
@@ -37,7 +38,11 @@ async function loadCompleted(season, competitions = [], phaseIds = []) {
 
   const rows = [];
   for (const report of reports) {
-    for (const refereeId of [report.first_referee_id, report.second_referee_id]) {
+    const evaluations = [
+      { refereeId: report.first_referee_id, vote: report.first_referee_vote },
+      { refereeId: report.second_referee_id, vote: report.second_referee_vote }
+    ];
+    for (const { refereeId, vote } of evaluations) {
       if (!refereeId) continue;
       rows.push({
         type: 'completed',
@@ -50,7 +55,8 @@ async function loadCompleted(season, competitions = [], phaseIds = []) {
         refereeId,
         observerId: report.observer_id,
         observerKey: observerKeyOf(report.observer_id, report.observer_name),
-        observerLabel: report.observer_label || report.observer_name
+        observerLabel: report.observer_label || report.observer_name,
+        vote: vote || ''
       });
     }
   }
@@ -230,7 +236,8 @@ export async function getCoverage({ season, competitions = [], band = '', phaseI
       type: row.type,
       observerLabel: row.observerLabel,
       gameId: row.gameId,
-      reportId: row.reportId
+      reportId: row.reportId,
+      vote: row.vote || ''
     });
   }
 

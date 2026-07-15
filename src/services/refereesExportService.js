@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
-import { listBandMembers, listReferees } from './refereeService.js';
+import { getRefereeRanking, listBandMembers, listReferees } from './refereeService.js';
 
 const BAND_LABELS = {
   esordiente: 'Esordienti',
@@ -150,3 +150,67 @@ export async function buildRefereesWorkbook({
   return workbook;
 }
 
+export async function buildRefereeRankingWorkbook({ season, competitions = [] }) {
+  const ranking = await getRefereeRanking({ season, competitions });
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'FischioLab';
+  workbook.created = new Date();
+  const sheet = workbook.addWorksheet('Classifica arbitri');
+  const headers = ['Posizione', 'Cognome', 'Nome', 'Categoria', 'Voti', 'Valutazioni', 'Media'];
+
+  sheet.addRow([]);
+  sheet.addRow([]);
+  sheet.addRow([]);
+  sheet.addRow([]);
+  sheet.addRow(headers);
+  ranking.forEach((referee, index) => {
+    sheet.addRow([
+      index + 1,
+      referee.lastName,
+      referee.firstName,
+      referee.category || '',
+      referee.votes.join(', '),
+      referee.votesCount,
+      referee.averageVote
+    ]);
+  });
+
+  sheet.mergeCells(1, 1, 1, headers.length);
+  sheet.getCell(1, 1).value = 'FischioLab · Classifica arbitri';
+  sheet.getCell(1, 1).font = { bold: true, size: 16, color: { argb: 'FF123C69' } };
+  sheet.mergeCells(2, 1, 2, headers.length);
+  sheet.getCell(2, 1).value = [
+    `Stagione: ${season}`,
+    `Campionato: ${competitions.length ? competitions.join(', ') : 'tutti'}`,
+    'Ordinamento: media voto, numero valutazioni, cognome'
+  ].join(' · ');
+  sheet.getCell(2, 1).font = { size: 10, color: { argb: 'FF5D6C75' } };
+
+  const header = sheet.getRow(5);
+  header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF123C69' } };
+  header.alignment = { vertical: 'middle', wrapText: true };
+  header.height = 28;
+
+  [12, 24, 24, 18, 32, 14, 12].forEach((width, index) => {
+    sheet.getColumn(index + 1).width = width;
+  });
+  sheet.getColumn(1).alignment = { horizontal: 'center' };
+  sheet.getColumn(6).alignment = { horizontal: 'center' };
+  sheet.getColumn(7).alignment = { horizontal: 'center' };
+  sheet.getColumn(7).numFmt = '0.0';
+
+  for (let rowNumber = 6; rowNumber <= 5 + ranking.length; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+    row.alignment = { vertical: 'top', wrapText: true };
+    row.eachCell((cell) => {
+      cell.border = { bottom: { style: 'hair', color: { argb: 'FFD9E2E8' } } };
+    });
+  }
+
+  sheet.views = [{ state: 'frozen', ySplit: 5 }];
+  sheet.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5, column: headers.length } };
+  sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  return workbook;
+}

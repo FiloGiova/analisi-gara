@@ -35,6 +35,7 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, c
   const refereeName = role === 'first' ? data.firstRefereeName : data.secondRefereeName;
   const refereeId = role === 'first' ? data.firstRefereeId : data.secondRefereeId;
   const isFinal = report.status === 'final';
+  const potential = evaluation.potential || {};
 
   async function handleDownload() {
     setExporting(true);
@@ -94,19 +95,30 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, c
         }
       </div>
 
-      {/* Body: solo giudizio globale — cliccabile per aprire PDF se definitivo */}
-      <div
-        className={`ref-card-body${isFinal ? ' is-clickable' : ''}`}
-        onClick={isFinal ? handleOpenPdf : undefined}
-        role={isFinal ? 'button' : undefined}
-        tabIndex={isFinal ? 0 : undefined}
-        onKeyDown={isFinal ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleOpenPdf(); } : undefined}
-      >
-        <p className="judgement-label">
-          Giudizio globale
-          {isFinal && <span className="judgement-pdf-hint"> · apri PDF</span>}
-        </p>
-        <p className="judgement-text">{evaluation.globalJudgement || '—'}</p>
+      <div className="ref-card-body">
+        <div
+          className={`ref-card-judgement${isFinal ? ' is-clickable' : ''}`}
+          onClick={isFinal ? handleOpenPdf : undefined}
+          role={isFinal ? 'button' : undefined}
+          tabIndex={isFinal ? 0 : undefined}
+          onKeyDown={isFinal ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleOpenPdf(); } : undefined}
+        >
+          <p className="judgement-label">
+            Giudizio globale
+            {isFinal && <span className="judgement-pdf-hint"> · apri PDF</span>}
+          </p>
+          <p className="judgement-text">{evaluation.globalJudgement || '—'}</p>
+        </div>
+
+        {!isReferee ? (
+          <div className="ref-card-potential">
+            <div className="potential-summary-heading">
+              <p className="judgement-label">Potenzialità</p>
+              <span className="potential-level-pill">{potential.level || 'Non indicata'}</span>
+            </div>
+            <p className="judgement-text">{potential.comment || 'Motivazione non indicata.'}</p>
+          </div>
+        ) : null}
       </div>
 
       {/* Footer */}

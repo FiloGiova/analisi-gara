@@ -13,6 +13,7 @@ import {
 } from './reportService.js';
 import {
   FederationPdfParseError,
+  federationTextSimilarity,
   federationNameKey,
   normalizeFederationText,
   parseFederationPdfBuffer
@@ -87,7 +88,12 @@ function sharedDifferences(items) {
       differences.push(field);
     }
   }
-  if (items.slice(1).some((item) => JSON.stringify(item.parsed.matchCharacteristics) !== JSON.stringify(first.parsed.matchCharacteristics))) {
+  const firstCharacteristics = first.parsed.matchCharacteristics;
+  const characteristicsDiffer = items.slice(1).some((item) => (
+    JSON.stringify(item.parsed.matchCharacteristics.ratings) !== JSON.stringify(firstCharacteristics.ratings) ||
+    federationTextSimilarity(item.parsed.matchCharacteristics.comment, firstCharacteristics.comment) < 0.97
+  ));
+  if (characteristicsDiffer) {
     differences.push('matchCharacteristics');
   }
   return differences;

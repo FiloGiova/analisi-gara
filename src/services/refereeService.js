@@ -416,20 +416,26 @@ export async function getRefereeRanking({ season = '', competition = '', competi
     : [sportSeason, sportSeason, sportSeason];
   const rows = await dbAll(
     `WITH votes AS (
-       SELECT first_referee_id AS referee_id, first_referee_vote AS vote
-       FROM reports
-       WHERE first_referee_id IS NOT NULL
-         AND sport_season = ?
-         AND first_referee_vote IS NOT NULL
-         AND first_referee_vote != ''
+       SELECT r.first_referee_id AS referee_id, r.first_referee_vote AS vote,
+              r.id AS report_id, r.report_date,
+              COALESCE(u.display_name, r.observer_name, '') AS observer_label
+       FROM reports r
+       LEFT JOIN users u ON u.id = r.observer_id
+       WHERE r.first_referee_id IS NOT NULL
+         AND r.sport_season = ?
+         AND r.first_referee_vote IS NOT NULL
+         AND r.first_referee_vote != ''
          ${competitionClause}
        UNION ALL
-       SELECT second_referee_id AS referee_id, second_referee_vote AS vote
-       FROM reports
-       WHERE second_referee_id IS NOT NULL
-         AND sport_season = ?
-         AND second_referee_vote IS NOT NULL
-         AND second_referee_vote != ''
+       SELECT r.second_referee_id AS referee_id, r.second_referee_vote AS vote,
+              r.id AS report_id, r.report_date,
+              COALESCE(u.display_name, r.observer_name, '') AS observer_label
+       FROM reports r
+       LEFT JOIN users u ON u.id = r.observer_id
+       WHERE r.second_referee_id IS NOT NULL
+         AND r.sport_season = ?
+         AND r.second_referee_vote IS NOT NULL
+         AND r.second_referee_vote != ''
          ${competitionClause}
      )
      SELECT r.id,
@@ -438,7 +444,12 @@ export async function getRefereeRanking({ season = '', competition = '', competi
             sc.category AS season_category,
             sc.sport_season,
             COUNT(v.vote) AS votes_count,
-            string_agg(v.vote, '|') AS votes,
+            string_agg(v.vote, '|' ORDER BY v.report_date, v.report_id) AS votes,
+            json_agg(json_build_object(
+              'vote', v.vote,
+              'reportId', v.report_id,
+              'observerName', v.observer_label
+            ) ORDER BY v.report_date, v.report_id) AS vote_details,
             AVG(CAST(v.vote AS INTEGER)) AS average_vote
      FROM votes v
      JOIN referees r ON r.id = v.referee_id
@@ -450,17 +461,29 @@ export async function getRefereeRanking({ season = '', competition = '', competi
     params
   );
 
-  return rows.map((row) => ({
-    id: row.id,
-    firstName: row.first_name,
-    lastName: row.last_name,
-    fullName: `${row.first_name} ${row.last_name}`.trim(),
-    category: row.season_category || null,
-    season: row.sport_season || sportSeason,
-    votes: row.votes ? row.votes.split('|') : [],
-    votesCount: row.votes_count,
-    averageVote: row.average_vote === null ? null : Number(Number(row.average_vote).toFixed(1))
-  }));
+  return rows.map((row) => {
+    let voteDetails = row.vote_details;
+    if (typeof voteDetails === 'string') {
+      try { voteDetails = JSON.parse(voteDetails); } catch { voteDetails = []; }
+    }
+    voteDetails = Array.isArray(voteDetails) ? voteDetails.map((detail) => ({
+      vote: String(detail.vote || ''),
+      reportId: Number(detail.reportId) || null,
+      observerName: String(detail.observerName || '')
+    })) : [];
+    return {
+      id: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      fullName: `${row.first_name} ${row.last_name}`.trim(),
+      category: row.season_category || null,
+      season: row.sport_season || sportSeason,
+      votes: voteDetails.length ? voteDetails.map((detail) => detail.vote) : (row.votes ? row.votes.split('|') : []),
+      voteDetails,
+      votesCount: row.votes_count,
+      averageVote: row.average_vote === null ? null : Number(Number(row.average_vote).toFixed(1))
+    };
+  });
 }
 
 export async function listRosters(refereeId) {

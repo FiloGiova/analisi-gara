@@ -392,6 +392,19 @@ export function downloadRefereesExport({
   setTimeout(() => link.remove(), 200);
 }
 
+export function downloadRefereeRankingExport({ season = '', competition = '' } = {}) {
+  const params = new URLSearchParams();
+  if (season) params.set('season', season);
+  if (competition) params.set('competition', competition);
+  const link = document.createElement('a');
+  link.href = `/api/referees/ranking/export${params.toString() ? `?${params}` : ''}`;
+  link.setAttribute('download', '');
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 200);
+}
+
 export function downloadReportPdf(reportId, role) {
   const link = document.createElement('a');
   link.href = `/api/reports/${reportId}/export/${role}/download`;

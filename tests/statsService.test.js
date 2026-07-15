@@ -20,10 +20,11 @@ const addUser = (username, name) => insertId(
   "INSERT INTO users (username, password_hash, display_name, role) VALUES (?, 'x', ?, 'observer')",
   [username, name]
 );
-const addReport = ({ status, date, observerId, observerName, ref1, ref2, gameId = null }) => insertId(
-  `INSERT INTO reports (status, observer_name, report_date, sport_season, first_referee_id, second_referee_id, observer_id, game_id, payload_json, match_number)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', '000000')`,
-  [status, observerName, date, SEASON, ref1, ref2, observerId, gameId]
+const addReport = ({ status, date, observerId, observerName, ref1, ref2, gameId = null, firstVote = '68', secondVote = '67' }) => insertId(
+  `INSERT INTO reports (status, observer_name, report_date, sport_season, first_referee_id, second_referee_id,
+                        first_referee_vote, second_referee_vote, observer_id, game_id, payload_json, match_number)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', '000000')`,
+  [status, observerName, date, SEASON, ref1, ref2, firstVote, secondVote, observerId, gameId]
 );
 
 const refA = await addReferee('Aldo', 'Alfa');
@@ -57,6 +58,9 @@ test('la copertura conta i definitivi, esclude le bozze e distingue i programmat
   assert.equal(alfa.distinctObservers, 2);
   assert.equal(alfa.scheduledCount, 1);
   assert.equal(alfa.lastCompletedDate, '2025-11-02');
+  const completedEntry = Object.values(alfa.timeline).flat().find((entry) => entry.type === 'completed');
+  assert.equal(completedEntry.vote, '68');
+  assert.ok(completedEntry.reportId, 'il visionamento completato collega il rapporto');
 
   const beta = referees.find((referee) => referee.refereeId === refB);
   assert.equal(beta.completedCount, 1);

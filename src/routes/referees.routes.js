@@ -18,7 +18,7 @@ import {
   getBandRow,
   REFEREE_BANDS
 } from '../services/refereeService.js';
-import { buildRefereesWorkbook } from '../services/refereesExportService.js';
+import { buildRefereeRankingWorkbook, buildRefereesWorkbook } from '../services/refereesExportService.js';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
 
 export const refereesRouter = express.Router();
@@ -80,6 +80,23 @@ refereesRouter.get(
         competitions: scopedCompetitions(req)
       })
     });
+  })
+);
+
+refereesRouter.get(
+  '/ranking/export',
+  asyncHandler(async (req, res) => {
+    requireRefereeInspection(req);
+    const season = String(req.query.season || '').trim() || currentSportSeason();
+    const workbook = await buildRefereeRankingWorkbook({
+      season,
+      competitions: scopedCompetitions(req)
+    });
+    const fileName = `classifica_arbitri_${season.replace('/', '-')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    await workbook.xlsx.write(res);
+    res.end();
   })
 );
 

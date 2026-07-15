@@ -293,11 +293,17 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
           {visibleReferees.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px' }}>Nessun dato in questa stagione.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="referee-table">
+            <div className="stats-table-scroll">
+              <table className="referee-table stats-coverage-table">
                 <thead>
                   <tr>
-                    <SortableHeader label="Arbitro" sort={coverageSort} sortKey="name" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
+                    <SortableHeader
+                      label="Arbitro"
+                      sort={coverageSort}
+                      sortKey="name"
+                      onSort={(key, direction) => updateSort(setCoverageSort, key, direction)}
+                      className="stats-sticky-column"
+                    />
                     <SortableHeader label="Compl." sort={coverageSort} sortKey="completed" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
                     <SortableHeader label="Ultimo" sort={coverageSort} sortKey="last" initialDirection="desc" onSort={(key, direction) => updateSort(setCoverageSort, key, direction)} />
                     {coverage.matchdays.map((m) => (
@@ -316,8 +322,15 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 <tbody>
                   {sortedCoverageReferees.map((r) => (
                     <tr key={r.refereeId}>
-                      <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        {r.fullName}
+                      <td className="stats-sticky-column" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          style={{ padding: '1px 6px', fontWeight: 600 }}
+                          onClick={() => navigate(`/admin/referees/${r.refereeId}`)}
+                        >
+                          {r.fullName}
+                        </button>
                       </td>
                       <td style={{ fontWeight: 800, color: r.completedCount ? 'var(--blue)' : 'var(--muted-2)' }}>{r.completedCount}</td>
                       <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>
@@ -344,7 +357,9 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                                     onClick={() =>
                                       entry.reportId ? navigate(`/reports/${entry.reportId}`) : entry.gameId ? navigate(`/games/${entry.gameId}`) : null
                                     }
-                                    title={entry.type === 'scheduled' ? 'Programmato' : 'Completato'}
+                                    title={entry.type === 'scheduled'
+                                      ? 'Visionamento programmato · apri la gara'
+                                      : `Voto: ${entry.vote || 'non indicato'} · apri il rapporto`}
                                   >
                                     {entry.type === 'scheduled' ? '○' : '✓'} {entry.observerLabel}
                                   </button>
@@ -471,11 +486,17 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
           {matrix.observers.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px' }}>Nessun visionamento in questa stagione.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="referee-table">
+            <div className="stats-table-scroll">
+              <table className="referee-table stats-matrix-table">
                 <thead>
                   <tr>
-                    <SortableHeader label="Osservatore \ Arbitro" sort={matrixSort} sortKey="observer" onSort={(key, direction) => updateSort(setMatrixSort, key, direction)} />
+                    <SortableHeader
+                      label="Osservatore \ Arbitro"
+                      sort={matrixSort}
+                      sortKey="observer"
+                      onSort={(key, direction) => updateSort(setMatrixSort, key, direction)}
+                      className="stats-sticky-column"
+                    />
                     {visibleMatrixReferees.map((ref) => (
                       <SortableHeader
                         key={ref.refereeId}
@@ -492,7 +513,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                 <tbody>
                   {sortedMatrixObservers.map((obs) => (
                     <tr key={obs.key}>
-                      <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      <td className="stats-sticky-column" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                         {obs.label}
                         {obs.historical ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (storico)</span> : null}
                       </td>

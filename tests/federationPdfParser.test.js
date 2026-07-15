@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFederationPdfBuffer, parseFederationReportText } from '../src/services/federationPdfParser.js';
+import {
+  federationTextSimilarity,
+  parseFederationPdfBuffer,
+  parseFederationReportText
+} from '../src/services/federationPdfParser.js';
 import { federationReportText as fixture } from './fixtures/federationReportText.js';
 
 test('estrae intestazione e ruolo dal contenuto, senza nome file', () => {
@@ -21,11 +25,28 @@ test('mappa tutte le valutazioni, voto e potenzialità', () => {
   assert.equal(parsed.evaluation.sections.management.ratings.leadership, 'Di qualità');
   assert.equal(parsed.evaluation.sections.discipline.ratings.measures, 'N/V');
   assert.equal(parsed.evaluation.sections.technique.ratings.contactResponsibility, 'Migliorabile');
-  assert.equal(parsed.evaluation.globalJudgement, 'Punti di forza: presenza.\nAree di miglioramento: continuità.');
+  assert.equal(parsed.evaluation.globalJudgement, 'Punti di forza: presenza. Aree di miglioramento: continuità.');
   assert.equal(parsed.evaluation.technicalErrors, 'NO');
   assert.equal(parsed.evaluation.potential.level, 'Media');
   assert.equal(parsed.evaluation.potential.comment, 'Percorso di crescita positivo.');
   assert.equal(parsed.evaluation.vote, '66');
+});
+
+test('ricompone le righe grafiche del PDF e misura come equivalenti descrizioni quasi identiche', () => {
+  const text = fixture().replace(
+    'Tecnica da consolidare.',
+    'Tecnica sul body-\ncheck da consolidare.'
+  );
+  const parsed = parseFederationReportText(text);
+  assert.equal(parsed.evaluation.sections.technique.comment, 'Tecnica sul body-check da consolidare.');
+  assert.ok(federationTextSimilarity(
+    'Gioco che si sviluppa principalmente con tiri da fuori, azioni che si concludono rapidamente, difese aperte e pochi contatti rendono questa partita di normale difficoltà. Cigliano sempre avanti nel punteggio, ospiti a contatto sino ad inizio 4Q quando il distacco si dilata progressivamente.',
+    'Gioco che si sviluppa principalmente con tiri da fuori, azioni che si concludono rapidamente, difese aperte e pochi contatti rendono questa partita di normale difficoltà. Cigliano sempre avanti nel punteggio, ospiti sempre a contatto sino ad inizio 4Q quando il distacco si dilata progressivamente.'
+  ) >= 0.97);
+  assert.ok(federationTextSimilarity(
+    'Gara semplice e sempre sotto controllo.',
+    'Gara complessa, fisica e con diversi momenti critici.'
+  ) < 0.97);
 });
 
 test('separa gli errori tecnici dalla potenzialità', () => {

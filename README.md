@@ -14,17 +14,17 @@ Produzione: [https://fischiolab.onrender.com](https://fischiolab.onrender.com)
 - rapporti in bozza/definitivi e PDF separato per ciascun arbitro;
 - import deterministico dei rapporti PDF federali, con abbinamento da numero
   gara e campo `ARBITRO` interno al documento;
-- anagrafica arbitri per stagione, campionato e fascia, esportabile in XLSX con
-  i filtri correnti e le appartenenze alle fasce;
+- anagrafica e classifica arbitri per stagione e campionato, esportabili in XLSX;
 - statistiche Copertura, Matrice incroci e Impiego arbitri, esportabili in XLSX
-  con i filtri della vista corrente;
+  con i filtri della vista corrente e collegate ai rapporti di origine;
 - template XLSX per il designatore, esportabile per una o più fasi di campionato;
 - ruoli `admin`, `instructor`, `observer` e `referee`;
 - helper AI opzionale per il giudizio globale;
 - invio PDF via email opzionale.
 
-La sezione “Potenzialità” resta una nota interna: non viene esportata nei PDF e
-non viene mostrata agli utenti arbitro.
+La sezione “Potenzialità” resta una nota interna: compare nel riepilogo web del
+rapporto per i ruoli autorizzati, non viene esportata nei PDF e non viene
+mostrata agli utenti arbitro.
 
 ## Architettura
 

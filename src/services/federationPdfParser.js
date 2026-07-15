@@ -83,9 +83,42 @@ function cleanLines(lines) {
   return lines.map(compact).filter(Boolean).filter((line) => !isPageNoise(line));
 }
 
+function joinPdfTextLines(lines) {
+  return cleanLines(lines).reduce((text, line) => {
+    if (!text) return line;
+    return text.endsWith('-') ? `${text}${line}` : `${text} ${line}`;
+  }, '').trim();
+}
+
 function textBetween(lines, start, end) {
   if (start < 0 || end < 0 || end <= start) return '';
-  return cleanLines(lines.slice(start, end)).join('\n').trim();
+  return joinPdfTextLines(lines.slice(start, end));
+}
+
+export function federationTextSimilarity(first, second) {
+  const left = normalizeFederationText(first);
+  const right = normalizeFederationText(second);
+  if (left === right) return 1;
+  if (!left || !right) return 0;
+
+  const shorter = left.length <= right.length ? left : right;
+  const longer = left.length <= right.length ? right : left;
+  let previous = Array.from({ length: shorter.length + 1 }, (_, index) => index);
+
+  for (let row = 1; row <= longer.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= shorter.length; column += 1) {
+      const cost = longer[row - 1] === shorter[column - 1] ? 0 : 1;
+      current[column] = Math.min(
+        current[column - 1] + 1,
+        previous[column] + 1,
+        previous[column - 1] + cost
+      );
+    }
+    previous = current;
+  }
+
+  return 1 - previous[shorter.length] / longer.length;
 }
 
 function noteBetween(lines, sectionPattern, nextSectionPattern) {
@@ -269,7 +302,7 @@ export function parseFederationReportText(text) {
   const header = parseStructuredHeader(lines, cleanText);
   const parsed = parseStructuredEvaluation(lines);
   return {
-    parserVersion: 1,
+    parserVersion: 2,
     groupKey: `${header.sportSeason}|${header.matchNumber}`,
     role: header.role,
     header,

@@ -7,7 +7,7 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
-## 2026-07-15 — Importazione rapporti PDF federali
+## 2026-07-15 — Importazione PDF e miglioramenti operativi
 
 - Nuovo parser deterministico del template federale digitale: numero gara,
   arbitro valutato, sezioni, note, voto e potenzialità vengono letti dal
@@ -21,6 +21,22 @@ sezione "Storico modifiche" del dettaglio gara.
   e formatori nel perimetro dei campionati assegnati.
 - PDF originali elaborati soltanto in memoria; nessuna AI, OCR o persistenza del
   documento sorgente.
+- Export XLSX dedicato alla classifica arbitri, con posizione, categoria, elenco
+  voti, numero di valutazioni e media; stagione e scoping del formatore sono gli
+  stessi della vista web.
+- Il riepilogo iniziale del rapporto mostra livello e motivazione delle
+  Potenzialità per entrambi gli arbitri ai soli ruoli autorizzati; il dato resta
+  nascosto agli arbitri ed escluso dai PDF.
+- Nella Matrice incroci la colonna con i nomi degli osservatori resta fissa
+  durante lo scorrimento orizzontale.
+- Il parser PDF ricompone le righe create dall'impaginazione del documento e
+  non porta più nella webapp ritorni a capo artificiali; descrizioni comuni
+  quasi identiche non bloccano l'import, mentre differenze sostanziali
+  richiedono ancora la scelta esplicita della fonte.
+- In Copertura la colonna arbitri resta fissa; passando sui visionamenti
+  completati compare il voto e il clic apre il relativo rapporto.
+- Nella Classifica arbitri ogni voto mostra al passaggio del mouse
+  l'osservatore e apre direttamente il rapporto da cui proviene.
 
 ## 2026-07-13 — Statistiche, test PostgreSQL, sync automatico e template designatore
 

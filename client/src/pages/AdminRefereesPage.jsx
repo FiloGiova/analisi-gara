@@ -3,7 +3,7 @@ import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate
 import DateInput from '../components/DateInput.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
-import { api, ApiError, downloadRefereesExport } from '../lib/api.js';
+import { api, ApiError, downloadRefereeRankingExport, downloadRefereesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 
 const CURRENT_SEASON = currentSportSeason();
@@ -299,6 +299,10 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
       band: filterBand,
       search
     });
+  }
+
+  function handleRankingExport() {
+    downloadRefereeRankingExport({ season: selectedSeason });
   }
 
   if (!canAccess) {
@@ -634,6 +638,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
               <h2>Classifica arbitri</h2>
               <p>Ordinata per media voto nella stagione selezionata.</p>
             </div>
+            <button type="button" className="ghost-button" onClick={handleRankingExport} disabled={loading}>
+              Esporta classifica XLSX
+            </button>
           </div>
           {ranking.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px' }}>
@@ -659,7 +666,24 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                       <td>{row.category || '-'}</td>
                       <td>
                         <div className="vote-list">
-                          {row.votes.map((vote, i) => <span key={`${row.id}-${i}`}>{vote}</span>)}
+                          {(row.voteDetails?.length
+                            ? row.voteDetails
+                            : row.votes.map((vote) => ({ vote, reportId: null, observerName: '' })))
+                            .map((detail, i) => detail.reportId ? (
+                              <button
+                                key={`${row.id}-${detail.reportId}-${i}`}
+                                type="button"
+                                className="vote-pill-button"
+                                title={`Osservatore: ${detail.observerName || 'non indicato'} · apri il rapporto`}
+                                aria-label={`Voto ${detail.vote}, osservatore ${detail.observerName || 'non indicato'}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigate(`/reports/${detail.reportId}`);
+                                }}
+                              >
+                                {detail.vote}
+                              </button>
+                            ) : <span key={`${row.id}-${i}`}>{detail.vote}</span>)}
                         </div>
                       </td>
                       <td style={{ fontWeight: 800, color: 'var(--blue)' }}>{row.averageVote ?? '-'}</td>
