@@ -273,11 +273,6 @@ export default function ReportDetailPage({ id, currentUser }) {
                 Aggiorna da PDF federali
               </button>
             )}
-            {canManageReport && (
-              <button type="button" className="ghost-button" onClick={() => navigate(`/reports/${report.id}/edit`)}>
-                Modifica
-              </button>
-            )}
             {!isReferee && (
               <button type="button" className="ghost-button btn-with-icon" onClick={handleExportBoth} disabled={exporting}>
                 {exporting ? 'Genero…' : <><DownloadIcon />Genera PDF</>}
@@ -288,9 +283,14 @@ export default function ReportDetailPage({ id, currentUser }) {
         <div className="detail-hero-bottom">
           <StatusBadge status={report.status} />
           {canManageReport && (
-            <button type="button" className="hero-delete-button" onClick={() => setShowDeleteConfirm(true)}>
-              Cancella rapporto
-            </button>
+            <div className="detail-hero-bottom-actions">
+              <button type="button" className="ghost-button" onClick={() => navigate(`/reports/${report.id}/edit`)}>
+                Modifica
+              </button>
+              <button type="button" className="hero-delete-button" onClick={() => setShowDeleteConfirm(true)}>
+                Cancella rapporto
+              </button>
+            </div>
           )}
         </div>
       </section>
