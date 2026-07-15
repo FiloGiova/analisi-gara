@@ -8,7 +8,7 @@ services:
     runtime: node
     plan: free
     region: frankfurt
-    branch: cloud-migration
+    branch: main
     # --include=dev serve per vite (build) anche con NODE_ENV=production.
     # NON usare --omit=optional: rollup distribuisce i suoi binari per-piattaforma
     # come optionalDependencies e servono a Vite. better-sqlite3 è anch'esso

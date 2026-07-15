@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "FischioLab" — a webapp for basketball referee observers to write, archive, and export match evaluation reports. UI text, API error messages, and comments are in Italian; keep new user-facing strings in Italian.
 
-Stack: Node 20+ ESM (`"type": "module"` everywhere), Express, React 18 + Vite, PostgreSQL via `pg` (API asincrone), Supabase Storage e `pdfkit` per i PDF (senza Chromium). Deploy su Render dal branch `cloud-migration`.
+Stack: Node 20+ ESM (`"type": "module"` everywhere), Express, React 18 + Vite, PostgreSQL via `pg` (API asincrone), Supabase Storage e `pdfkit` per i PDF (senza Chromium). Deploy su Render dal branch `main`.
 
 The test suite uses a separate PostgreSQL database through `TEST_DATABASE_URL`; there is no linter configured.
 
@@ -46,7 +46,7 @@ In production the database is Supabase PostgreSQL and persistent files use Supab
 
 ## Deployment notes
 
-- Render deploys `cloud-migration` using `render.yaml`; the single Express process serves both API and SPA.
+- Render deploys `main` using `render.yaml`; the single Express process serves both API and SPA.
 - Keep `COOKIE_SECURE=true` on Render HTTPS.
 - The public `/api/health` endpoint also queries PostgreSQL and is pinged every 5 minutes by an external monitor.
 - `ENABLE_SCHEDULED_SYNC=true` runs the daily FIP synchronization inside the web process; execution state is persisted in `scheduled_jobs`.
