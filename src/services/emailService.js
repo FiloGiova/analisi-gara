@@ -15,7 +15,13 @@ let transportFactory = (smtp) =>
     host: smtp.host,
     port: smtp.port,
     secure: smtp.secure,
-    auth: smtp.auth
+    auth: smtp.auth,
+    // Timeout stretti: il default di nodemailer (2 minuti) supera il limite
+    // HTTP di Render (100s) e l'utente vedrebbe un timeout generico invece
+    // dell'errore SMTP loggato.
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 60000
   });
 
 export function setTransportFactoryForTests(factory) {
