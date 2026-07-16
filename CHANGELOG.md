@@ -7,6 +7,81 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-07-16 — Invio rapporti via email completo, campionati gestibili, driver Brevo
+
+Invio email agli arbitri portato a livello di produzione, con campionati
+amministrabili da interfaccia e invio compatibile con Render Free.
+
+**Invio email blindato** (`src/services/emailService.js`):
+- Il server rifiuta l'invio dei rapporti in bozza (409); prima era la sola UI
+  a nascondere il bottone.
+- Omonimi in anagrafica senza collegamento esplicito → errore chiaro invece
+  della scelta silenziosa del primo risultato (`LIMIT 1` rimosso).
+- Nuovo `buildEmailPlan()`: unico resolver di destinatario/oggetto/corpo/CC,
+  condiviso da anteprima e invio reale, così non possono divergere.
+- Conferma esplicita: `GET /api/reports/:id/send-email/:role/preview` mostra i
+  dati senza inviare; la POST richiede `confirmedRecipient` e risponde 409 se
+  l'indirizzo risolto nel frattempo è cambiato. Il client apre un dialog di
+  conferma con destinatario, gara, CC ed eventuale ultimo invio.
+- Timeout SMTP stretti (15s connessione/greeting): il default di nodemailer
+  (2 minuti) superava il limite HTTP di Render (100s) mascherando l'errore.
+
+**Log invii** (migrazione: nuova tabella `report_email_log`):
+- Ogni tentativo è registrato, anche fallito: gara e campionato denormalizzati
+  (l'audit sopravvive alla cancellazione del rapporto), destinatario, CC,
+  oggetto, chi ha inviato, esito, messaggio d'errore SMTP.
+- La pagina admin `#/admin/logs` ora ha i tab Accessi | Email; il dettaglio
+  rapporto mostra lo "Storico invii" per ciascun arbitro (escluso ai referee,
+  che vedrebbero i destinatari dell'altro arbitro).
+
+**Campionati come dati** (migrazione: nuova tabella `competitions`; rimosso
+l'export `COMPETITIONS` da `shared/reportTemplate.js`):
+- CRUD admin in `#/admin/competitions`: creazione, rinomina, ordinamento,
+  disattivazione soft. Il codice (`value`) è immutabile perché è la chiave
+  salvata come testo su rapporti, gare, rose, fasce e assegnazioni formatore:
+  rinominare tocca solo l'etichetta, zero cascade.
+- Seed idempotente all'avvio (`seedCompetitions()` in
+  `src/database/connection.js`): DR1 e Serie C alla prima esecuzione, più
+  backfill difensivo di ogni valore già presente nei dati storici — la nuova
+  validazione non può rifiutare dati esistenti.
+- Server: formatori e rapporti validati contro il catalogo (inattivi inclusi
+  in lettura e sulle bozze); client: nuovo contesto `useCompetitions()`
+  (`client/src/lib/competitions.jsx`), rimappate le 10 pagine che importavano
+  la lista hardcoded.
+
+**CC, firma e corpo per campionato** (migrazione: nuova tabella `app_settings`):
+- Per ogni campionato l'admin configura da UI i CC (validati) e la firma
+  dell'email; fallback sicuro se assenti ("Formatori <nome>").
+- Corpo dell'email modificabile dall'admin (card "Modello email" nella pagina
+  Campionati) con segnaposto validati al salvataggio ({{nomeArbitro}},
+  {{numeroGara}}, {{campionato}}, {{dataGara}}, {{squadre}}, {{ruolo}},
+  {{firma}}), anteprima live e ripristino del default. Salvato in
+  `app_settings`, chiave `report_email_body_template`; render/validazione in
+  `src/services/emailTemplate.js` (funzioni pure).
+- Oggetto: `FischioLab — Rapporto gara N · Campionato · Cognome`.
+- Il corpo non contiene mai dati dell'altro arbitro (per costruzione: nessun
+  segnaposto lo espone; coperto da test).
+
+**Driver Brevo** (`src/services/brevoTransport.js`):
+- Render Free blocca le porte SMTP in uscita (25/465/587) da settembre 2025:
+  l'invio via Gmail SMTP andava in connection timeout. Nuovo driver che invia
+  tramite l'API HTTPS di Brevo (porta 443, non bloccata), stessa interfaccia
+  `sendMail` del transporter nodemailer: anteprima, conferma e log invii sono
+  identici con entrambi i driver.
+- Nuove env: `BREVO_API_KEY`, `EMAIL_FROM` (mittente unico per entrambi i
+  driver, da verificare come mittente su Brevo), `EMAIL_DRIVER` opzionale
+  (brevo|smtp; senza, vale Brevo se c'è la key). Dichiarate in `render.yaml`
+  e documentate in `.env.example`. Le variabili `SMTP_*` restano supportate
+  per istanze a pagamento o altri host.
+
+**Dipendenze**: nessuna nuova (Brevo via `fetch` nativo, niente SDK).
+
+**Test**: nuovi `tests/emailService.test.js`, `tests/emailServiceUnconfigured.test.js`,
+`tests/emailBrevo.test.js`, `tests/emailTemplate.test.js` (unit, aggiunto a
+`test:unit`), `tests/competitionService.test.js`. Il transporter è iniettabile
+(`setTransportFactoryForTests`, `setBrevoFetchForTests`). Il helper dei test
+ora ripopola il catalogo campionati dopo la TRUNCATE.
+
 ## 2026-07-15 — Importazione PDF e miglioramenti operativi
 
 - Nuovo parser deterministico del template federale digitale: numero gara,

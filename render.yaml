@@ -37,7 +37,16 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
-      # Opzionali (email agli arbitri): impostare se si usa SMTP.
+      # Email agli arbitri. Sul piano Free di Render le porte SMTP in uscita
+      # sono bloccate: usare Brevo (API HTTPS) impostando BREVO_API_KEY ed
+      # EMAIL_FROM. Le variabili SMTP_* servono solo su istanze a pagamento
+      # (o altrove) con EMAIL_DRIVER=smtp.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_DRIVER
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

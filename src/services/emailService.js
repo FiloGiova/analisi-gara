@@ -7,6 +7,7 @@ import { logEmailAttempt } from './emailLogService.js';
 import { getCompetitionByValue } from './competitionService.js';
 import { getSetting } from './settingsService.js';
 import { DEFAULT_EMAIL_BODY_TEMPLATE, EMAIL_TEMPLATE_KEY, renderEmailTemplate } from './emailTemplate.js';
+import { createBrevoTransport } from './brevoTransport.js';
 import { HttpError } from '../utils/httpError.js';
 
 // Factory sostituibile nei test: node:test non può mockare gli import ESM.
@@ -29,6 +30,12 @@ export function setTransportFactoryForTests(factory) {
 }
 
 function getTransporter() {
+  if (config.emailDriver === 'brevo') {
+    if (!config.brevoApiKey || !config.emailFrom) {
+      throw new HttpError(503, 'Invio email non configurato. Imposta BREVO_API_KEY ed EMAIL_FROM.');
+    }
+    return createBrevoTransport(config.brevoApiKey);
+  }
   if (!config.smtp) {
     throw new HttpError(503, 'Invio email non configurato. Imposta le variabili SMTP nel file .env.');
   }
@@ -194,7 +201,7 @@ export async function sendReportToReferee(reportId, role, user, { confirmedRecip
 
   try {
     await transporter.sendMail({
-      from: config.smtp.from,
+      from: config.emailFrom,
       to: plan.recipient,
       ...(plan.cc.length ? { cc: plan.cc } : {}),
       subject: plan.subject,
@@ -215,12 +222,13 @@ export async function sendReportToReferee(reportId, role, user, { confirmedRecip
 }
 
 export function isEmailEnabled() {
+  if (config.emailDriver === 'brevo') return Boolean(config.brevoApiKey && config.emailFrom);
   return Boolean(config.smtp);
 }
 
 export async function sendOperationalEmail({ to, subject, text }) {
-  if (!config.smtp || !to) return false;
+  if (!isEmailEnabled() || !to) return false;
   const transporter = getTransporter();
-  await transporter.sendMail({ from: config.smtp.from, to, subject, text });
+  await transporter.sendMail({ from: config.emailFrom, to, subject, text });
   return true;
 }
