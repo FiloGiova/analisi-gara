@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { COMPETITIONS } from '../../../shared/reportTemplate.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { api, ApiError } from '../lib/api.js';
@@ -32,6 +32,7 @@ const SYNC_STATUS_LABELS = {
 };
 
 export default function AdminSourcesPage({ currentUser, season }) {
+  const { activeCompetitions } = useCompetitions();
   const [sources, setSources] = useState([]);
   const [scheduledSync, setScheduledSync] = useState(null);
   const [form, setForm] = useState(() => emptyForm(season));
@@ -369,7 +370,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
                 value={form.competition}
                 onChange={(v) => updateForm('competition', v)}
                 placeholder="— Seleziona —"
-                options={COMPETITIONS.map((c) => ({ value: c.value, label: c.label }))}
+                options={activeCompetitions.map((c) => ({ value: c.value, label: c.label }))}
               />
             </label>
           </div>

@@ -97,7 +97,11 @@ export const api = {
     return request(`/api/reports/stats${params.toString() ? `?${params}` : ''}`);
   },
   isEmailEnabled: () => request('/api/reports/email-enabled'),
-  sendReportEmail: (id, role) => request(`/api/reports/${id}/send-email/${role}`, { method: 'POST' }),
+  previewReportEmail: (id, role) => request(`/api/reports/${id}/send-email/${role}/preview`),
+  sendReportEmail: (id, role, confirmedRecipient) => request(`/api/reports/${id}/send-email/${role}`, {
+    method: 'POST',
+    body: JSON.stringify({ confirmedRecipient })
+  }),
   listReports: ({ search = '', status = '', season = '', observer = '' } = {}) => {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
@@ -134,6 +138,24 @@ export const api = {
   getRefereeNames: () => request('/api/reports/referee-names'),
   listAccessLogs: (limit = 100, offset = 0) =>
     request(`/api/access-logs?limit=${limit}&offset=${offset}`),
+  listEmailLogs: (limit = 100, offset = 0) =>
+    request(`/api/email-logs?limit=${limit}&offset=${offset}`),
+  listCompetitions: ({ activeOnly = false } = {}) =>
+    request(`/api/competitions${activeOnly ? '?activeOnly=true' : ''}`),
+  createCompetition: (competition) => request('/api/competitions', {
+    method: 'POST',
+    body: JSON.stringify(competition)
+  }),
+  updateCompetition: (id, competition) => request(`/api/competitions/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(competition)
+  }),
+  getEmailTemplate: () => request('/api/settings/email-template'),
+  saveEmailTemplate: (template) => request('/api/settings/email-template', {
+    method: 'PUT',
+    body: JSON.stringify({ template })
+  }),
+  getReportEmailLog: (id) => request(`/api/reports/${id}/email-log`),
   listReferees: ({ competition = '', season = '', activeOnly = false } = {}) => {
     const params = new URLSearchParams();
     if (competition) params.set('competition', competition);

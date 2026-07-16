@@ -27,9 +27,11 @@ function relativeDate(value) {
   return new Date(value).toLocaleString('it-IT');
 }
 
-function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, canLinkReferee, isReferee, canEditDraft }) {
+function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, emailLog = [], onEmailLogChanged, canLinkReferee, isReferee, canEditDraft }) {
   const [exporting, setExporting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [emailPreview, setEmailPreview] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const data = report.data;
   const evaluation = data.evaluations[role];
   if (!evaluation) return null;
@@ -53,15 +55,30 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, c
     window.open(`/api/reports/${report.id}/export/${role}/download?inline=1`, '_blank');
   }
 
-  async function handleSendEmail() {
+  async function handleOpenSendConfirm() {
+    setLoadingPreview(true);
+    try {
+      const { preview } = await api.previewReportEmail(report.id, role);
+      setEmailPreview(preview);
+    } catch (err) {
+      onError(err.message || 'Anteprima invio non riuscita.');
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
+
+  async function handleConfirmSend() {
+    const preview = emailPreview;
+    setEmailPreview(null);
     setSending(true);
     try {
-      const result = await api.sendReportEmail(report.id, role);
+      const result = await api.sendReportEmail(report.id, role, preview.recipient);
       onSent(role, result.sentAt);
     } catch (err) {
       onError(err.message || 'Invio email non riuscito.');
     } finally {
       setSending(false);
+      onEmailLogChanged?.();
     }
   }
 
@@ -137,8 +154,13 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, c
             </button>
           )}
           {isFinal && !isReferee && emailEnabled && (
-            <button type="button" className="primary-button" onClick={handleSendEmail} disabled={sending}>
-              {sending ? 'Invio…' : sentAt ? 'Reinvia' : 'Invia'}
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleOpenSendConfirm}
+              disabled={sending || loadingPreview}
+            >
+              {sending ? 'Invio…' : loadingPreview ? '…' : sentAt ? 'Reinvia' : 'Invia'}
             </button>
           )}
           {!isFinal && canEditDraft && (
@@ -148,6 +170,52 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, c
           )}
         </div>
       </div>
+
+      {!isReferee && emailLog.length > 0 && (
+        <details className="email-log">
+          <summary>Storico invii ({emailLog.length})</summary>
+          <ul>
+            {emailLog.map((entry) => (
+              <li key={entry.id}>
+                {new Date(entry.created_at).toLocaleString('it-IT')} — {entry.recipient}
+                {entry.sent_by_display_name ? ` — da ${entry.sent_by_display_name}` : ''} —{' '}
+                {entry.outcome === 'success' ? (
+                  'inviata'
+                ) : (
+                  <span className="email-log-error">errore: {entry.error_message || 'sconosciuto'}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {emailPreview && (
+        <ConfirmModal
+          title={emailPreview.lastSentAt ? 'Reinvia rapporto via email' : 'Invia rapporto via email'}
+          confirmLabel={emailPreview.lastSentAt ? 'Reinvia' : 'Invia'}
+          confirmClassName="primary-button"
+          onConfirm={handleConfirmSend}
+          onCancel={() => setEmailPreview(null)}
+        >
+          Invii il PDF di <strong>{emailPreview.refereeName}</strong> a{' '}
+          <strong>{emailPreview.recipient}</strong> per la gara{' '}
+          <strong>{formatMatchNumber(emailPreview.matchNumber)}</strong>
+          {emailPreview.competition ? ` — ${emailPreview.competition}` : ''}?
+          {emailPreview.cc?.length > 0 && (
+            <>
+              <br />
+              In copia: {emailPreview.cc.join(', ')}
+            </>
+          )}
+          {emailPreview.lastSentAt && (
+            <>
+              <br />
+              <em>Già inviato {relativeDate(emailPreview.lastSentAt)} — verrà reinviato.</em>
+            </>
+          )}
+        </ConfirmModal>
+      )}
     </article>
   );
 }
@@ -157,6 +225,7 @@ export default function ReportDetailPage({ id, currentUser }) {
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState(false);
+  const [emailLog, setEmailLog] = useState([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPdfImporter, setShowPdfImporter] = useState(false);
 
@@ -166,8 +235,16 @@ export default function ReportDetailPage({ id, currentUser }) {
       .catch((err) => setError(err.message || 'Rapporto non trovato.'));
   }
 
+  function loadEmailLog() {
+    if (currentUser?.role === 'referee') return;
+    api.getReportEmailLog(id)
+      .then((data) => setEmailLog(data.log))
+      .catch(() => {});
+  }
+
   useEffect(() => {
     loadReport();
+    loadEmailLog();
     api.isEmailEnabled()
       .then((data) => setEmailEnabled(data.enabled))
       .catch(() => {});
@@ -348,6 +425,8 @@ export default function ReportDetailPage({ id, currentUser }) {
             onError={setError}
             emailEnabled={emailEnabled}
             sentAt={report.firstRefereeSentAt}
+            emailLog={emailLog.filter((entry) => entry.role === 'first')}
+            onEmailLogChanged={loadEmailLog}
             onSent={(role, sentAt) => setReport((r) => ({ ...r, firstRefereeSentAt: sentAt }))}
             canLinkReferee={canLinkReferee}
             isReferee={isReferee}
@@ -361,6 +440,8 @@ export default function ReportDetailPage({ id, currentUser }) {
             onError={setError}
             emailEnabled={emailEnabled}
             sentAt={report.secondRefereeSentAt}
+            emailLog={emailLog.filter((entry) => entry.role === 'second')}
+            onEmailLogChanged={loadEmailLog}
             onSent={(role, sentAt) => setReport((r) => ({ ...r, secondRefereeSentAt: sentAt }))}
             canLinkReferee={canLinkReferee}
             isReferee={isReferee}

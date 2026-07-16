@@ -10,6 +10,7 @@ import {
 } from '../../shared/reportTemplate.js';
 import { config } from '../config.js';
 import { dbGet, dbAll, dbRun } from '../database/db.js';
+import { getCompetitionByValue } from './competitionService.js';
 import { HttpError } from '../utils/httpError.js';
 import {
   instructorAssignmentsForUser,
@@ -620,10 +621,21 @@ export async function getReport(id, user = null) {
   return stripSensitiveForReferee(viewed, user);
 }
 
+// Il campionato deve esistere nel catalogo (inattivi inclusi: le bozze su
+// dati storici devono restare salvabili). Vuoto = ancora da compilare.
+async function assertValidCompetition(competition) {
+  const clean = String(competition || '').trim();
+  if (!clean) return;
+  if (!(await getCompetitionByValue(clean))) {
+    throw new HttpError(400, 'Campionato non valido.');
+  }
+}
+
 export async function createReport({ payload, status = 'draft', user, allowDuplicate = false }) {
   assertReportCreationAccess(user);
   const normalizedStatus = status === 'final' ? 'final' : 'draft';
   const normalizedPayload = await applyUserReportRules(normalizeReportPayload(payload), user);
+  await assertValidCompetition(normalizedPayload.competition);
   assertIsoDate(normalizedPayload.reportDate, 'Data');
   await assertGameLink(normalizedPayload, { allowDuplicate });
   const observer = await resolveObserver(normalizedPayload, user);
@@ -680,6 +692,7 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
   const requestedStatus = status === 'final' ? 'final' : 'draft';
   const normalizedStatus = existingReport.status === 'final' ? 'final' : requestedStatus;
   const normalizedPayload = await applyUserReportRules(normalizeReportPayload(payload), user);
+  await assertValidCompetition(normalizedPayload.competition);
   // Il collegamento alla gara non si cambia in modifica: resta quello esistente.
   normalizedPayload.gameId = existingReport.gameId || normalizedPayload.gameId;
   assertIsoDate(normalizedPayload.reportDate, 'Data');

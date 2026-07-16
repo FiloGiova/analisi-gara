@@ -39,6 +39,9 @@ const { dbAll, dbGet, dbRun } = await import('../../src/database/db.js');
 
 const DATA_TABLES = [
   'access_logs',
+  'report_email_log',
+  'app_settings',
+  'competitions',
   'exports',
   'game_changes',
   'sync_runs',
@@ -60,6 +63,13 @@ const DATA_TABLES = [
 export async function setupTestDatabase() {
   await initializeDatabase();
   await dbRun(`TRUNCATE TABLE ${DATA_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
+  // La TRUNCATE svuota anche il catalogo campionati seminato all'avvio:
+  // i test lo ripopolano con i default usati in tutta la suite.
+  await dbRun(
+    `INSERT INTO competitions (value, label, sort_order)
+     VALUES ('DR1', 'Divisione Regionale 1', 1), ('Serie C', 'Serie C', 2)
+     ON CONFLICT (value) DO NOTHING`
+  );
 }
 
 export async function insertId(sql, params = []) {

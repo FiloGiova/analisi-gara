@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { COMPETITIONS } from '../../../shared/reportTemplate.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
@@ -26,6 +26,7 @@ function refereeLabel(official) {
 }
 
 export default function DesignateObserversPage({ currentUser, season }) {
+  const { activeCompetitions, competitionLabel } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
   const canManage = currentUser.role === 'admin' ||
     (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
@@ -74,8 +75,8 @@ export default function DesignateObserversPage({ currentUser, season }) {
       return assignedCompetitions;
     }
     const present = Array.from(new Set(games.map((g) => g.competition).filter(Boolean)));
-    return present.length ? present : COMPETITIONS.map((c) => c.value);
-  }, [assignedCompetitions.join('|'), currentUser.role, games]);
+    return present.length ? present : activeCompetitions.map((c) => c.value);
+  }, [assignedCompetitions.join('|'), currentUser.role, games, activeCompetitions]);
 
   const gamesInCompetition = useMemo(
     () => (competition ? games.filter((g) => g.competition === competition) : games),
@@ -175,7 +176,7 @@ export default function DesignateObserversPage({ currentUser, season }) {
               value={competition}
               onChange={(v) => { setCompetition(v); setSourceFilter([]); setMatchdayFilter([]); }}
               placeholder="Tutti i campionati"
-              options={[{ value: '', label: 'Tutti i campionati' }, ...competitionOptions.map((c) => ({ value: c, label: COMPETITIONS.find((x) => x.value === c)?.label || c }))]}
+              options={[{ value: '', label: 'Tutti i campionati' }, ...competitionOptions.map((c) => ({ value: c, label: competitionLabel(c) }))]}
             />
           </div>
           {sourceOptions.length ? (

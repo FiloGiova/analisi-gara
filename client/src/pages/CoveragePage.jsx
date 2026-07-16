@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { currentSportSeason } from '../../../shared/reportTemplate.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import Select from '../components/Select.jsx';
 import { api, ApiError, downloadStatsExport } from '../lib/api.js';
@@ -77,6 +78,7 @@ function SortableHeader({ label, sort, sortKey, onSort, initialDirection = 'asc'
 }
 
 export default function CoveragePage({ currentUser, globalSeason, seasons }) {
+  const { activeCompetitions, competitionLabel } = useCompetitions();
   const [view, setView] = useState('coverage');
   const [season, setSeason] = useState(globalSeason);
   const [competition, setCompetition] = useState(''); // '' = tutti i campionati
@@ -195,10 +197,10 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   // Il formatore vede solo i propri campionati; l'admin tutti.
   const myCompetitions = currentUser.role === 'instructor'
     ? assignedCompetitions
-    : COMPETITIONS.map((c) => c.value);
+    : activeCompetitions.map((c) => c.value);
   const competitionSelectOptions = [
     { value: '', label: 'Tutti i campionati' },
-    ...myCompetitions.map((c) => ({ value: c, label: COMPETITIONS.find((x) => x.value === c)?.label || c }))
+    ...myCompetitions.map((c) => ({ value: c, label: competitionLabel(c) }))
   ];
 
   return (

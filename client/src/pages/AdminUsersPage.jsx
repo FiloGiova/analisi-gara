@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import { api, ApiError } from '../lib/api.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 
 const emptyNewUser = {
@@ -49,17 +50,13 @@ function instructorAssignments(user) {
   return competitions.length ? [{ sportSeason: currentSportSeason(), competitions }] : [];
 }
 
-function competitionLabel(value) {
-  return COMPETITIONS.find((competition) => competition.value === value)?.label || value;
-}
-
-function formatCompetitions(values = []) {
+function formatCompetitions(values = [], competitionLabel) {
   return values.length ? values.map(competitionLabel).join(', ') : '-';
 }
 
-function formatAssignments(assignments = []) {
+function formatAssignments(assignments = [], competitionLabel) {
   return assignments.length
-    ? assignments.map((assignment) => `${assignment.sportSeason}: ${formatCompetitions(assignment.competitions)}`).join(' · ')
+    ? assignments.map((assignment) => `${assignment.sportSeason}: ${formatCompetitions(assignment.competitions, competitionLabel)}`).join(' · ')
     : '-';
 }
 
@@ -91,6 +88,7 @@ function Modal({ title, children, onClose }) {
 }
 
 function CompetitionChoices({ value, onChange }) {
+  const { activeCompetitions } = useCompetitions();
   const selected = Array.isArray(value) ? value : [];
 
   function toggle(competition) {
@@ -103,7 +101,7 @@ function CompetitionChoices({ value, onChange }) {
 
   return (
     <div className="competition-checks">
-      {COMPETITIONS.map((competition) => (
+      {activeCompetitions.map((competition) => (
         <label key={competition.value}>
           <input
             type="checkbox"
@@ -164,6 +162,7 @@ function InstructorAssignmentsEditor({ value, onChange }) {
 }
 
 export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
+  const { competitionLabel } = useCompetitions();
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState(emptyNewUser);
   const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
@@ -621,7 +620,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                     <td><UserStatusBadge active={user.active} /></td>
                     <td>
                       {user.role === 'instructor'
-                        ? formatAssignments(instructorAssignments(user))
+                        ? formatAssignments(instructorAssignments(user), competitionLabel)
                         : user.role === 'referee'
                           ? `Arbitro #${user.refereeId || '-'}`
                           : '-'}

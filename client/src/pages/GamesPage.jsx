@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { currentSportSeason } from '../../../shared/reportTemplate.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
@@ -60,6 +61,7 @@ function officialLabel(official) {
 }
 
 export default function GamesPage({ currentUser, season }) {
+  const { activeCompetitions } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
   const canManage = currentUser.role === 'admin' ||
     (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
@@ -258,7 +260,7 @@ export default function GamesPage({ currentUser, season }) {
                 value={form.competition}
                 onChange={(v) => updateForm('competition', v)}
                 placeholder="— Seleziona —"
-                options={COMPETITIONS
+                options={activeCompetitions
                   .filter((competition) => currentUser.role !== 'instructor' || assignedCompetitions.includes(competition.value))
                   .map((c) => ({ value: c.value, label: c.label }))}
               />

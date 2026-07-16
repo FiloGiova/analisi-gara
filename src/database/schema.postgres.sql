@@ -154,6 +154,46 @@ CREATE TABLE IF NOT EXISTS access_logs (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Impostazioni applicative chiave/valore (es. template email dei rapporti).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+-- Catalogo dei campionati gestito dall'admin. Il "value" è il codice stabile
+-- salvato come TEXT nelle altre tabelle (reports, games, rosters, ...):
+-- non è modificabile; rinominare un campionato tocca solo "label".
+CREATE TABLE IF NOT EXISTS competitions (
+  id              SERIAL PRIMARY KEY,
+  value           TEXT NOT NULL UNIQUE,
+  label           TEXT NOT NULL,
+  cc_emails       TEXT NOT NULL DEFAULT '',
+  email_signature TEXT NOT NULL DEFAULT '',
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  active          INTEGER NOT NULL DEFAULT 1,
+  created_at      TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+  updated_at      TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+-- Audit degli invii email dei rapporti (anche quelli falliti).
+-- Gara e campionato denormalizzati: il log sopravvive alla cancellazione del rapporto.
+CREATE TABLE IF NOT EXISTS report_email_log (
+  id            SERIAL PRIMARY KEY,
+  report_id     INTEGER REFERENCES reports(id) ON DELETE SET NULL,
+  match_number  TEXT NOT NULL DEFAULT '',
+  competition   TEXT NOT NULL DEFAULT '',
+  role          TEXT NOT NULL CHECK (role IN ('first', 'second')),
+  recipient     TEXT NOT NULL,
+  cc            TEXT NOT NULL DEFAULT '',
+  subject       TEXT NOT NULL DEFAULT '',
+  sent_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  outcome       TEXT NOT NULL CHECK (outcome IN ('success', 'error')),
+  error_message TEXT,
+  created_at    TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
 CREATE TABLE IF NOT EXISTS competition_sources (
   id               SERIAL PRIMARY KEY,
   sport_season     TEXT NOT NULL,
@@ -285,6 +325,8 @@ CREATE INDEX IF NOT EXISTS idx_referee_season_categories_season ON referee_seaso
 CREATE INDEX IF NOT EXISTS idx_referee_bands_lookup ON referee_bands(sport_season, competition, band);
 CREATE INDEX IF NOT EXISTS idx_access_logs_user_id ON access_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_report_email_log_report_id ON report_email_log(report_id);
+CREATE INDEX IF NOT EXISTS idx_report_email_log_created_at ON report_email_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_users_referee_id ON users(referee_id);
 CREATE INDEX IF NOT EXISTS idx_instructor_assignments_user_season ON instructor_competition_assignments(user_id, sport_season);
 CREATE INDEX IF NOT EXISTS idx_reports_game_id ON reports(game_id);

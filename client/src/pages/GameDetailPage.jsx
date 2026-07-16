@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { COMPETITIONS } from '../../../shared/reportTemplate.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
@@ -51,6 +51,7 @@ function SourceBadge({ official }) {
 }
 
 export default function GameDetailPage({ id, currentUser }) {
+  const { activeCompetitions } = useCompetitions();
   const canManage = currentUser.role === 'admin' || currentUser.role === 'instructor';
   const isAdmin = currentUser.role === 'admin';
   const [game, setGame] = useState(null);
@@ -384,7 +385,7 @@ export default function GameDetailPage({ id, currentUser }) {
                 value={editForm.competition}
                 onChange={(v) => setEditForm({ ...editForm, competition: v })}
                 placeholder="— Seleziona —"
-                options={COMPETITIONS.map((c) => ({ value: c.value, label: c.label }))}
+                options={activeCompetitions.map((c) => ({ value: c.value, label: c.label }))}
               />
             </label>
             <label className="field field-span-2">

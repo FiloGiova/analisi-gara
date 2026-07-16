@@ -17,7 +17,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production node server.js",
     "test": "node --test --test-concurrency=1 tests/*.test.js",
-    "test:unit": "node --test tests/fipAdapter.test.js tests/federationPdfParser.test.js"
+    "test:unit": "node --test tests/fipAdapter.test.js tests/federationPdfParser.test.js tests/emailTemplate.test.js"
   },
   "dependencies": {
     "@fontsource/montserrat": "^5.2.8",

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { currentSportSeason } from '../../../shared/reportTemplate.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import DateInput from '../components/DateInput.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
@@ -42,15 +43,12 @@ function seasonTitle(season) {
   return season === CURRENT_SEASON ? 'Anagrafica arbitri' : `Archivio arbitri ${season}`;
 }
 
-function competitionLabel(value) {
-  return COMPETITIONS.find((competition) => competition.value === value)?.label || value;
-}
-
 function activeForSeason(referee, season) {
   return season === CURRENT_SEASON ? referee.active : referee.seasonActive;
 }
 
 export default function AdminRefereesPage({ currentUser, season: selectedSeason }) {
+  const { activeCompetitions, competitionLabel } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, selectedSeason);
   const canAccess = currentUser.role === 'admin' || assignedCompetitions.length > 0;
   const [referees, setReferees] = useState([]);
@@ -62,7 +60,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   const [filterBand, setFilterBand] = useState(''); // filtro fascia nell'elenco
   const [allBands, setAllBands] = useState([]); // tutte le appartenenze fascia della stagione
   // Vista Fasce
-  const bandCompetitions = assignedCompetitions.length ? assignedCompetitions : COMPETITIONS.map((c) => c.value);
+  const bandCompetitions = assignedCompetitions.length ? assignedCompetitions : activeCompetitions.map((c) => c.value);
   const [bandCompetition, setBandCompetition] = useState(bandCompetitions[0] || '');
   const [bandFilter, setBandFilter] = useState('esordiente');
   const [bandMembers, setBandMembers] = useState([]);
@@ -438,7 +436,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                 placeholder="— Nessuna —"
                 options={[
                   { value: '', label: '— Nessuna —' },
-                  ...COMPETITIONS.map((c) => ({ value: c.value, label: `${c.label} (${c.value})` }))
+                  ...activeCompetitions.map((c) => ({ value: c.value, label: `${c.label} (${c.value})` }))
                 ]}
               />
             </label>
@@ -511,7 +509,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                   placeholder="Tutte le categorie"
                   options={[
                     { value: '', label: 'Tutte le categorie' },
-                    ...COMPETITIONS.map((c) => ({ value: c.value, label: c.label }))
+                    ...activeCompetitions.map((c) => ({ value: c.value, label: c.label }))
                   ]}
                 />
               </div>

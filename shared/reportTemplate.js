@@ -1,7 +1,6 @@
-export const COMPETITIONS = [
-  { value: 'DR1', label: 'Divisione Regionale 1' },
-  { value: 'Serie C', label: 'Serie C' }
-];
+// I campionati non vivono più qui: sono nella tabella `competitions`, gestita
+// dall'admin (client: useCompetitions() in client/src/lib/competitions.jsx;
+// server: src/services/competitionService.js; seed in src/database/connection.js).
 
 export function deriveSeason(dateString) {
   if (!dateString) return null;

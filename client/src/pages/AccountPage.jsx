@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { COMPETITIONS } from '../../../shared/reportTemplate.js';
 import { api, ApiError } from '../lib/api.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import { instructorAssignmentsForUser } from '../../../shared/instructorAssignments.js';
 
@@ -11,11 +11,7 @@ function roleLabel(role) {
   return 'Osservatore';
 }
 
-function competitionLabel(value) {
-  return COMPETITIONS.find((competition) => competition.value === value)?.label || value;
-}
-
-function formatCompetitions(user) {
+function formatCompetitions(user, competitionLabel) {
   const assignments = instructorAssignmentsForUser(user);
   if (assignments.length) {
     return assignments
@@ -38,6 +34,7 @@ function InfoItem({ label, value }) {
 }
 
 export default function AccountPage({ currentUser, onUserUpdated, onPasswordChanged }) {
+  const { competitionLabel } = useCompetitions();
   const [displayName, setDisplayName] = useState(currentUser.displayName || currentUser.username || '');
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -126,7 +123,7 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
           <InfoItem label="Nome visualizzato" value={currentUser.displayName} />
           <InfoItem label="Ruolo" value={roleLabel(currentUser.role)} />
           {currentUser.role === 'instructor' ? (
-            <InfoItem label="Storico campionati" value={formatCompetitions(currentUser)} />
+            <InfoItem label="Storico campionati" value={formatCompetitions(currentUser, competitionLabel)} />
           ) : null}
           {currentUser.role === 'referee' ? (
             <InfoItem label="ID arbitro collegato" value={currentUser.refereeId} />

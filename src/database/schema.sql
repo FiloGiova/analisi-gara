@@ -132,6 +132,46 @@ CREATE TABLE IF NOT EXISTS access_logs (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Impostazioni applicative chiave/valore (es. template email dei rapporti).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+-- Catalogo dei campionati gestito dall'admin. Il "value" è il codice stabile
+-- salvato come TEXT nelle altre tabelle (reports, games, rosters, ...):
+-- non è modificabile; rinominare un campionato tocca solo "label".
+CREATE TABLE IF NOT EXISTS competitions (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  value           TEXT NOT NULL UNIQUE,
+  label           TEXT NOT NULL,
+  cc_emails       TEXT NOT NULL DEFAULT '',
+  email_signature TEXT NOT NULL DEFAULT '',
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  active          INTEGER NOT NULL DEFAULT 1,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+-- Audit degli invii email dei rapporti (anche quelli falliti).
+-- Gara e campionato denormalizzati: il log sopravvive alla cancellazione del rapporto.
+CREATE TABLE IF NOT EXISTS report_email_log (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id     INTEGER REFERENCES reports(id) ON DELETE SET NULL,
+  match_number  TEXT NOT NULL DEFAULT '',
+  competition   TEXT NOT NULL DEFAULT '',
+  role          TEXT NOT NULL CHECK (role IN ('first', 'second')),
+  recipient     TEXT NOT NULL,
+  cc            TEXT NOT NULL DEFAULT '',
+  subject       TEXT NOT NULL DEFAULT '',
+  sent_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  outcome       TEXT NOT NULL CHECK (outcome IN ('success', 'error')),
+  error_message TEXT,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
 CREATE TABLE IF NOT EXISTS competition_sources (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   sport_season     TEXT NOT NULL,

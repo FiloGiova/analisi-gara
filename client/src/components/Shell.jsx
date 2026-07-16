@@ -137,6 +137,9 @@ export default function Shell({
                   <button type="button" role="menuitem" onClick={() => go('/admin/users')}>
                     Utenti
                   </button>
+                  <button type="button" role="menuitem" onClick={() => go('/admin/competitions')}>
+                    Campionati
+                  </button>
                   <button type="button" role="menuitem" onClick={() => go('/admin/sources')}>
                     Sorgenti gare
                   </button>
@@ -144,7 +147,7 @@ export default function Shell({
                     Import designazioni
                   </button>
                   <button type="button" role="menuitem" onClick={() => go('/admin/logs')}>
-                    Log accessi
+                    Log
                   </button>
                 </div>
               ) : null}

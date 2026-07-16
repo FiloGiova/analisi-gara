@@ -1,5 +1,6 @@
 import { dbGet, dbAll, dbRun, dbTx } from '../database/db.js';
-import { COMPETITIONS, currentSportSeason } from '../../shared/reportTemplate.js';
+import { currentSportSeason } from '../../shared/reportTemplate.js';
+import { allowedCompetitionValues } from './competitionService.js';
 import { hashPassword, verifyPassword } from '../utils/passwords.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -38,8 +39,7 @@ function parseInstructorCompetitions(value) {
   return clean.split('|').map((item) => item.trim()).filter(Boolean);
 }
 
-function normalizeInstructorCompetitions(value) {
-  const allowed = new Set(COMPETITIONS.map((competition) => competition.value));
+function normalizeInstructorCompetitions(value, allowed) {
   const unique = [];
   for (const item of parseInstructorCompetitions(value)) {
     if (!allowed.has(item)) {
@@ -50,8 +50,7 @@ function normalizeInstructorCompetitions(value) {
   return unique;
 }
 
-function normalizeStoredInstructorCompetitions(value) {
-  const allowed = new Set(COMPETITIONS.map((competition) => competition.value));
+function normalizeStoredInstructorCompetitions(value, allowed) {
   const unique = [];
   for (const item of parseInstructorCompetitions(value)) {
     if (allowed.has(item) && !unique.includes(item)) unique.push(item);
@@ -72,16 +71,16 @@ function normalizeSportSeason(value) {
   return clean;
 }
 
-function normalizeInstructorAssignments(value, legacyCompetitionInput) {
+function normalizeInstructorAssignments(value, legacyCompetitionInput, allowed) {
   const source = value === undefined
-    ? [{ sportSeason: currentSportSeason(), competitions: normalizeInstructorCompetitions(legacyCompetitionInput) }]
+    ? [{ sportSeason: currentSportSeason(), competitions: normalizeInstructorCompetitions(legacyCompetitionInput, allowed) }]
     : value;
   if (!Array.isArray(source)) throw new HttpError(400, 'Storico formatore non valido.');
 
   const grouped = new Map();
   for (const item of source) {
     const sportSeason = normalizeSportSeason(item?.sportSeason || item?.season);
-    const competitions = normalizeInstructorCompetitions(item?.competitions);
+    const competitions = normalizeInstructorCompetitions(item?.competitions, allowed);
     if (!competitions.length) continue;
     const existing = grouped.get(sportSeason) || [];
     grouped.set(sportSeason, [...new Set([...existing, ...competitions])]);
@@ -163,15 +162,22 @@ function validatePassword(password) {
   }
 }
 
-export async function publicUserFromRow(row) {
+export async function publicUserFromRow(row, allowedValues = null) {
   const role = normalizeRole(row.role, row.formatter_competition);
   const storedAssignments = role === 'instructor' ? await loadInstructorAssignments(row.id) : [];
-  const instructorAssignments = role === 'instructor' && storedAssignments.length
-    ? storedAssignments
-    : role === 'instructor'
-      ? [{ sportSeason: currentSportSeason(), competitions: normalizeStoredInstructorCompetitions(row.formatter_competition) }]
-          .filter((assignment) => assignment.competitions.length)
-      : [];
+  let instructorAssignments = [];
+  if (role === 'instructor') {
+    if (storedAssignments.length) {
+      instructorAssignments = storedAssignments;
+    } else if (String(row.formatter_competition || '').trim()) {
+      // Fallback legacy: filtra i valori sciolti contro il catalogo (inattivi
+      // inclusi, per non nascondere assegnazioni storiche).
+      const allowed = allowedValues || (await allowedCompetitionValues());
+      instructorAssignments = [
+        { sportSeason: currentSportSeason(), competitions: normalizeStoredInstructorCompetitions(row.formatter_competition, allowed) }
+      ].filter((assignment) => assignment.competitions.length);
+    }
+  }
   const instructorCompetitions = assignmentCompetitions(instructorAssignments);
   return {
     id: row.id,
@@ -233,7 +239,7 @@ export async function upsertUser({
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
   const cleanRole = normalizeRole(role, competitionInput);
   const assignments = cleanRole === 'instructor'
-    ? normalizeInstructorAssignments(instructorAssignments, competitionInput)
+    ? normalizeInstructorAssignments(instructorAssignments, competitionInput, await allowedCompetitionValues())
     : [];
   validateRoleConfiguration(cleanRole, assignments);
   const instructorCompetitions = assignmentCompetitions(assignments);
@@ -283,7 +289,8 @@ export async function listUsers() {
        FROM users
       ORDER BY active DESC, role ASC, LOWER(display_name) ASC`
   );
-  return Promise.all(rows.map(publicUserFromRow));
+  const allowed = await allowedCompetitionValues();
+  return Promise.all(rows.map((row) => publicUserFromRow(row, allowed)));
 }
 
 export async function createUser({
@@ -306,7 +313,7 @@ export async function createUser({
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
   const cleanRole = normalizeRole(role, competitionInput);
   const assignments = cleanRole === 'instructor'
-    ? normalizeInstructorAssignments(instructorAssignments, competitionInput)
+    ? normalizeInstructorAssignments(instructorAssignments, competitionInput, await allowedCompetitionValues())
     : [];
   validateRoleConfiguration(cleanRole, assignments);
   const instructorCompetitions = assignmentCompetitions(assignments);
@@ -353,7 +360,7 @@ export async function updateUser({ id, displayName, role, active, instructorComp
     ? []
     : instructorAssignments === undefined && competitionInput === undefined
       ? currentAssignments
-      : normalizeInstructorAssignments(instructorAssignments, competitionInput);
+      : normalizeInstructorAssignments(instructorAssignments, competitionInput, await allowedCompetitionValues());
   validateRoleConfiguration(nextRole, nextAssignments);
   const nextCompetitions = assignmentCompetitions(nextAssignments);
   const nextInstructorCompetition = nextCompetitions.length ? JSON.stringify(nextCompetitions) : null;

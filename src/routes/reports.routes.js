@@ -13,7 +13,8 @@ import {
 import { generateReportPdfs, getPdfFileInfo, generatePdfForRole, buildReportPdf } from '../services/pdfService.js';
 import { listPendingAssignmentsForUser } from '../services/gameService.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
-import { sendReportToReferee, isEmailEnabled } from '../services/emailService.js';
+import { sendReportToReferee, previewReportEmail, isEmailEnabled } from '../services/emailService.js';
+import { listEmailLogForReport } from '../services/emailLogService.js';
 import { requireAdminOrInstructor } from '../middleware/auth.js';
 import {
   applyFederationPdfImport,
@@ -256,11 +257,33 @@ reportsRouter.get(
   })
 );
 
+reportsRouter.get(
+  '/:id/email-log',
+  asyncHandler(async (req, res) => {
+    // Il controllo accessi è quello del rapporto; gli arbitri restano esclusi
+    // perché lo storico espone i destinatari dell'altro arbitro.
+    if (req.user?.role === 'referee') {
+      throw new HttpError(403, 'Storico invii non accessibile.');
+    }
+    await getReport(Number(req.params.id), req.user);
+    res.json({ log: await listEmailLogForReport(Number(req.params.id)) });
+  })
+);
+
+reportsRouter.get(
+  '/:id/send-email/:role/preview',
+  asyncHandler(async (req, res) => {
+    res.json({ preview: await previewReportEmail(Number(req.params.id), req.params.role, req.user) });
+  })
+);
+
 reportsRouter.post(
   '/:id/send-email/:role',
   asyncHandler(async (req, res) => {
     const role = req.params.role;
-    const result = await sendReportToReferee(Number(req.params.id), role, req.user);
+    const result = await sendReportToReferee(Number(req.params.id), role, req.user, {
+      confirmedRecipient: req.body?.confirmedRecipient
+    });
     res.json({ ok: true, sentAt: result.sentAt, refereeEmail: result.refereeEmail });
   })
 );

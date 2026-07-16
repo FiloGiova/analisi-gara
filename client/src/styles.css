@@ -4243,6 +4243,30 @@ dd {
 .sent-dot.green { background: var(--final); }
 .sent-dot.orange { background: var(--orange); }
 
+.email-log {
+  background: var(--paper);
+  border-top: 1px solid var(--line-soft);
+  padding: 10px 22px 14px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.email-log summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.email-log ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.email-log .email-log-error {
+  color: var(--danger);
+}
+
 .ref-card-footer-actions {
   display: flex;
   gap: 8px;

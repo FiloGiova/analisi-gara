@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { COMMON_MATCH_CHARACTERISTICS, COMPETITIONS, EVALUATION_SECTIONS, createEmptyReport, getRefereeLabel, deriveSeason, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { COMMON_MATCH_CHARACTERISTICS, EVALUATION_SECTIONS, createEmptyReport, getRefereeLabel, deriveSeason, currentSportSeason } from '../../../shared/reportTemplate.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import { api, ApiError } from '../lib/api.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import { navigate } from '../lib/navigation.js';
 import { Field, TextArea, TextInput } from '../components/Field.jsx';
 import EvaluationEditor from '../components/EvaluationEditor.jsx';
@@ -73,6 +74,7 @@ function canEditReport(report, currentUser) {
 }
 
 export default function ReportFormPage({ id, currentUser, features, gameId, season }) {
+  const { activeCompetitions, competitionLabel } = useCompetitions();
   const isEdit = Boolean(id);
   const canChooseObserver = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
   const observerLocked = !canChooseObserver;
@@ -531,9 +533,15 @@ export default function ReportFormPage({ id, currentUser, features, gameId, seas
                   value={report.competition}
                   onChange={setCompetition}
                   placeholder="— Seleziona —"
-                  options={COMPETITIONS
-                    .filter((c) => currentUser?.role !== 'instructor' || instructorCompetitions.includes(c.value))
-                    .map((c) => ({ value: c.value, label: c.label }))}
+                  options={[
+                    ...activeCompetitions
+                      .filter((c) => currentUser?.role !== 'instructor' || instructorCompetitions.includes(c.value))
+                      .map((c) => ({ value: c.value, label: c.label })),
+                    // Un rapporto esistente su un campionato disattivato resta leggibile e salvabile.
+                    ...(report.competition && !activeCompetitions.some((c) => c.value === report.competition)
+                      ? [{ value: report.competition, label: competitionLabel(report.competition) }]
+                      : [])
+                  ]}
                   disabled={Boolean(lockedCompetition)}
                 />
               </Field>

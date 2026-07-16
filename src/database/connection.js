@@ -36,6 +36,7 @@ export async function initializeDatabase() {
 
 async function runBackfills() {
   await migrateFederationPdfSources();
+  await seedCompetitions();
   await ensureDefaultSeasonCategories();
   await backfillReportSeasons();
   await backfillReportVotes();
@@ -78,6 +79,41 @@ async function migrateFederationPdfSources() {
     await getPool().query(`ALTER TABLE ${constraint.table} DROP CONSTRAINT IF EXISTS ${constraint.name}`);
     await getPool().query(`ALTER TABLE ${constraint.table} ADD CONSTRAINT ${constraint.name} CHECK (${constraint.expression})`);
   }
+}
+
+// Popola il catalogo campionati alla prima esecuzione e, in via difensiva,
+// registra ogni valore già presente nei dati storici: la validazione contro
+// la tabella non deve mai rifiutare ciò che il database contiene già.
+const DEFAULT_COMPETITIONS = [
+  { value: 'DR1', label: 'Divisione Regionale 1', sortOrder: 1 },
+  { value: 'Serie C', label: 'Serie C', sortOrder: 2 }
+];
+
+async function seedCompetitions() {
+  const row = await dbGet('SELECT COUNT(*) AS count FROM competitions');
+  if (Number(row.count) === 0) {
+    for (const competition of DEFAULT_COMPETITIONS) {
+      await dbRun(
+        `INSERT INTO competitions (value, label, sort_order) VALUES (?, ?, ?)
+         ON CONFLICT (value) DO NOTHING`,
+        [competition.value, competition.label, competition.sortOrder]
+      );
+    }
+  }
+
+  await dbRun(`
+    INSERT INTO competitions (value, label, sort_order)
+    SELECT DISTINCT TRIM(competition), TRIM(competition), 999 FROM (
+      SELECT competition FROM reports
+      UNION SELECT competition FROM games
+      UNION SELECT competition FROM referee_rosters
+      UNION SELECT competition FROM referee_bands
+      UNION SELECT competition FROM instructor_competition_assignments
+      UNION SELECT competition FROM competition_sources
+    ) legacy
+    WHERE TRIM(COALESCE(competition, '')) != ''
+    ON CONFLICT (value) DO NOTHING
+  `);
 }
 
 async function ensureDefaultSeasonCategories() {

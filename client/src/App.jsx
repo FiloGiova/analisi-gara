@@ -18,7 +18,9 @@ import GameDetailPage from './pages/GameDetailPage.jsx';
 import DesignateObserversPage from './pages/DesignateObserversPage.jsx';
 import AdminSourcesPage from './pages/AdminSourcesPage.jsx';
 import AdminImportsPage from './pages/AdminImportsPage.jsx';
+import AdminCompetitionsPage from './pages/AdminCompetitionsPage.jsx';
 import CoveragePage from './pages/CoveragePage.jsx';
+import { CompetitionsProvider } from './lib/competitions.jsx';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -125,6 +127,7 @@ export default function App() {
     />
   );
   if (route.name === 'adminLogs') page = <AdminLogsPage currentUser={user} />;
+  if (route.name === 'adminCompetitions') page = <AdminCompetitionsPage currentUser={user} />;
   if (route.name === 'adminRefereeDetail') page = <RefereeDetailPage id={route.id} currentUser={user} season={season} />;
   if (route.name === 'adminReferees') page = <AdminRefereesPage currentUser={user} season={season} />;
   if (route.name === 'adminUsers') page = <AdminUsersPage currentUser={user} onPasswordChanged={() => {
@@ -146,21 +149,23 @@ export default function App() {
   if (['dashboard', 'newReport', 'editReport', 'reportDetail', 'refereeHome'].includes(route.name)) activeSection = 'reports';
   if (route.name === 'coverage') activeSection = 'coverage';
   if (['adminReferees', 'adminRefereeDetail'].includes(route.name)) activeSection = 'referees';
-  if (['adminUsers', 'adminLogs', 'adminSources', 'adminImports'].includes(route.name)) activeSection = 'admin';
+  if (['adminUsers', 'adminLogs', 'adminSources', 'adminImports', 'adminCompetitions'].includes(route.name)) activeSection = 'admin';
 
   const showBackButton = !['home', 'dashboard', 'refereeHome', 'games'].includes(route.name);
 
   return (
-    <Shell
-      user={user}
-      onLogout={handleLogout}
-      showBackButton={showBackButton}
-      season={season}
-      seasons={seasons}
-      onSeasonChange={setSeason}
-      activeSection={activeSection}
-    >
-      {page}
-    </Shell>
+    <CompetitionsProvider>
+      <Shell
+        user={user}
+        onLogout={handleLogout}
+        showBackButton={showBackButton}
+        season={season}
+        seasons={seasons}
+        onSeasonChange={setSeason}
+        activeSection={activeSection}
+      >
+        {page}
+      </Shell>
+    </CompetitionsProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { COMPETITIONS, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { currentSportSeason } from '../../../shared/reportTemplate.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import DateInput from '../components/DateInput.jsx';
@@ -17,10 +18,6 @@ const BAND_OPTIONS = [
   { value: 'playoff', label: 'Playoff' },
   { value: 'playout', label: 'Playout' }
 ];
-
-function competitionLabel(value) {
-  return COMPETITIONS.find((item) => item.value === value)?.label || value;
-}
 
 function refereeForm(referee) {
   return {
@@ -77,6 +74,7 @@ function colleagueLabel(game, myRole) {
 }
 
 export default function RefereeDetailPage({ id, currentUser, season: selectedSeason }) {
+  const { activeCompetitions, competitionLabel } = useCompetitions();
   const [referee, setReferee] = useState(null);
   const [designations, setDesignations] = useState([]);
   const [editing, setEditing] = useState(false);
@@ -92,7 +90,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
   const instructorCompetitions = instructorCompetitionsForSeason(currentUser, selectedSeason);
   const manageableCompetitions = instructorCompetitions.length
     ? instructorCompetitions
-    : COMPETITIONS.map((item) => item.value);
+    : activeCompetitions.map((item) => item.value);
 
   useEffect(() => {
     if (!canInspect) return;
