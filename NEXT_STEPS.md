@@ -31,6 +31,10 @@ la roadmap operativa corrente.
   campionato, fase multipla, fascia, stagione e nomi delle squadre.
 - [x] ~~PDF e file persistenti su Supabase Storage~~.
 - [x] ~~Helper AI fase 1~~ per generare e rifinire il giudizio globale.
+- [x] ~~Invio email dei rapporti completo~~ (16-17/07/2026): conferma con
+  anteprima destinatario, blocco bozze/omonimi, log invii in area admin,
+  campionati gestiti da interfaccia con CC e firma, template del corpo
+  modificabile. Resta solo l'attivazione in produzione (v. priorità 1).
 - [x] ~~Base tecnica per l'invio email dei PDF~~: servizio email, PDF distinti
   per arbitro e campi di tracciamento degli invii già presenti.
 - [x] ~~Suite di test PostgreSQL~~: database separato e protetto, 53 test
@@ -55,38 +59,30 @@ la roadmap operativa corrente.
 
 ## Priorità consigliate
 
-### 1. Completare l'invio dei rapporti via email
+### 1. Attivare l'invio email dei rapporti in produzione
 
-Obiettivo: dopo che un rapporto è definitivo, admin, formatore o osservatore
-abilitato devono poter inviare a ciascun arbitro il relativo PDF in modo
-semplice, sicuro e tracciabile.
+La funzionalità è completa e collaudata (CHANGELOG 16-17/07/2026): conferma
+esplicita con anteprima del destinatario, blocco bozze e omonimi, log invii
+con esito in Admin → Log → Email, CC e firma per campionato, template del
+corpo modificabile dall'admin. Manca solo il canale di uscita: **il piano
+Free di Render blocca le porte SMTP (25/465/587)** e la via alternativa API
+con mittente @gmail.com è stata scartata (Gmail cestina silenziosamente i
+mittenti gmail.com spediti da server terzi — v. CHANGELOG 17/07).
 
-- verificare ciò che è già funzionante end-to-end: generazione del PDF corretto,
-  indirizzo dell'arbitro, route, pulsanti, SMTP e campi `*_sent_at`;
-- completare permessi e scoping: invio consentito ad admin, formatore del
-  campionato e osservatore associato al rapporto, esclusivamente sui rapporti
-  definitivi che possono vedere;
-- mostrare prima dell'invio destinatario, rapporto e allegato, con conferma
-  esplicita; evitare invii al destinatario sbagliato o doppi clic involontari;
-- registrare esito, data, autore e destinatari dell'invio; rendere chiari gli
-  errori SMTP e permettere un nuovo tentativo senza rigenerare dati incoerenti;
-- definire oggetto e corpo della mail, includendo campionato, gara e nominativo
-  dell'arbitro, senza esporre dati dell'altro arbitro.
+Per attivare, quando si deciderà di farlo:
 
-Decisione da prendere per i mittenti dei diversi campionati:
-
-- **Opzione A — mittente per campionato:** configurazione `From`/`Reply-To` e,
-  se necessario, credenziali SMTP distinte per ogni campionato; verificare prima
-  che il provider consenta e abbia validato tutti gli indirizzi mittente;
-- **Opzione B — mittente unico:** una sola casella FischioLab e una mappatura
-  campionato → indirizzi in CC, con destinatari diversi per DR1, Serie C e futuri
-  campionati; valutare anche un `Reply-To` specifico per campionato;
-- prevedere sempre un comportamento di fallback quando un campionato non ha
-  ancora una configurazione email dedicata.
-
-Completamento: test automatici su ruoli, scoping, PDF allegato, destinatari,
-CC/Reply-To, doppio invio ed errore SMTP; prova reale con una casella di test
-prima di attivare il mittente di produzione.
+- [ ] upgrade dell'istanza Render a pagamento (dashboard → fischiolab →
+  Settings → Instance Type → Starter): le porte SMTP si aprono da sole;
+- [ ] verificare le variabili già sul dashboard: `SMTP_HOST=smtp.gmail.com`,
+  `SMTP_PORT=465`, `SMTP_SECURE=true`, `SMTP_USER=formatoriciapiemonte@gmail.com`,
+  `SMTP_PASS`=app password Google (richiede verifica in due passaggi),
+  `SMTP_FROM=FischioLab <formatoriciapiemonte@gmail.com>`; eliminare le
+  variabili residue `BREVO_API_KEY`/`EMAIL_FROM`/`EMAIL_DRIVER` se presenti;
+- [ ] prova reale su una casella di test, controllando esito e dettagli in
+  Admin → Log → Email, prima di inviare agli arbitri;
+- opzione futura per un mittente professionale slegato dalla casella
+  personale: dominio proprio autenticato (SPF/DKIM) su un provider
+  transazionale.
 
 ### 2. Armonizzare filtri e search bar
 

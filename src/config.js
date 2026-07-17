@@ -49,17 +49,6 @@ export const config = {
         from: process.env.SMTP_FROM || process.env.SMTP_USER || ''
       }
     : null,
-  // Driver di invio email: 'brevo' (API HTTPS, funziona anche su Render Free
-  // dove le porte SMTP in uscita sono bloccate) oppure 'smtp'.
-  // EMAIL_DRIVER lo forza; altrimenti si usa Brevo se c'è la sua API key.
-  emailDriver: process.env.EMAIL_DRIVER
-    ? String(process.env.EMAIL_DRIVER).trim().toLowerCase()
-    : process.env.BREVO_API_KEY
-      ? 'brevo'
-      : 'smtp',
-  brevoApiKey: process.env.BREVO_API_KEY || '',
-  // Mittente unico per entrambi i driver, formato: 'Nome <indirizzo@dominio>'.
-  emailFrom: process.env.EMAIL_FROM || process.env.SMTP_FROM || process.env.SMTP_USER || '',
   aiEnabled: String(process.env.ENABLE_AI_FEATURES || 'false').toLowerCase() === 'true',
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   anthropicModel: 'claude-haiku-4-5-20251001',

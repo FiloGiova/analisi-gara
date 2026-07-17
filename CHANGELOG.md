@@ -7,6 +7,28 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-07-17 — Rimosso il driver Brevo: si invierà via SMTP con istanza Render a pagamento
+
+Il driver Brevo introdotto il 16/07 è stato rimosso dopo il collaudo reale:
+con mittente `@gmail.com` spedito da server terzi, Gmail accettava il
+messaggio ("consegnata" su Brevo) ma lo scartava silenziosamente senza
+recapitarlo — né inbox né spam. Le alternative erano un dominio proprio
+autenticato oppure l'invio via SMTP autenticato Gmail, possibile su Render
+solo con istanza a pagamento (il piano Free blocca le porte SMTP in uscita).
+
+**Decisione**: quando si vorrà attivare l'invio, si farà l'upgrade
+dell'istanza Render e si spedirà via SMTP Gmail (i dettagli operativi sono in
+NEXT_STEPS.md, priorità 1). Il codice resta SMTP-only, con la stessa pipeline
+(anteprima, conferma destinatario, log invii) e i timeout stretti del 16/07.
+
+- Rimossi `src/services/brevoTransport.js`, `tests/emailBrevo.test.js`, le
+  env `BREVO_API_KEY`/`EMAIL_FROM`/`EMAIL_DRIVER` (config, render.yaml,
+  .env.example) e il ramo di selezione driver in `emailService.js`.
+- Nessuna migrazione: il driver non toccava il database.
+- Da fare a mano sul dashboard Render: eliminare le variabili
+  `BREVO_API_KEY`, `EMAIL_FROM` ed eventuale `EMAIL_DRIVER`; su Brevo,
+  revocare la API key generata (account non più usato).
+
 ## 2026-07-16 — Invio rapporti via email completo, campionati gestibili, driver Brevo
 
 Invio email agli arbitri portato a livello di produzione, con campionati
