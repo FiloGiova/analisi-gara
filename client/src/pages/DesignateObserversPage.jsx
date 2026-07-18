@@ -9,6 +9,7 @@ import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
+import { availabilityOnDate, formatAvailabilityPeriod, observerOptionForDate } from '../lib/observerAvailability.js';
 
 function refereeLabel(official) {
   if (!official) return '—';
@@ -138,8 +139,6 @@ export default function DesignateObserversPage({ currentUser, season }) {
     );
   }
 
-  const observerOptions = observers.map((o) => ({ value: String(o.id), label: o.displayName }));
-
   return (
     <div className="page-stack">
       <section className="dashboard-hero admin-hero">
@@ -151,9 +150,14 @@ export default function DesignateObserversPage({ currentUser, season }) {
             poi scegli l'osservatore riga per riga (con il suggeritore per la diversificazione).
           </p>
         </div>
-        <button type="button" className="back-link" onClick={() => navigate('/games')}>
-          <span aria-hidden="true">←</span> Torna alle gare
-        </button>
+        <div className="hero-actions">
+          <button type="button" className="ghost-button" onClick={() => navigate('/observers')}>
+            Gestisci indisponibilità
+          </button>
+          <button type="button" className="back-link" onClick={() => navigate('/games')}>
+            <span aria-hidden="true">←</span> Torna alle gare
+          </button>
+        </div>
       </section>
 
       {error ? <div className="error-banner">{error}</div> : null}
@@ -229,6 +233,9 @@ export default function DesignateObserversPage({ currentUser, season }) {
                   const observer = game.officials.observer || null;
                   const sug = suggestions[game.id];
                   const isOpen = openSuggest === game.id;
+                  const observerRecord = observers.find((item) => item.id === observer?.userId);
+                  const assignedUnavailability = availabilityOnDate(observerRecord, game.scheduledAt);
+                  const observerOptions = observers.map((item) => observerOptionForDate(item, game.scheduledAt));
                   return (
                     <Fragment key={game.id}>
                       <tr>
@@ -241,6 +248,11 @@ export default function DesignateObserversPage({ currentUser, season }) {
                         <td>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <GameStateBadge state={game.derivedState} />
+                            {assignedUnavailability ? (
+                              <span className="status-badge status-badge-sm status-alert" title={formatAvailabilityPeriod(assignedUnavailability)}>
+                                INDISPONIBILE
+                              </span>
+                            ) : null}
                             <div style={{ minWidth: '170px' }}>
                               <Select
                                 value={observer?.userId ? String(observer.userId) : ''}
@@ -266,20 +278,24 @@ export default function DesignateObserversPage({ currentUser, season }) {
                             ) : sug?.items?.length ? (
                               <div className="suggest-list">
                                 {sug.items.map((s) => (
-                                  <div key={s.userId} className={`suggest-card${s.sameDayCount ? ' is-sameday' : ''}`}>
-                                    <span className="suggest-name">{s.displayName}</span>
-                                    {s.sameDayCount ? (
+                                  <div key={s.userId} className={`suggest-card${s.unavailable ? ' is-unavailable' : s.sameDayCount ? ' is-sameday' : ''}`}>
+                                    <button type="button" className="suggest-name link-button" onClick={() => navigate(`/observers/${s.userId}`)}>
+                                      {s.displayName}
+                                    </button>
+                                    {s.unavailable ? (
+                                      <span className="suggest-unavailable-badge">INDISPONIBILE</span>
+                                    ) : s.sameDayCount ? (
                                       <span className="suggest-sameday-badge">⚠ Già designato quel giorno</span>
                                     ) : null}
-                                    <span className="suggest-score">{s.score} pt</span>
+                                    <span className="suggest-score">{s.unavailable ? '—' : `${s.score} pt`}</span>
                                     <span className="suggest-metrics">
                                       <span>1° arb: <b>{s.seenRef1}</b></span>
                                       <span>2° arb: <b>{s.seenRef2}</b></span>
                                       <span>carico: <b>{s.totalSeason}</b></span>
                                     </span>
                                     <span className="suggest-reason">{s.reasons.join(' ')}</span>
-                                    <button type="button" className="primary-button" onClick={() => assignObserver(game.id, s.userId)} disabled={busyGame === game.id}>
-                                      Assegna
+                                    <button type="button" className="primary-button" onClick={() => assignObserver(game.id, s.userId)} disabled={busyGame === game.id || s.unavailable}>
+                                      {s.unavailable ? 'Non assegnabile' : 'Assegna'}
                                     </button>
                                   </div>
                                 ))}

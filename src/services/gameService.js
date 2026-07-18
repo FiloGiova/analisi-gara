@@ -1,5 +1,10 @@
 import { dbGet, dbAll, dbRun, dbTx } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
+import {
+  availabilityForObserverOnDate,
+  availabilityPeriodLabel,
+  availabilityRangesByObserver
+} from './observerAvailabilityService.js';
 
 export const OFFICIAL_ROLES = ['referee1', 'referee2', 'referee3', 'observer'];
 export const GAME_SOURCES = ['fip_public', 'xlsx', 'federation_pdf', 'manual'];
@@ -411,7 +416,7 @@ export async function setOfficial(gameId, { role, refereeId = null, userId = nul
   if (!OFFICIAL_ROLES.includes(role)) throw new HttpError(400, 'Ruolo ufficiale di gara non valido.');
   if (!GAME_SOURCES.includes(source)) throw new HttpError(400, 'Origine dato non valida.');
 
-  const game = await dbGet('SELECT id FROM games WHERE id = ?', [gameId]);
+  const game = await dbGet('SELECT id, scheduled_at FROM games WHERE id = ?', [gameId]);
   if (!game) throw new HttpError(404, 'Gara non trovata.');
 
   const cleanRefereeId = asNullableInteger(refereeId);
@@ -420,9 +425,19 @@ export async function setOfficial(gameId, { role, refereeId = null, userId = nul
   if (role === 'observer') {
     if (cleanRefereeId) throw new HttpError(400, "L'osservatore va scelto tra gli utenti, non dall'anagrafica arbitri.");
     if (cleanUserId) {
-      const observer = await dbGet('SELECT id, role FROM users WHERE id = ?', [cleanUserId]);
+      const observer = await dbGet('SELECT id, role, active FROM users WHERE id = ?', [cleanUserId]);
       if (!observer) throw new HttpError(404, 'Utente osservatore non trovato.');
-      if (observer.role === 'referee') throw new HttpError(400, 'Un utente arbitro non può essere assegnato come osservatore.');
+      if (!observer.active || !['observer', 'instructor'].includes(observer.role)) {
+        throw new HttpError(400, 'Scegli un utente osservatore o formatore attivo.');
+      }
+      const unavailability = await availabilityForObserverOnDate(cleanUserId, game.scheduled_at);
+      if (unavailability) {
+        const period = availabilityPeriodLabel(unavailability);
+        throw new HttpError(409, `Osservatore indisponibile per la data della gara (${period}).`, {
+          code: 'OBSERVER_UNAVAILABLE',
+          unavailability
+        });
+      }
     }
   } else if (cleanRefereeId) {
     const referee = await dbGet('SELECT id FROM referees WHERE id = ?', [cleanRefereeId]);
@@ -513,7 +528,13 @@ export async function listAssignableObservers() {
       WHERE active = 1 AND role IN ('observer', 'instructor')
       ORDER BY display_name`
   );
-  return rows.map((row) => ({ id: row.id, displayName: row.display_name, role: row.role }));
+  const ranges = await availabilityRangesByObserver(rows.map((row) => row.id));
+  return rows.map((row) => ({
+    id: row.id,
+    displayName: row.display_name,
+    role: row.role,
+    unavailabilities: ranges.get(row.id) || []
+  }));
 }
 
 // Coda "da compilare": gare in cui l'utente è l'osservatore designato e non

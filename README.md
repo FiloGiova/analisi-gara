@@ -11,6 +11,8 @@ Produzione: [https://fischiolab.onrender.com](https://fischiolab.onrender.com)
 - import e sincronizzazione delle sorgenti pubbliche FIP;
 - gestione gare, arbitri e osservatori, con export XLSX della vista filtrata;
 - designazione osservatori singola o in blocco;
+- indisponibilità degli osservatori su singoli giorni o periodi, con storico
+  personale e blocco automatico nelle designazioni;
 - rapporti in bozza/definitivi e PDF separato per ciascun arbitro;
 - import deterministico dei rapporti PDF federali, con abbinamento da numero
   gara e campo `ARBITRO` interno al documento;

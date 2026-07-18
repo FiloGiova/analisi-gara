@@ -7,6 +7,7 @@ import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
+import { availabilityOnDate, formatAvailabilityPeriod, observerOptionForDate } from '../lib/observerAvailability.js';
 
 const REFEREE_ROLES = [
   { role: 'referee1', label: '1° arbitro' },
@@ -282,6 +283,9 @@ export default function GameDetailPage({ id, currentUser }) {
   }
 
   const observer = game.officials.observer || null;
+  const observerRecord = observers.find((item) => item.id === observer?.userId);
+  const assignedUnavailability = availabilityOnDate(observerRecord, game.scheduledAt);
+  const observerOptions = observers.map((item) => observerOptionForDate(item, game.scheduledAt));
 
   return (
     <div className="page-stack">
@@ -530,6 +534,11 @@ export default function GameDetailPage({ id, currentUser }) {
             <>
               <span style={{ fontWeight: 600 }}>{observer.userName || observer.externalName}</span>
               <SourceBadge official={observer} />
+              {assignedUnavailability ? (
+                <span className="status-badge status-badge-sm status-alert" title={formatAvailabilityPeriod(assignedUnavailability)}>
+                  INDISPONIBILE
+                </span>
+              ) : null}
               {!observer.userId && observer.externalName ? (
                 <span className="status-badge status-badge-sm status-cancelled">
                   Da associare a un utente
@@ -553,7 +562,7 @@ export default function GameDetailPage({ id, currentUser }) {
                   assignOfficial('observer', { userId: Number(v) });
                 }}
                 placeholder="Assegna osservatore…"
-                options={observers.map((o) => ({ value: String(o.id), label: o.displayName }))}
+                options={observerOptions}
                 searchable
               />
               {observer ? (
@@ -619,10 +628,19 @@ export default function GameDetailPage({ id, currentUser }) {
                   </thead>
                   <tbody>
                     {suggestions.map((s) => (
-                      <tr key={s.userId} style={s.sameDayCount ? { background: 'rgba(220, 53, 69, 0.06)' } : undefined}>
+                      <tr key={s.userId} className={s.unavailable ? 'suggestion-row-unavailable' : s.sameDayCount ? 'suggestion-row-sameday' : ''}>
                         <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          {s.displayName}
-                          {s.sameDayCount ? (
+                          <button type="button" className="link-button" onClick={() => navigate(`/observers/${s.userId}`)}>
+                            {s.displayName}
+                          </button>
+                          {s.unavailable ? (
+                            <span
+                              className="status-badge status-badge-sm status-alert"
+                              style={{ marginLeft: '8px' }}
+                            >
+                              INDISPONIBILE
+                            </span>
+                          ) : s.sameDayCount ? (
                             <span
                               className="status-badge status-badge-sm status-alert"
                               style={{ marginLeft: '8px' }}
@@ -631,12 +649,12 @@ export default function GameDetailPage({ id, currentUser }) {
                             </span>
                           ) : null}
                         </td>
-                        <td style={{ fontWeight: 800, color: 'var(--blue)' }}>{s.score}</td>
+                        <td style={{ fontWeight: 800, color: s.unavailable ? 'var(--danger)' : 'var(--blue)' }}>{s.unavailable ? '—' : s.score}</td>
                         <td>{s.seenRef1}</td>
                         <td>{s.seenRef2}</td>
                         <td>{s.totalSeason}</td>
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{s.lastCrossDate ? formatDateTime(s.lastCrossDate) : 'mai'}</td>
-                        <td style={{ fontSize: '0.82rem', color: s.sameDayCount ? 'var(--danger)' : 'var(--muted)' }}>{s.reasons.join(' ')}</td>
+                        <td style={{ fontSize: '0.82rem', color: s.unavailable || s.sameDayCount ? 'var(--danger)' : 'var(--muted)' }}>{s.reasons.join(' ')}</td>
                         <td>
                           <button
                             type="button"
@@ -645,9 +663,9 @@ export default function GameDetailPage({ id, currentUser }) {
                               await assignOfficial('observer', { userId: s.userId });
                               setSuggestions(null);
                             }}
-                            disabled={busy}
+                            disabled={busy || s.unavailable}
                           >
-                            Assegna
+                            {s.unavailable ? 'Non assegnabile' : 'Assegna'}
                           </button>
                         </td>
                       </tr>

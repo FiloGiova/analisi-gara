@@ -7,6 +7,26 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-07-18 — Indisponibilità osservatori e standard frontend
+
+- Nuova tabella `observer_unavailabilities`: giorni e periodi di calendario,
+  intenzionalmente indipendenti dalla stagione, con nota facoltativa, autore e
+  data di inserimento.
+- Ogni osservatore o formatore può gestire le proprie indisponibilità dal
+  profilo; admin e formatori possono aprire la nuova anagrafica Osservatori e
+  gestire qualsiasi profilo, incluso lo storico trascorso.
+- Nei selettori del dettaglio gara e della designazione massiva le persone
+  indisponibili restano visibili in rosso con etichetta `INDISPONIBILE`, ma non
+  sono selezionabili. Nel suggeritore finiscono in fondo, senza punteggio né
+  azione di assegnazione.
+- Il blocco è applicato anche lato server da `setOfficial()`: una chiamata
+  diretta non può aggirare l'indisponibilità. Le designazioni già esistenti
+  vengono evidenziate se un periodo viene aggiunto in seguito.
+- Aggiunti `PRODUCT.md` e `DESIGN.md` per fissare tono, principi, token,
+  componenti, responsive e accessibilità del frontend armonizzato.
+- Test: nuova suite `observerAvailability.test.js`; suite completa a 110 test
+  e build Vite verificate senza errori.
+
 ## 2026-07-17 — Rimosso il driver Brevo: si invierà via SMTP con istanza Render a pagamento
 
 Il driver Brevo introdotto il 16/07 è stato rimosso dopo il collaudo reale:

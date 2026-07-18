@@ -43,6 +43,24 @@ CREATE TABLE IF NOT EXISTS instructor_competition_assignments (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Periodi di indisponibilità degli osservatori. Sono intenzionalmente
+-- indipendenti dalla stagione sportiva: rappresentano giorni di calendario.
+CREATE TABLE IF NOT EXISTS observer_unavailabilities (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_by INTEGER,
+  created_at TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+  updated_at TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+  CHECK (start_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+  CHECK (end_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+  CHECK (end_date >= start_date),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id SERIAL PRIMARY KEY,
   token_hash TEXT NOT NULL UNIQUE,
@@ -329,6 +347,7 @@ CREATE INDEX IF NOT EXISTS idx_report_email_log_report_id ON report_email_log(re
 CREATE INDEX IF NOT EXISTS idx_report_email_log_created_at ON report_email_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_users_referee_id ON users(referee_id);
 CREATE INDEX IF NOT EXISTS idx_instructor_assignments_user_season ON instructor_competition_assignments(user_id, sport_season);
+CREATE INDEX IF NOT EXISTS idx_observer_unavailabilities_user_dates ON observer_unavailabilities(user_id, start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_reports_game_id ON reports(game_id);
 CREATE INDEX IF NOT EXISTS idx_reports_observer_id ON reports(observer_id);
 CREATE INDEX IF NOT EXISTS idx_games_sport_season ON games(sport_season);

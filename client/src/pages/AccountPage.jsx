@@ -3,6 +3,7 @@ import { api, ApiError } from '../lib/api.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import { instructorAssignmentsForUser } from '../../../shared/instructorAssignments.js';
+import ObserverAvailabilityPanel from '../components/ObserverAvailabilityPanel.jsx';
 
 function roleLabel(role) {
   if (role === 'admin') return 'Admin';
@@ -130,6 +131,13 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
           ) : null}
         </dl>
       </section>
+
+      {currentUser.role === 'observer' || currentUser.role === 'instructor' ? (
+        <ObserverAvailabilityPanel
+          observerId={currentUser.id}
+          showDirectoryLink={currentUser.role === 'instructor'}
+        />
+      ) : null}
 
       <section className="common-card">
         <div className="section-heading">

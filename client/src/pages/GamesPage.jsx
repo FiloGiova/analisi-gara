@@ -215,6 +215,9 @@ export default function GamesPage({ currentUser, season }) {
         </div>
         {canManage ? (
           <div className="hero-actions">
+            <button type="button" className="ghost-button" onClick={() => navigate('/observers')}>
+              Indisponibilità
+            </button>
             <button type="button" className="ghost-button" onClick={() => navigate('/games/designate')}>
               Designa osservatori
             </button>

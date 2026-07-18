@@ -46,6 +46,7 @@ const DATA_TABLES = [
   'game_changes',
   'sync_runs',
   'scheduled_jobs',
+  'observer_unavailabilities',
   'person_aliases',
   'game_officials',
   'reports',

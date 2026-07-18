@@ -91,6 +91,14 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ password })
   }),
+  listObservers: () => request('/api/observers'),
+  getObserver: (id) => request(`/api/observers/${id}`),
+  createObserverUnavailability: (observerId, data) => request(`/api/observers/${observerId}/unavailabilities`, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  deleteObserverUnavailability: (observerId, availabilityId) =>
+    request(`/api/observers/${observerId}/unavailabilities/${availabilityId}`, { method: 'DELETE' }),
   getReportStats: ({ season = '' } = {}) => {
     const params = new URLSearchParams();
     if (season) params.set('season', season);

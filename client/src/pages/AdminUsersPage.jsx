@@ -5,6 +5,7 @@ import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import Modal from '../components/Modal.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
+import { navigate } from '../lib/navigation.js';
 
 const emptyNewUser = {
   username: '',
@@ -639,6 +640,9 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                         </button>
                         {openActionsId === user.id ? (
                           <div className="row-menu-dropdown">
+                            {['observer', 'instructor'].includes(user.role) ? (
+                              <button type="button" onClick={() => navigate(`/observers/${user.id}`)}>Indisponibilità</button>
+                            ) : null}
                             <button type="button" onClick={() => openEditModal(user)}>Modifica</button>
                             <button type="button" onClick={() => openResetModal(user)}>Reset password</button>
                             <button

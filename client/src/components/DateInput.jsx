@@ -75,7 +75,7 @@ function validationMessageFor(display) {
   return '';
 }
 
-export default function DateInput({ value, onChange, disabled, id }) {
+export default function DateInput({ value, onChange, disabled, id, ...inputProps }) {
   const [display, setDisplay] = useState(() => isoToIt(value));
   const inputRef = useRef(null);
 
@@ -128,6 +128,7 @@ export default function DateInput({ value, onChange, disabled, id }) {
       disabled={disabled}
       inputMode="numeric"
       autoComplete="off"
+      {...inputProps}
     />
   );
 }

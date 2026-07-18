@@ -20,6 +20,8 @@ import AdminSourcesPage from './pages/AdminSourcesPage.jsx';
 import AdminImportsPage from './pages/AdminImportsPage.jsx';
 import AdminCompetitionsPage from './pages/AdminCompetitionsPage.jsx';
 import CoveragePage from './pages/CoveragePage.jsx';
+import ObserversPage from './pages/ObserversPage.jsx';
+import ObserverDetailPage from './pages/ObserverDetailPage.jsx';
 import { CompetitionsProvider } from './lib/competitions.jsx';
 
 const CURRENT_SEASON = currentSportSeason();
@@ -107,6 +109,8 @@ export default function App() {
   if (route.name === 'refereeHome') page = <RefereeHomePage currentUser={user} season={season} />;
   if (!isReferee && route.name === 'games') page = <GamesPage currentUser={user} season={season} />;
   if (!isReferee && route.name === 'designateObservers') page = <DesignateObserversPage currentUser={user} season={season} />;
+  if (!isReferee && route.name === 'observers') page = <ObserversPage currentUser={user} />;
+  if (!isReferee && route.name === 'observerDetail') page = <ObserverDetailPage id={route.id} currentUser={user} />;
   if (!isReferee && route.name === 'gameDetail') page = <GameDetailPage id={route.id} currentUser={user} />;
   if (route.name === 'adminSources') page = <AdminSourcesPage currentUser={user} season={season} />;
   if (route.name === 'adminImports') page = <AdminImportsPage currentUser={user} season={season} />;
@@ -145,7 +149,7 @@ export default function App() {
 
   let activeSection = '';
   if (route.name === 'home') activeSection = isReferee || !canSeeManagement ? 'reports' : 'games';
-  if (['games', 'gameDetail', 'designateObservers'].includes(route.name)) activeSection = 'games';
+  if (['games', 'gameDetail', 'designateObservers', 'observers', 'observerDetail'].includes(route.name)) activeSection = 'games';
   if (['dashboard', 'newReport', 'editReport', 'reportDetail', 'refereeHome'].includes(route.name)) activeSection = 'reports';
   if (route.name === 'coverage') activeSection = 'coverage';
   if (route.name === 'account') activeSection = 'account';

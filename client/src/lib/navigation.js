@@ -15,6 +15,8 @@ export function parseRoute(path) {
   if (!segments.length) return { name: 'home' };
   if (segments[0] === 'account') return { name: 'account' };
   if (segments[0] === 'me') return { name: 'refereeHome' };
+  if (segments[0] === 'observers' && segments[1]) return { name: 'observerDetail', id: Number(segments[1]) };
+  if (segments[0] === 'observers') return { name: 'observers' };
   if (segments[0] === 'admin' && segments[1] === 'users') return { name: 'adminUsers' };
   if (segments[0] === 'admin' && segments[1] === 'logs') return { name: 'adminLogs' };
   if (segments[0] === 'admin' && segments[1] === 'competitions') return { name: 'adminCompetitions' };

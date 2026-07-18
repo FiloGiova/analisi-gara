@@ -20,8 +20,18 @@ export default function Select({
   const selected = options.find((o) => o.value === value);
 
   const filteredOptions = searchable && search.trim()
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
+    ? options.filter((o) => `${o.label} ${o.statusLabel || ''}`.toLowerCase().includes(search.toLowerCase()))
     : options;
+
+  function firstEnabledIndex(from = 0, direction = 1) {
+    if (!filteredOptions.length) return -1;
+    let index = Math.max(0, Math.min(from, filteredOptions.length - 1));
+    while (index >= 0 && index < filteredOptions.length) {
+      if (!filteredOptions[index]?.disabled) return index;
+      index += direction;
+    }
+    return -1;
+  }
 
   useEffect(() => {
     if (!open) {
@@ -49,12 +59,12 @@ export default function Select({
   useEffect(() => {
     if (!open) return;
     const idx = filteredOptions.findIndex((o) => o.value === value);
-    setHighlight(idx >= 0 ? idx : (filteredOptions.length > 0 ? 0 : -1));
+    setHighlight(idx >= 0 && !filteredOptions[idx]?.disabled ? idx : firstEnabledIndex());
   }, [open]);
 
   useEffect(() => {
     if (open && search) {
-      setHighlight(filteredOptions.length > 0 ? 0 : -1);
+      setHighlight(firstEnabledIndex());
     }
   }, [search]);
 
@@ -66,7 +76,7 @@ export default function Select({
 
   function pick(idx) {
     const opt = filteredOptions[idx];
-    if (!opt) return;
+    if (!opt || opt.disabled) return;
     onChange(opt.value);
     setOpen(false);
     setSearch('');
@@ -78,10 +88,16 @@ export default function Select({
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!open) { setOpen(true); return; }
-      setHighlight((h) => Math.min(filteredOptions.length - 1, h + 1));
+      setHighlight((current) => {
+        const next = firstEnabledIndex(current + 1, 1);
+        return next >= 0 ? next : current;
+      });
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlight((h) => Math.max(0, h - 1));
+      setHighlight((current) => {
+        const next = firstEnabledIndex(current - 1, -1);
+        return next >= 0 ? next : current;
+      });
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (open && highlight >= 0) pick(highlight);
@@ -116,15 +132,22 @@ export default function Select({
             data-idx={idx}
             role="option"
             aria-selected={opt.value === value}
+            aria-disabled={opt.disabled || undefined}
             className={[
               'custom-select-option',
               opt.value === value ? 'is-selected' : '',
-              idx === highlight ? 'is-highlight' : ''
+              idx === highlight ? 'is-highlight' : '',
+              opt.disabled ? 'is-disabled' : '',
+              opt.tone ? `is-${opt.tone}` : ''
             ].join(' ').trim()}
-            onMouseEnter={() => setHighlight(idx)}
+            onMouseEnter={() => { if (!opt.disabled) setHighlight(idx); }}
             onMouseDown={(e) => { e.preventDefault(); pick(idx); }}
           >
-            {opt.label}
+            <span className="custom-select-option-copy">
+              <span>{opt.label}</span>
+              {opt.description ? <small>{opt.description}</small> : null}
+            </span>
+            {opt.statusLabel ? <strong className="custom-select-option-status">{opt.statusLabel}</strong> : null}
           </li>
         ))
       )}

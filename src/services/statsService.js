@@ -1,5 +1,6 @@
 import { dbGet, dbAll } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
+import { availabilityByObserverOnDate, availabilityPeriodLabel } from './observerAvailabilityService.js';
 
 // Visionamenti derivati da rapporti e designazioni: mai registrati a mano.
 // - completato: rapporto DEFINITIVO (una riga per ciascuno dei due arbitri);
@@ -473,11 +474,16 @@ export async function getObserverSuggestions({ gameId }) {
   ];
 
   const candidates = await dbAll(
-    `SELECT id, display_name, role FROM users WHERE active = 1 AND role != 'referee' ORDER BY display_name`
+    `SELECT id, display_name, role
+       FROM users
+      WHERE active = 1 AND role IN ('observer', 'instructor')
+      ORDER BY display_name`
   );
+  const unavailableByObserver = await availabilityByObserverOnDate(candidates.map((candidate) => candidate.id), gameDate);
 
   const W = SUGGESTION_WEIGHTS;
   const suggestions = candidates.map((candidate) => {
+    const unavailability = unavailableByObserver.get(candidate.id) || null;
     const mine = rows.filter((row) => row.observerId === candidate.id);
     const seenRef1 = ref1 ? mine.filter((row) => row.refereeId === ref1).length : 0;
     const seenRef2 = ref2 ? mine.filter((row) => row.refereeId === ref2).length : 0;
@@ -515,6 +521,11 @@ export async function getObserverSuggestions({ gameId }) {
     if (totalSeason > 0) reasons.push(`Carico stagionale: ${totalSeason} ${totalSeason === 1 ? 'visionamento' : 'visionamenti'}.`);
     else reasons.push('Nessun visionamento completato in stagione.');
     if (sameDayCount > 0) reasons.push(`Attenzione: già impegnato lo stesso giorno (${sameDayCount} gare).`);
+    if (unavailability) {
+      score = -10000;
+      const period = availabilityPeriodLabel(unavailability);
+      reasons.unshift(`Indisponibile per la data della gara (${period}).`);
+    }
 
     return {
       userId: candidate.id,
@@ -527,9 +538,15 @@ export async function getObserverSuggestions({ gameId }) {
       distinctReferees,
       lastCrossDate: lastCrossDate || null,
       sameDayCount,
+      unavailable: Boolean(unavailability),
+      unavailability,
       reasons
     };
   });
 
-  return suggestions.sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName));
+  return suggestions.sort((a, b) => (
+    Number(a.unavailable) - Number(b.unavailable) ||
+    b.score - a.score ||
+    a.displayName.localeCompare(b.displayName)
+  ));
 }

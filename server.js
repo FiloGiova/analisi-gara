@@ -18,6 +18,7 @@ import { photosRouter, refereePhotosRouter } from './src/routes/photos.routes.js
 import { meRouter } from './src/routes/me.routes.js';
 import { aiRouter } from './src/routes/ai.routes.js';
 import { gamesRouter } from './src/routes/games.routes.js';
+import { observersRouter } from './src/routes/observers.routes.js';
 import { sourcesRouter } from './src/routes/sources.routes.js';
 import { importsRouter } from './src/routes/imports.routes.js';
 import { statsRouter } from './src/routes/stats.routes.js';
@@ -57,6 +58,7 @@ app.use('/api/photos', photosRouter);
 app.use('/api/referees', requireAuth, refereePhotosRouter);
 app.use('/api/referees', requireAuth, refereesRouter);
 app.use('/api/games', requireAuth, gamesRouter);
+app.use('/api/observers', requireAuth, observersRouter);
 app.use('/api/sources', requireAuth, requireAdmin, sourcesRouter);
 app.use('/api/imports', requireAuth, requireAdmin, importsRouter);
 app.use('/api/stats', requireAuth, requireAdminOrInstructor, statsRouter);

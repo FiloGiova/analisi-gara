@@ -46,6 +46,10 @@ In production the database is Supabase PostgreSQL and persistent files use Supab
 
 **Client routing**: no react-router. Custom hash-based routing in [client/src/lib/navigation.js](client/src/lib/navigation.js) (`parseRoute`/`navigate`), dispatched in a plain conditional chain in [client/src/App.jsx](client/src/App.jsx). New pages need a route in both files. All API calls go through the fetch wrapper in [client/src/lib/api.js](client/src/lib/api.js).
 
+**Observer unavailabilities**: date e periodi vivono in `observer_unavailabilities` e non sono associati a una stagione. Accesso e validazione sono centralizzati in [src/services/observerAvailabilityService.js](src/services/observerAvailabilityService.js): admin e formatori gestiscono qualsiasi osservatore, mentre osservatori e formatori gestiscono anche il proprio profilo. Ogni assegnazione manuale passa comunque dal controllo server in `setOfficial()`; il client usa gli stessi intervalli per disabilitare e marcare `INDISPONIBILE` nei selettori e nei suggerimenti.
+
+**Product and design standards**: [PRODUCT.md](PRODUCT.md) definisce utenti, tono e principi di prodotto; [DESIGN.md](DESIGN.md) documenta token, componenti, responsive e accessibilità. Le modifiche frontend devono leggerli e riusare i token/componenti di `client/src/styles.css`.
+
 **AI feature (optional)**: gated by `ENABLE_AI_FEATURES=true` + `ANTHROPIC_API_KEY` in `.env`. When off, `/api/ai/*` routes are not mounted and the client hides the helper (the flag reaches the client via `/api/me` → `features.aiEnabled`). [src/services/anthropicService.js](src/services/anthropicService.js) calls the Anthropic Messages API directly with `fetch` (no SDK); prompts are built in [src/services/judgmentPromptBuilder.js](src/services/judgmentPromptBuilder.js). Model and API version are set in `src/config.js`.
 
 ## Deployment notes
