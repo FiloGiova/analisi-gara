@@ -3409,12 +3409,14 @@ dd {
   transition: background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.referee-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.95);
-}
-
+/* Le righe che aprono una scheda dedicata danno lo stesso feedback
+   dell'elenco rapporti: tinta di sfondo al passaggio del mouse. */
 .referee-table tbody tr.is-clickable {
   cursor: pointer;
+}
+
+.referee-table tbody tr.is-clickable:hover {
+  background: var(--paper);
 }
 
 .referee-table tbody tr.is-disabled {
