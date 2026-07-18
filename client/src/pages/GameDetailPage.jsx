@@ -5,7 +5,7 @@ import ConfirmModal from '../components/ConfirmModal.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
 
 const REFEREE_ROLES = [
@@ -28,22 +28,10 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: 'Annullata' }
 ];
 
-function formatDateTime(iso) {
-  if (!iso) return '—';
-  try {
-    const date = new Date(iso);
-    const day = date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const time = iso.length > 10 ? date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
-    return time && time !== '00:00' ? `${day} · ${time}` : day;
-  } catch {
-    return iso;
-  }
-}
-
 function SourceBadge({ official }) {
   if (!official) return null;
   return (
-    <span className="status-badge" style={{ background: 'var(--blue-soft)', color: 'var(--blue)', padding: '3px 8px', fontSize: '0.7rem' }}>
+    <span className="status-badge status-badge-sm status-info">
       {SOURCE_LABELS[official.source] || official.source}
       {official.manualLock ? ' · bloccato' : ''}
     </span>
@@ -62,6 +50,7 @@ export default function GameDetailPage({ id, currentUser }) {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [pendingForce, setPendingForce] = useState(null);
+  const [roleToClear, setRoleToClear] = useState(null);
   const [suggestions, setSuggestions] = useState(null);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [openRefEditors, setOpenRefEditors] = useState({}); // role -> mostra i controlli di riassegnazione
@@ -195,7 +184,14 @@ export default function GameDetailPage({ id, currentUser }) {
     }
   }
 
-  async function clearOfficial(role) {
+  function clearOfficial(role) {
+    setRoleToClear(role);
+  }
+
+  async function confirmClearOfficial() {
+    const role = roleToClear;
+    if (!role) return;
+    setRoleToClear(null);
     setBusy(true);
     setError('');
     setSuccess('');
@@ -314,23 +310,23 @@ export default function GameDetailPage({ id, currentUser }) {
           </p>
           <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
             <GameStateBadge state={game.derivedState} />
-            <span className="status-badge" style={{ background: 'var(--paper-2)', color: 'var(--muted)', padding: '3px 8px', fontSize: '0.72rem' }}>
+            <span className="status-badge status-badge-sm status-neutral">
               Origine: {SOURCE_LABELS[game.externalSource] || game.externalSource}
             </span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="hero-actions">
           {canManage ? (
-            <button type="button" className="accent-button" onClick={() => setShowPdfImporter(true)}>
+            <button type="button" className="ghost-button" onClick={() => setShowPdfImporter(true)}>
               Importa rapporti PDF
             </button>
           ) : null}
           {game.reportId ? (
-            <button type="button" className="hero-button" onClick={() => navigate(`/reports/${game.reportId}`)}>
+            <button type="button" className="primary-button" onClick={() => navigate(`/reports/${game.reportId}`)}>
               Apri rapporto
             </button>
           ) : (
-            <button type="button" className="hero-button" onClick={() => navigate(`/reports/new?game=${game.id}`)}>
+            <button type="button" className="primary-button" onClick={() => navigate(`/reports/new?game=${game.id}`)}>
               Compila rapporto
             </button>
           )}
@@ -446,7 +442,7 @@ export default function GameDetailPage({ id, currentUser }) {
                     ) : null}
                     <SourceBadge official={official} />
                     {unresolved ? (
-                      <span className="status-badge" style={{ background: 'var(--paper-2)', color: 'var(--danger)', padding: '3px 8px', fontSize: '0.72rem' }}>
+                      <span className="status-badge status-badge-sm status-cancelled">
                         Da associare all'anagrafica
                       </span>
                     ) : null}
@@ -535,13 +531,13 @@ export default function GameDetailPage({ id, currentUser }) {
               <span style={{ fontWeight: 600 }}>{observer.userName || observer.externalName}</span>
               <SourceBadge official={observer} />
               {!observer.userId && observer.externalName ? (
-                <span className="status-badge" style={{ background: 'var(--paper-2)', color: 'var(--danger)', padding: '3px 8px', fontSize: '0.72rem' }}>
+                <span className="status-badge status-badge-sm status-cancelled">
                   Da associare a un utente
                 </span>
               ) : null}
             </>
           ) : (
-            <span className="status-badge" style={{ background: 'var(--orange-soft)', color: 'var(--orange)', padding: '3px 8px' }}>
+            <span className="status-badge status-badge-sm status-warning">
               Gara scoperta
             </span>
           )}
@@ -607,7 +603,7 @@ export default function GameDetailPage({ id, currentUser }) {
             {suggestions.length === 0 ? (
               <div className="empty-state" style={{ padding: '14px' }}>Nessun candidato disponibile.</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll">
                 <table className="referee-table">
                   <thead>
                     <tr>
@@ -628,8 +624,8 @@ export default function GameDetailPage({ id, currentUser }) {
                           {s.displayName}
                           {s.sameDayCount ? (
                             <span
-                              className="status-badge"
-                              style={{ marginLeft: '8px', background: '#fdecea', color: 'var(--danger)', padding: '2px 8px', fontSize: '0.68rem', whiteSpace: 'nowrap' }}
+                              className="status-badge status-badge-sm status-alert"
+                              style={{ marginLeft: '8px' }}
                             >
                               ⚠ Già designato quel giorno
                             </span>
@@ -672,7 +668,7 @@ export default function GameDetailPage({ id, currentUser }) {
           </div>
         </div>
         {game.changes?.length ? (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table">
               <thead>
                 <tr>
@@ -704,6 +700,17 @@ export default function GameDetailPage({ id, currentUser }) {
           <div className="empty-state" style={{ padding: '16px' }}>Nessuna modifica registrata.</div>
         )}
       </section>
+
+      {roleToClear ? (
+        <ConfirmModal
+          title="Rimuovi designazione"
+          confirmLabel="Sì, rimuovi"
+          onConfirm={confirmClearOfficial}
+          onCancel={() => setRoleToClear(null)}
+        >
+          Rimuovere {roleToClear === 'observer' ? "l'osservatore" : "l'arbitro"} da questa gara?
+        </ConfirmModal>
+      ) : null}
 
       {pendingForce ? (
         <ConfirmModal

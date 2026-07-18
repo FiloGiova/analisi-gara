@@ -4,12 +4,7 @@ import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
-import { formatMatchNumber } from '../lib/formatters.js';
-
-function formatDate(value) {
-  if (!value) return '-';
-  try { return new Date(value).toLocaleDateString('it-IT'); } catch { return value; }
-}
+import { formatMatchNumber, formatDate } from '../lib/formatters.js';
 
 export default function RefereeHomePage({ currentUser, season }) {
   const [reports, setReports] = useState([]);
@@ -48,11 +43,11 @@ export default function RefereeHomePage({ currentUser, season }) {
             <p>I tuoi rapporti della stagione {season}. Apri un rapporto per leggerne i dettagli.</p>
             {stats ? (
               <div style={{ display: 'flex', gap: '10px', marginTop: '14px', flexWrap: 'wrap' }}>
-                <span className="status-badge" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff' }}>
+                <span className="status-badge status-on-dark">
                   Rapporti: {stats.total ?? 0}
                 </span>
                 {stats.final !== undefined ? (
-                  <span className="status-badge" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff' }}>
+                  <span className="status-badge status-on-dark">
                     Definitivi: {stats.final ?? 0}
                   </span>
                 ) : null}
@@ -67,7 +62,7 @@ export default function RefereeHomePage({ currentUser, season }) {
       <RefereeProgressDashboard refereeId={currentUser.refereeId} season={season} />
 
       <section className="reports-grid">
-        {loading ? <div className="empty-state">Caricamento rapporti...</div> : null}
+        {loading ? <div className="empty-state">Caricamento rapporti…</div> : null}
         {!loading && reports.length === 0 ? (
           <div className="empty-state">
             <h3>Nessun rapporto in questa stagione.</h3>

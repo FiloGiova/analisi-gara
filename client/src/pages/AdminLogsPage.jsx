@@ -1,18 +1,8 @@
 import { useEffect, useState } from 'react';
+import { formatDateTime } from '../lib/formatters.js';
 import { api, ApiError } from '../lib/api.js';
 
 const PAGE_SIZE = 50;
-
-function formatDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('it-IT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
 
 function parseUserAgent(ua) {
   if (!ua) return '—';
@@ -98,7 +88,7 @@ function AccessLogsTab() {
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}
-      {loading ? <div className="empty-state">Caricamento...</div> : null}
+      {loading ? <div className="empty-state">Caricamento…</div> : null}
       {!loading && logs.length === 0 ? <div className="empty-state">Nessun accesso registrato.</div> : null}
 
       {!loading && logs.length > 0 ? (
@@ -109,7 +99,7 @@ function AccessLogsTab() {
                 <div>
                   <span className="match-number">{log.username}</span>
                   <h3>{log.display_name || log.username}</h3>
-                  <p>{formatDate(log.created_at)}</p>
+                  <p>{formatDateTime(log.created_at)}</p>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center' }}>
                   <span className="status-badge status-final" style={{ alignSelf: 'flex-start' }}>Login</span>
@@ -148,7 +138,7 @@ function EmailLogsTab() {
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}
-      {loading ? <div className="empty-state">Caricamento...</div> : null}
+      {loading ? <div className="empty-state">Caricamento…</div> : null}
       {!loading && logs.length === 0 ? <div className="empty-state">Nessun invio registrato.</div> : null}
 
       {!loading && logs.length > 0 ? (
@@ -162,7 +152,7 @@ function EmailLogsTab() {
                   </span>
                   <h3>{log.recipient}</h3>
                   <p>
-                    {formatDate(log.created_at)} · {log.role === 'first' ? '1° arbitro' : '2° arbitro'}
+                    {formatDateTime(log.created_at)} · {log.role === 'first' ? '1° arbitro' : '2° arbitro'}
                     {log.sent_by_display_name ? ` · inviata da ${log.sent_by_display_name}` : ''}
                   </p>
                 </div>

@@ -111,7 +111,7 @@ export default function App() {
   if (route.name === 'adminSources') page = <AdminSourcesPage currentUser={user} season={season} />;
   if (route.name === 'adminImports') page = <AdminImportsPage currentUser={user} season={season} />;
   if (!isReferee && route.name === 'coverage') {
-    page = <CoveragePage currentUser={user} globalSeason={season} seasons={seasons} />;
+    page = <CoveragePage currentUser={user} season={season} />;
   }
   if (!isReferee && route.name === 'newReport') page = <ReportFormPage currentUser={user} features={features} gameId={route.gameId} season={season} />;
   if (!isReferee && route.name === 'editReport') page = <ReportFormPage id={route.id} currentUser={user} features={features} season={season} />;
@@ -148,6 +148,7 @@ export default function App() {
   if (['games', 'gameDetail', 'designateObservers'].includes(route.name)) activeSection = 'games';
   if (['dashboard', 'newReport', 'editReport', 'reportDetail', 'refereeHome'].includes(route.name)) activeSection = 'reports';
   if (route.name === 'coverage') activeSection = 'coverage';
+  if (route.name === 'account') activeSection = 'account';
   if (['adminReferees', 'adminRefereeDetail'].includes(route.name)) activeSection = 'referees';
   if (['adminUsers', 'adminLogs', 'adminSources', 'adminImports', 'adminCompetitions'].includes(route.name)) activeSection = 'admin';
 

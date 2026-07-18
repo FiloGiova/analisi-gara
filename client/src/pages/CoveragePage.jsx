@@ -1,25 +1,20 @@
 import { useEffect, useState } from 'react';
-import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import Select from '../components/Select.jsx';
+import FilterBar from '../components/FilterBar.jsx';
 import { api, ApiError, downloadStatsExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatDate } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
+import ListSkeleton from '../components/ListSkeleton.jsx';
 
-const CURRENT_SEASON = currentSportSeason();
 
 const BANDS = [
   { value: 'esordiente', label: 'Esordienti' },
   { value: 'playoff', label: 'Playoff' },
   { value: 'playout', label: 'Playout' }
 ];
-
-function formatDate(iso) {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('it-IT'); } catch { return iso; }
-}
 
 // Soglie incroci: 0 neutro, 1 verde, 2 giallo, 3+ rosso (il numero è sempre visibile).
 function cellStyle(completed) {
@@ -77,10 +72,9 @@ function SortableHeader({ label, sort, sortKey, onSort, initialDirection = 'asc'
   );
 }
 
-export default function CoveragePage({ currentUser, globalSeason, seasons }) {
+export default function CoveragePage({ currentUser, season }) {
   const { activeCompetitions, competitionLabel } = useCompetitions();
   const [view, setView] = useState('coverage');
-  const [season, setSeason] = useState(globalSeason);
   const [competition, setCompetition] = useState(''); // '' = tutti i campionati
   const [phaseIds, setPhaseIds] = useState([]); // sorgenti FIP/fasi selezionate (checkbox)
   const [phaseOptions, setPhaseOptions] = useState([]);
@@ -99,11 +93,11 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
   const canAccess = currentUser.role === 'admin' ||
     (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
 
+  // Cambio stagione (dal selettore globale nella topbar): filtri da azzerare.
   useEffect(() => {
-    setSeason(globalSeason);
     setCompetition('');
     setPhaseIds([]);
-  }, [globalSeason]);
+  }, [season]);
 
   useEffect(() => {
     if (!canAccess) return;
@@ -235,37 +229,18 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
             Esporta vista XLSX
           </button>
         </div>
-        <div className="games-filters-row" style={{ marginTop: '12px' }}>
-          <div style={{ flex: '0 1 220px' }}>
-            <Select
-              value={season}
-              onChange={(value) => { setSeason(value); setCompetition(''); setPhaseIds([]); }}
-              placeholder="Stagione statistiche"
-              options={seasons.map((item) => ({
-                value: item,
-                label: item === CURRENT_SEASON ? `${item} · corrente` : `${item} · archivio`
-              }))}
-            />
-            <small style={{ display: 'block', margin: '5px 2px 0', color: 'var(--muted)' }}>
-              Vale solo in questa pagina
-            </small>
-          </div>
-          <input
-            className="stats-search-input"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca arbitro: nome, cognome o tessera…"
-            style={{ flex: '0 1 340px', minHeight: '46px', boxSizing: 'border-box' }}
-          />
-          <div style={{ flex: '0 1 240px' }}>
+        <div style={{ marginTop: '12px' }}>
+          <FilterBar
+            search={{ value: search, onChange: setSearch, placeholder: 'Cerca arbitro: nome, cognome o tessera…' }}
+            activeCount={(competition ? 1 : 0) + (phaseIds.length ? 1 : 0) + (band ? 1 : 0)}
+            onReset={() => { setCompetition(''); setPhaseIds([]); setBand(''); }}
+          >
             <Select
               value={competition}
               onChange={(value) => { setCompetition(value); setPhaseIds([]); }}
               placeholder="Tutti i campionati"
               options={competitionSelectOptions}
             />
-          </div>
-          <div className="games-filter-fase">
             <MultiSelect
               values={phaseIds}
               onChange={setPhaseIds}
@@ -276,19 +251,17 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
               }))}
               disabled={!phaseOptions.length}
             />
-          </div>
-          <div style={{ flex: '0 1 180px' }}>
             <Select
               value={band}
               onChange={setBand}
               placeholder="Tutte le fasce"
               options={[{ value: '', label: 'Tutte le fasce' }, ...BANDS]}
             />
-          </div>
+          </FilterBar>
         </div>
       </section>
 
-      {loading ? <div className="empty-state" style={{ padding: '24px' }}>Caricamento…</div> : null}
+      {loading ? <ListSkeleton rows={6} /> : null}
 
       {!loading && view === 'coverage' && coverage ? (
         <section className="common-card">
@@ -341,7 +314,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                         <button
                           type="button"
                           className="ghost-button"
-                          style={{ padding: '1px 6px', fontWeight: 600, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                          style={{ padding: '5px 10px', fontWeight: 600, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}
                           onClick={() => navigate(`/admin/referees/${r.refereeId}`)}
                           title={r.fullName}
                         >
@@ -371,7 +344,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                                     type="button"
                                     className="ghost-button"
                                     style={{
-                                      padding: '1px 6px',
+                                      padding: '5px 10px',
                                       fontSize: '0.75rem',
                                       fontStyle: entry.type === 'scheduled' ? 'italic' : 'normal',
                                       color: entry.type === 'scheduled'
@@ -461,7 +434,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                           <button
                             type="button"
                             className="ghost-button"
-                            style={{ padding: '1px 6px', fontWeight: 600 }}
+                            style={{ padding: '5px 10px', fontWeight: 600 }}
                             onClick={() => navigate(`/admin/referees/${r.refereeId}`)}
                           >
                             {r.fullName}
@@ -581,7 +554,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                     <li key={i}>
                       ✓ {formatDate(item.date)} · gara {formatMatchNumber(item.matchNumber)} · {item.teams}{' '}
                       {item.reportId ? (
-                        <button type="button" className="ghost-button" style={{ padding: '1px 8px' }} onClick={() => navigate(`/reports/${item.reportId}`)}>
+                        <button type="button" className="ghost-button" style={{ padding: '5px 10px' }} onClick={() => navigate(`/reports/${item.reportId}`)}>
                           Apri rapporto
                         </button>
                       ) : null}
@@ -598,7 +571,7 @@ export default function CoveragePage({ currentUser, globalSeason, seasons }) {
                         <button
                           type="button"
                           className="ghost-button"
-                          style={{ padding: '1px 8px' }}
+                          style={{ padding: '5px 10px' }}
                           onClick={() => navigate(item.reportId ? `/reports/${item.reportId}` : `/games/${item.gameId}`)}
                         >
                           {item.reportId ? 'Apri bozza' : 'Apri gara'}

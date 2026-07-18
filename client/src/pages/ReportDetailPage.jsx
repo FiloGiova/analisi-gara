@@ -4,7 +4,7 @@ import { api, downloadReportPdf } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatRelativeDate } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
@@ -15,16 +15,6 @@ function DownloadIcon() {
       <rect x="1" y="10.25" width="10" height="1.5" rx="0.75"/>
     </svg>
   );
-}
-
-function relativeDate(value) {
-  if (!value) return '—';
-  const diff = Date.now() - new Date(value).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'oggi';
-  if (days === 1) return 'ieri';
-  if (days < 7) return `${days} giorni fa`;
-  return new Date(value).toLocaleString('it-IT');
 }
 
 function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, emailLog = [], onEmailLogChanged, canLinkReferee, isReferee, canEditDraft }) {
@@ -145,7 +135,7 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, e
       <div className="ref-card-footer">
         <span className="sent-indicator">
           <span className={`sent-dot ${sentAt ? 'green' : 'orange'}`} />
-          {sentAt ? `Inviato ${relativeDate(sentAt)}` : 'PDF non ancora inviato'}
+          {sentAt ? `Inviato ${formatRelativeDate(sentAt)}` : 'PDF non ancora inviato'}
         </span>
         <div className="ref-card-footer-actions">
           {isFinal && (
@@ -211,7 +201,7 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, e
           {emailPreview.lastSentAt && (
             <>
               <br />
-              <em>Già inviato {relativeDate(emailPreview.lastSentAt)} — verrà reinviato.</em>
+              <em>Già inviato {formatRelativeDate(emailPreview.lastSentAt)} — verrà reinviato.</em>
             </>
           )}
         </ConfirmModal>
@@ -346,7 +336,7 @@ export default function ReportDetailPage({ id, currentUser }) {
               </button>
             )}
             {canImportPdf && (
-              <button type="button" className="accent-button" onClick={() => setShowPdfImporter(true)}>
+              <button type="button" className="ghost-button" onClick={() => setShowPdfImporter(true)}>
                 Aggiorna da PDF federali
               </button>
             )}
@@ -361,10 +351,10 @@ export default function ReportDetailPage({ id, currentUser }) {
           <StatusBadge status={report.status} />
           {canManageReport && (
             <div className="detail-hero-bottom-actions">
-              <button type="button" className="ghost-button" onClick={() => navigate(`/reports/${report.id}/edit`)}>
+              <button type="button" className="primary-button" onClick={() => navigate(`/reports/${report.id}/edit`)}>
                 Modifica
               </button>
-              <button type="button" className="hero-delete-button" onClick={() => setShowDeleteConfirm(true)}>
+              <button type="button" className="danger-button" onClick={() => setShowDeleteConfirm(true)}>
                 Cancella rapporto
               </button>
             </div>
@@ -388,7 +378,7 @@ export default function ReportDetailPage({ id, currentUser }) {
         </div>
         <div className="meta-cell">
           <dt>Aggiornato</dt>
-          <dd>{relativeDate(report.updatedAt)}</dd>
+          <dd>{formatRelativeDate(report.updatedAt)}</dd>
         </div>
       </dl>
 

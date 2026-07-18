@@ -6,7 +6,7 @@ import MultiSelect from '../components/MultiSelect.jsx';
 import DateInput from '../components/DateInput.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatDate } from '../lib/formatters.js';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
@@ -32,11 +32,6 @@ function refereeForm(referee) {
     category: referee.category || '',
     notes: referee.notes || ''
   };
-}
-
-function formatDate(iso) {
-  if (!iso) return '-';
-  try { return new Date(iso).toLocaleDateString('it-IT'); } catch { return iso; }
 }
 
 function InfoItem({ label, value }) {
@@ -136,7 +131,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
 
   if (!canInspect) return <div className="empty-state"><h2>Sezione arbitri non abilitata</h2></div>;
   if (error && !referee) return <div className="error-banner">{error}</div>;
-  if (!referee) return <div className="empty-state">Caricamento arbitro...</div>;
+  if (!referee) return <div className="empty-state">Caricamento arbitro…</div>;
 
   const stats = referee.stats || {};
   const reports = referee.reports || [];
@@ -233,12 +228,12 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
             ) : null}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button type="button" className="hero-button" onClick={startEdit}>
-            Modifica
+        <div className="hero-actions">
+          <button type="button" className="back-link" onClick={() => navigate('/admin/referees')}>
+            <span aria-hidden="true">←</span> Torna agli arbitri
           </button>
-          <button type="button" className="hero-button" onClick={() => navigate('/admin/referees')}>
-            Torna agli arbitri
+          <button type="button" className="primary-button" onClick={startEdit}>
+            Modifica
           </button>
         </div>
       </section>
@@ -338,24 +333,20 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
             <p>Appartenenze dell’arbitro per campionato e stagione.</p>
           </div>
         </div>
-        <div className="games-filters-row">
-          <div style={{ flex: '0 1 240px' }}>
-            <Select
-              value={bandCompetition}
-              onChange={setBandCompetition}
-              placeholder="Campionato"
-              options={manageableCompetitions.map((value) => ({ value, label: competitionLabel(value) }))}
-            />
-          </div>
-          <div style={{ flex: '0 1 240px' }}>
-            <MultiSelect
-              values={selectedBands}
-              onChange={setSelectedBands}
-              options={BAND_OPTIONS}
-              placeholder="Seleziona fasce…"
-              allLabel="Nessuna fascia"
-            />
-          </div>
+        <div className="filter-bar">
+          <Select
+            value={bandCompetition}
+            onChange={setBandCompetition}
+            placeholder="Campionato"
+            options={manageableCompetitions.map((value) => ({ value, label: competitionLabel(value) }))}
+          />
+          <MultiSelect
+            values={selectedBands}
+            onChange={setSelectedBands}
+            options={BAND_OPTIONS}
+            placeholder="Seleziona fasce…"
+            allLabel="Nessuna fascia"
+          />
           <button
             type="button"
             className="primary-button"
@@ -430,7 +421,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
             Nessun rapporto collegato in questa stagione.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table">
               <thead>
                 <tr>
@@ -476,7 +467,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
             Nessuna designazione registrata in questa stagione.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table">
               <thead>
                 <tr>
@@ -516,7 +507,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                           <button
                             type="button"
                             className="ghost-button"
-                            style={{ padding: '1px 8px' }}
+                            style={{ padding: '5px 10px' }}
                             onClick={(e) => {
                               e.stopPropagation();
                               navigate(`/reports/${game.reportId}`);

@@ -3,11 +3,13 @@ import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
+import FilterBar from '../components/FilterBar.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError, downloadGamesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
+import ListSkeleton from '../components/ListSkeleton.jsx';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -42,18 +44,6 @@ const EMPTY_FORM = {
   teamAway: '',
   venue: ''
 };
-
-function formatDateTime(iso) {
-  if (!iso) return '—';
-  try {
-    const date = new Date(iso);
-    const day = date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const time = iso.length > 10 ? date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
-    return time && time !== '00:00' ? `${day} · ${time}` : day;
-  } catch {
-    return iso;
-  }
-}
 
 function officialLabel(official) {
   if (!official) return '—';
@@ -224,12 +214,12 @@ export default function GamesPage({ currentUser, season }) {
           </p>
         </div>
         {canManage ? (
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="hero-actions">
             <button type="button" className="ghost-button" onClick={() => navigate('/games/designate')}>
               Designa osservatori
             </button>
             {!showForm ? (
-              <button type="button" className="hero-button" onClick={() => { setShowForm(true); setError(''); setSuccess(''); }}>
+              <button type="button" className="primary-button" onClick={() => { setShowForm(true); setError(''); setSuccess(''); }}>
                 + Nuova gara
               </button>
             ) : null}
@@ -309,56 +299,57 @@ export default function GamesPage({ currentUser, season }) {
           </button>
         </div>
 
-        <div className="games-filters-search">
-          <input
-            className="games-filter-search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca per numero gara, squadra, arbitro, osservatore…"
-          />
-        </div>
-
-        <div className="games-filters-row">
+        <FilterBar
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: 'Cerca per numero gara, squadra, arbitro, osservatore…'
+          }}
+          activeCount={
+            (sourceFilter.length ? 1 : 0) +
+            (matchday ? 1 : 0) +
+            (refereeFilter ? 1 : 0) +
+            (stateFilter.length ? 1 : 0)
+          }
+          onReset={() => {
+            setSourceFilter([]);
+            setMatchday('');
+            setRefereeFilter('');
+            setStateFilter([]);
+          }}
+        >
           {sourceOptions.length ? (
-            <div className="games-filter-fase">
-              <MultiSelect
-                values={sourceFilter}
-                onChange={setSourceFilter}
-                allLabel="Tutte le fasi"
-                options={sourceOptions.map((s) => ({ value: s, label: s }))}
-              />
-            </div>
-          ) : null}
-          <div className="games-filter-giornata">
-            <Select
-              value={matchday}
-              onChange={setMatchday}
-              placeholder="Tutte le giornate"
-              options={[{ value: '', label: 'Tutte le giornate' }, ...matchdays.map((m) => ({ value: String(m), label: `Giornata ${m}` }))]}
-            />
-          </div>
-          {refereeOptions.length ? (
-            <div className="games-filter-arbitro">
-              <Select
-                value={refereeFilter}
-                onChange={setRefereeFilter}
-                placeholder="Tutti gli arbitri"
-                options={[{ value: '', label: 'Tutti gli arbitri' }, ...refereeOptions]}
-                searchable
-              />
-            </div>
-          ) : null}
-          <div className="games-filter-stato">
             <MultiSelect
-              values={stateFilter}
-              onChange={setStateFilter}
-              allLabel="Tutti gli stati"
-              options={STATE_FILTERS}
+              values={sourceFilter}
+              onChange={setSourceFilter}
+              allLabel="Tutte le fasi"
+              options={sourceOptions.map((s) => ({ value: s, label: s }))}
             />
-          </div>
-        </div>
+          ) : null}
+          <Select
+            value={matchday}
+            onChange={setMatchday}
+            placeholder="Tutte le giornate"
+            options={[{ value: '', label: 'Tutte le giornate' }, ...matchdays.map((m) => ({ value: String(m), label: `Giornata ${m}` }))]}
+          />
+          {refereeOptions.length ? (
+            <Select
+              value={refereeFilter}
+              onChange={setRefereeFilter}
+              placeholder="Tutti gli arbitri"
+              options={[{ value: '', label: 'Tutti gli arbitri' }, ...refereeOptions]}
+              searchable
+            />
+          ) : null}
+          <MultiSelect
+            values={stateFilter}
+            onChange={setStateFilter}
+            allLabel="Tutti gli stati"
+            options={STATE_FILTERS}
+          />
+        </FilterBar>
 
-        {loading ? <div className="empty-state" style={{ padding: '24px' }}>Caricamento...</div> : null}
+        {loading ? <ListSkeleton rows={6} /> : null}
 
         {!loading && filtered.length === 0 ? (
           <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>
@@ -369,7 +360,7 @@ export default function GamesPage({ currentUser, season }) {
         ) : null}
 
         {!loading && filtered.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table">
               <thead>
                 <tr>
@@ -406,7 +397,7 @@ export default function GamesPage({ currentUser, season }) {
                       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                         <GameStateBadge state={game.derivedState} />
                         {game.needsAlias ? (
-                          <span className="status-badge" style={{ background: 'var(--paper-2)', color: 'var(--danger)', padding: '3px 8px', fontSize: '0.72rem' }}>
+                          <span className="status-badge status-badge-sm status-cancelled">
                             Nomi da associare
                           </span>
                         ) : null}

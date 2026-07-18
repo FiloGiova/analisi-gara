@@ -1,24 +1,21 @@
-const STATE_STYLES = {
-  calendario: { label: 'Solo calendario', background: 'var(--paper-2)', color: 'var(--muted)' },
-  arbitri_mancanti: { label: 'Arbitri da designare', background: 'var(--blue-soft)', color: 'var(--blue)' },
-  senza_osservatore: { label: 'Scoperta', background: 'var(--orange-soft)', color: 'var(--orange)' },
-  designazione_completa: { label: 'Designazione completa', background: 'var(--teal-soft)', color: 'var(--teal)' },
-  rapporto_bozza: { label: 'Rapporto in bozza', background: 'var(--draft-soft)', color: 'var(--draft)' },
-  rapporto_definitivo: { label: 'Rapporto definitivo', background: 'var(--final-soft)', color: 'var(--final)' },
-  rinviata: { label: 'Rinviata', background: 'var(--draft-soft)', color: 'var(--danger)' },
-  annullata: { label: 'Annullata', background: 'var(--paper-2)', color: 'var(--danger)' }
+const STATE_BADGES = {
+  calendario: { label: 'Solo calendario', variant: 'status-neutral' },
+  arbitri_mancanti: { label: 'Arbitri da designare', variant: 'status-info' },
+  senza_osservatore: { label: 'Scoperta', variant: 'status-warning' },
+  designazione_completa: { label: 'Designazione completa', variant: 'status-teal' },
+  rapporto_bozza: { label: 'Rapporto in bozza', variant: 'status-draft' },
+  rapporto_definitivo: { label: 'Rapporto definitivo', variant: 'status-final' },
+  rinviata: { label: 'Rinviata', variant: 'status-postponed' },
+  annullata: { label: 'Annullata', variant: 'status-cancelled' }
 };
 
-export const GAME_STATE_OPTIONS = Object.entries(STATE_STYLES).map(([value, s]) => ({ value, label: s.label }));
+export const GAME_STATE_OPTIONS = Object.entries(STATE_BADGES).map(([value, s]) => ({ value, label: s.label }));
 
 export default function GameStateBadge({ state }) {
-  const style = STATE_STYLES[state] || STATE_STYLES.calendario;
+  const badge = STATE_BADGES[state] || STATE_BADGES.calendario;
   return (
-    <span
-      className="status-badge"
-      style={{ background: style.background, color: style.color, padding: '3px 8px', fontSize: '0.72rem' }}
-    >
-      {style.label}
+    <span className={`status-badge status-badge-sm ${badge.variant}`}>
+      {badge.label}
     </span>
   );
 }

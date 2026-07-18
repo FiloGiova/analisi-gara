@@ -89,6 +89,7 @@ export default function MultiSelect({
             <li className="multi-select-action">
               <button
                 type="button"
+                className="primary-button full-button"
                 disabled={actionDisabled}
                 onClick={() => {
                   if (actionDisabled) return;

@@ -2,23 +2,13 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
+import FilterBar from '../components/FilterBar.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
-
-function formatDateTime(iso) {
-  if (!iso) return '—';
-  try {
-    const date = new Date(iso);
-    const day = date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const time = iso.length > 10 ? date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
-    return time && time !== '00:00' ? `${day} · ${time}` : day;
-  } catch {
-    return iso;
-  }
-}
+import ListSkeleton from '../components/ListSkeleton.jsx';
 
 function refereeLabel(official) {
   if (!official) return '—';
@@ -161,8 +151,8 @@ export default function DesignateObserversPage({ currentUser, season }) {
             poi scegli l'osservatore riga per riga (con il suggeritore per la diversificazione).
           </p>
         </div>
-        <button type="button" className="ghost-button" onClick={() => navigate('/games')}>
-          Torna alle gare
+        <button type="button" className="back-link" onClick={() => navigate('/games')}>
+          <span aria-hidden="true">←</span> Torna alle gare
         </button>
       </section>
 
@@ -170,34 +160,31 @@ export default function DesignateObserversPage({ currentUser, season }) {
       {success ? <div className="success-banner">{success}</div> : null}
 
       <section className="common-card">
-        <div className="games-filters-row">
-          <div style={{ flex: '0 1 200px' }}>
-            <Select
-              value={competition}
-              onChange={(v) => { setCompetition(v); setSourceFilter([]); setMatchdayFilter([]); }}
-              placeholder="Tutti i campionati"
-              options={[{ value: '', label: 'Tutti i campionati' }, ...competitionOptions.map((c) => ({ value: c, label: competitionLabel(c) }))]}
-            />
-          </div>
+        <FilterBar
+          activeCount={(competition ? 1 : 0) + (sourceFilter.length ? 1 : 0) + (matchdayFilter.length ? 1 : 0)}
+          onReset={() => { setCompetition(''); setSourceFilter([]); setMatchdayFilter([]); }}
+        >
+          <Select
+            value={competition}
+            onChange={(v) => { setCompetition(v); setSourceFilter([]); setMatchdayFilter([]); }}
+            placeholder="Tutti i campionati"
+            options={[{ value: '', label: 'Tutti i campionati' }, ...competitionOptions.map((c) => ({ value: c, label: competitionLabel(c) }))]}
+          />
           {sourceOptions.length ? (
-            <div className="games-filter-fase">
-              <MultiSelect
-                values={sourceFilter}
-                onChange={setSourceFilter}
-                allLabel="Tutte le fasi"
-                options={sourceOptions.map((s) => ({ value: s, label: s }))}
-              />
-            </div>
-          ) : null}
-          <div style={{ flex: '0 1 200px' }}>
             <MultiSelect
-              values={matchdayFilter}
-              onChange={setMatchdayFilter}
-              allLabel="Tutte le giornate"
-              options={matchdayOptions.map((m) => ({ value: String(m), label: `Giornata ${m}` }))}
+              values={sourceFilter}
+              onChange={setSourceFilter}
+              allLabel="Tutte le fasi"
+              options={sourceOptions.map((s) => ({ value: s, label: s }))}
             />
-          </div>
-        </div>
+          ) : null}
+          <MultiSelect
+            values={matchdayFilter}
+            onChange={setMatchdayFilter}
+            allLabel="Tutte le giornate"
+            options={matchdayOptions.map((m) => ({ value: String(m), label: `Giornata ${m}` }))}
+          />
+        </FilterBar>
 
         {!hasFilter ? (
           <div className="empty-state" style={{ padding: '28px', textAlign: 'center' }}>
@@ -215,7 +202,7 @@ export default function DesignateObserversPage({ currentUser, season }) {
           </div>
         ) : null}
 
-        {hasFilter && loading ? <div className="empty-state" style={{ padding: '24px' }}>Caricamento…</div> : null}
+        {hasFilter && loading ? <ListSkeleton rows={5} /> : null}
 
         {hasFilter && !loading && filtered.length === 0 ? (
           <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>
@@ -224,7 +211,7 @@ export default function DesignateObserversPage({ currentUser, season }) {
         ) : null}
 
         {hasFilter && !loading && filtered.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table">
               <thead>
                 <tr>

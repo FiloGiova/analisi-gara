@@ -4,7 +4,8 @@ import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
+import ListSkeleton from '../components/ListSkeleton.jsx';
 
 function emptyForm(season) {
   return {
@@ -13,15 +14,6 @@ function emptyForm(season) {
     competition: '',
     url: ''
   };
-}
-
-function formatDateTime(iso) {
-  if (!iso) return '—';
-  try {
-    return `${new Date(iso).toLocaleDateString('it-IT')} ${new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-  } catch {
-    return iso;
-  }
 }
 
 const SYNC_STATUS_LABELS = {
@@ -206,9 +198,11 @@ export default function AdminSourcesPage({ currentUser, season }) {
           </p>
         </div>
         {!showForm ? (
-          <button type="button" className="hero-button" onClick={() => { setShowForm(true); setError(''); setSuccess(''); }}>
-            + Nuova sorgente
-          </button>
+          <div className="hero-actions">
+            <button type="button" className="primary-button" onClick={() => { setShowForm(true); setError(''); setSuccess(''); }}>
+              + Nuova sorgente
+            </button>
+          </div>
         ) : null}
       </section>
 
@@ -281,7 +275,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
           {syncResult.conflicts?.length ? (
             <div style={{ marginBottom: '12px' }}>
               <h3 style={{ marginBottom: '6px' }}>Conflitti da verificare ({syncResult.conflicts.length})</h3>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll">
                 <table className="referee-table">
                   <thead>
                     <tr>
@@ -391,7 +385,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
           </div>
         </div>
 
-        {loading ? <div className="empty-state" style={{ padding: '24px' }}>Caricamento...</div> : null}
+        {loading ? <ListSkeleton rows={4} /> : null}
 
         {!loading && sources.length === 0 ? (
           <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>
@@ -459,7 +453,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
                 </div>
 
                 {expandedRuns === source.id ? (
-                  <div style={{ marginTop: '10px', overflowX: 'auto' }}>
+                  <div className="table-scroll" style={{ marginTop: '10px' }}>
                     {(runsBySource[source.id] || []).length ? (
                       <table className="referee-table">
                         <thead>

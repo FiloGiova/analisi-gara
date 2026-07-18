@@ -213,8 +213,8 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
             />
           </label>
           <div className="modal-actions">
-            <button type="submit" className="danger-button" disabled={busy === 'password'}>
-              {busy === 'password' ? 'Aggiornamento...' : 'Reset password'}
+            <button type="submit" className="primary-button" disabled={busy === 'password'}>
+              {busy === 'password' ? 'Aggiornamento…' : 'Reset password'}
             </button>
           </div>
         </form>

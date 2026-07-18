@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import { api, ApiError } from '../lib/api.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
+import Modal from '../components/Modal.jsx';
+import ConfirmModal from '../components/ConfirmModal.jsx';
 
 const emptyNewUser = {
   username: '',
@@ -68,23 +69,6 @@ function validAssignments(assignments) {
   return assignments.length > 0 && assignments.every((assignment) => (
     /^\d{4}\/\d{4}$/.test(assignment.sportSeason) && assignment.competitions.length > 0
   ));
-}
-
-function Modal({ title, children, onClose }) {
-  return createPortal(
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box form-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="section-heading">
-          <div>
-            <h2>{title}</h2>
-          </div>
-          <button type="button" className="ghost-button" onClick={onClose}>Chiudi</button>
-        </div>
-        {children}
-      </div>
-    </div>,
-    document.body
-  );
 }
 
 function CompetitionChoices({ value, onChange }) {
@@ -173,6 +157,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
   const [editUser, setEditUser] = useState(null);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [openActionsId, setOpenActionsId] = useState(null);
+  const [userToToggle, setUserToToggle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -326,18 +311,21 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     }
   }
 
-  async function handleToggleActive(user) {
+  function handleToggleActive(user) {
     if (user.id === currentUser.id) {
       setError('Per sicurezza non puoi disattivare il tuo utente mentre sei collegato.');
       return;
     }
+    setOpenActionsId(null);
+    setUserToToggle(user);
+  }
 
-    const ok = window.confirm(`${user.active ? 'Disattivare' : 'Riattivare'} ${user.username}?`);
-    if (!ok) return;
-
+  async function confirmToggleActive() {
+    const user = userToToggle;
+    if (!user) return;
+    setUserToToggle(null);
     setError('');
     setSuccess('');
-    setOpenActionsId(null);
     try {
       await api.updateUser(user.id, updateUserPayload(user, { active: !user.active }));
       setSuccess(user.active ? 'Utente disattivato.' : 'Utente riattivato.');
@@ -384,6 +372,17 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
 
   return (
     <div className="page-stack">
+      {userToToggle ? (
+        <ConfirmModal
+          title={userToToggle.active ? 'Disattiva utente' : 'Riattiva utente'}
+          confirmLabel={userToToggle.active ? 'Sì, disattiva' : 'Sì, riattiva'}
+          confirmClassName={userToToggle.active ? 'danger-button' : 'primary-button'}
+          onConfirm={confirmToggleActive}
+          onCancel={() => setUserToToggle(null)}
+        >
+          {userToToggle.active ? 'Disattivare' : 'Riattivare'} l'utente <strong>{userToToggle.username}</strong>?
+        </ConfirmModal>
+      ) : null}
       {showCreateModal ? (
         <Modal title="Crea nuova utenza" onClose={() => setShowCreateModal(false)}>
           <form className="modal-form" onSubmit={handleCreateUser}>
@@ -574,11 +573,11 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
           <p>Gestisci utenze locali, ruolo e campionati da formatore.</p>
         </div>
         <div className="hero-actions">
-          <button type="button" className="hero-button" onClick={() => setShowCreateModal(true)}>
-            + Crea utente
-          </button>
-          <button type="button" className="ghost-button light-hero-button" onClick={() => setShowPasswordModal(true)}>
+          <button type="button" className="ghost-button" onClick={() => setShowPasswordModal(true)}>
             Cambia password
+          </button>
+          <button type="button" className="primary-button" onClick={() => setShowCreateModal(true)}>
+            + Crea utente
           </button>
         </div>
       </section>
@@ -594,9 +593,9 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
           </div>
         </div>
 
-        {loading ? <div className="empty-state">Caricamento utenti...</div> : null}
+        {loading ? <div className="empty-state">Caricamento utenti…</div> : null}
         {!loading ? (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table users-table">
               <thead>
                 <tr>
@@ -632,7 +631,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                       <div className="row-menu" onClick={(event) => event.stopPropagation()}>
                         <button
                           type="button"
-                          className="icon-menu-button"
+                          className="btn-icon"
                           aria-label={`Azioni utente ${user.username}`}
                           onClick={() => setOpenActionsId((current) => current === user.id ? null : user.id)}
                         >

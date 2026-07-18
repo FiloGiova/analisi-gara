@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { Field, TextArea } from './Field.jsx';
+import ConfirmModal from './ConfirmModal.jsx';
 
 function hasAnyEvaluationContent(evaluation) {
   if (!evaluation || !evaluation.sections) return false;
@@ -23,6 +24,7 @@ export default function JudgmentAIHelper({ reportData, value, onChange }) {
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [hasGenerated, setHasGenerated] = useState(Boolean(value && value.trim()));
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -31,11 +33,15 @@ export default function JudgmentAIHelper({ reportData, value, onChange }) {
   const generateDisabled = loading || minimumDataMissing;
   const reviseDisabled = loading || !feedback.trim() || !value || !value.trim();
 
-  async function runGenerate() {
+  function runGenerate() {
     if (value && value.trim().length > 0) {
-      const ok = window.confirm('Sovrascrivere il giudizio attuale?');
-      if (!ok) return;
+      setConfirmOverwrite(true);
+      return;
     }
+    doGenerate();
+  }
+
+  async function doGenerate() {
     setLoading(true);
     setError('');
     try {
@@ -121,6 +127,21 @@ export default function JudgmentAIHelper({ reportData, value, onChange }) {
             {loading && feedback ? 'Riscrittura in corso…' : 'Riscrivi'}
           </button>
         </div>
+      ) : null}
+
+      {confirmOverwrite ? (
+        <ConfirmModal
+          title="Sovrascrivi giudizio"
+          confirmLabel="Sì, sovrascrivi"
+          confirmClassName="primary-button"
+          onConfirm={() => {
+            setConfirmOverwrite(false);
+            doGenerate();
+          }}
+          onCancel={() => setConfirmOverwrite(false)}
+        >
+          Sovrascrivere il giudizio attuale con uno nuovo generato dall'assistente?
+        </ConfirmModal>
       ) : null}
     </div>
   );

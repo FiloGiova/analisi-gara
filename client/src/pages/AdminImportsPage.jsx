@@ -11,18 +11,18 @@ const ROLE_LABELS = {
   observer: 'Osservatore'
 };
 
-const ACTION_STYLES = {
-  nuovo: { label: 'Nuovo', background: 'var(--final-soft)', color: 'var(--final)' },
-  aggiornato: { label: 'Aggiornato', background: 'var(--blue-soft)', color: 'var(--blue)' },
-  invariato: { label: 'Invariato', background: 'var(--paper-2)', color: 'var(--muted)' },
-  conflitto: { label: 'Conflitto', background: 'var(--orange-soft)', color: 'var(--danger)' }
+const ACTION_BADGES = {
+  nuovo: { label: 'Nuovo', variant: 'status-final' },
+  aggiornato: { label: 'Aggiornato', variant: 'status-info' },
+  invariato: { label: 'Invariato', variant: 'status-neutral' },
+  conflitto: { label: 'Conflitto', variant: 'status-warning' }
 };
 
 function ActionBadge({ action }) {
-  const style = ACTION_STYLES[action] || ACTION_STYLES.invariato;
+  const badge = ACTION_BADGES[action] || ACTION_BADGES.invariato;
   return (
-    <span className="status-badge" style={{ background: style.background, color: style.color, padding: '2px 7px', fontSize: '0.7rem' }}>
-      {style.label}
+    <span className={`status-badge status-badge-sm ${badge.variant}`}>
+      {badge.label}
     </span>
   );
 }
@@ -176,7 +176,7 @@ export default function AdminImportsPage({ currentUser, season }) {
             <button type="button" className="ghost-button" onClick={() => setPreview(null)}>Annulla</button>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table">
               <thead>
                 <tr>
@@ -203,7 +203,7 @@ export default function AdminImportsPage({ currentUser, season }) {
                               <strong>{item.name}</strong>
                               <ActionBadge action={item.action} />
                               {!item.resolvedId && item.action !== 'invariato' ? (
-                                <span className="status-badge" style={{ background: 'var(--paper-2)', color: 'var(--danger)', padding: '2px 7px', fontSize: '0.7rem' }}>
+                                <span className="status-badge status-badge-sm status-cancelled">
                                   Da associare{item.candidates?.length ? ` (candidati: ${item.candidates.map((c) => c.fullName || c.displayName).join(', ')})` : ''}
                                 </span>
                               ) : null}

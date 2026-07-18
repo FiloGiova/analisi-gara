@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
+import { formatDate } from '../lib/formatters.js';
 import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import DateInput from '../components/DateInput.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
+import FilterBar from '../components/FilterBar.jsx';
+import ConfirmModal from '../components/ConfirmModal.jsx';
 import { api, ApiError, downloadRefereeRankingExport, downloadRefereesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
+import ListSkeleton from '../components/ListSkeleton.jsx';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -28,11 +32,6 @@ const BAND_OPTIONS = [
   { value: 'playoff', label: 'Playoff' },
   { value: 'playout', label: 'Playout' }
 ];
-
-function formatDate(iso) {
-  if (!iso) return '-';
-  try { return new Date(iso).toLocaleDateString('it-IT'); } catch { return iso; }
-}
 
 function isExpiringSoon(iso) {
   if (!iso) return false;
@@ -75,6 +74,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [refereeToToggle, setRefereeToToggle] = useState(null);
 
   useEffect(() => {
     if (!bandCompetitions.includes(bandCompetition)) {
@@ -272,8 +272,15 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     }
   }
 
-  async function handleToggleActive(referee) {
+  function handleToggleActive(referee) {
     if (currentUser.role !== 'admin') return;
+    setRefereeToToggle(referee);
+  }
+
+  async function confirmToggleActive() {
+    const referee = refereeToToggle;
+    if (!referee) return;
+    setRefereeToToggle(null);
     setError('');
     setSuccess('');
     try {
@@ -331,6 +338,18 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
 
   return (
     <div className="page-stack">
+      {refereeToToggle ? (
+        <ConfirmModal
+          title={refereeToToggle.active ? 'Disattiva arbitro' : 'Riattiva arbitro'}
+          confirmLabel={refereeToToggle.active ? 'Sì, disattiva' : 'Sì, riattiva'}
+          confirmClassName={refereeToToggle.active ? 'danger-button' : 'primary-button'}
+          onConfirm={confirmToggleActive}
+          onCancel={() => setRefereeToToggle(null)}
+        >
+          {refereeToToggle.active ? 'Disattivare' : 'Riattivare'}{' '}
+          <strong>{refereeToToggle.lastName} {refereeToToggle.firstName}</strong> per la stagione {selectedSeason}?
+        </ConfirmModal>
+      ) : null}
       <section className="dashboard-hero admin-hero">
         <div>
           <p className="eyebrow">{selectedSeason === CURRENT_SEASON ? 'Stagione corrente' : 'Archivio storico'}</p>
@@ -344,9 +363,11 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
           </p>
         </div>
         {!showForm && canManageCurrentSeason ? (
-          <button type="button" className="hero-button" onClick={startCreate}>
-            + Aggiungi arbitro
-          </button>
+          <div className="hero-actions">
+            <button type="button" className="primary-button" onClick={startCreate}>
+              + Aggiungi arbitro
+            </button>
+          </div>
         ) : null}
       </section>
 
@@ -486,49 +507,41 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
             </button>
           </div>
 
-          <div className="games-filters-row">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cerca per nome, cognome, tessera, provincia..."
-              style={{ flex: '1 1 240px', minHeight: '46px', boxSizing: 'border-box' }}
-            />
-            <div style={{ flex: '0 1 170px' }}>
-              <Select
-                value={filterBand}
-                onChange={setFilterBand}
-                placeholder="Tutte le fasce"
-                options={[{ value: '', label: 'Tutte le fasce' }, ...BAND_OPTIONS]}
-              />
-            </div>
+          <FilterBar
+            search={{ value: search, onChange: setSearch, placeholder: 'Cerca per nome, cognome, tessera, provincia…' }}
+            activeCount={(filterCategory ? 1 : 0) + (filterBand ? 1 : 0) + (filterActive ? 1 : 0)}
+            onReset={() => { setFilterCategory(''); setFilterBand(''); setFilterActive(''); }}
+          >
             {!assignedCompetitions.length ? (
-              <div style={{ flex: '0 1 240px' }}>
-                <Select
-                  value={filterCategory}
-                  onChange={setFilterCategory}
-                  placeholder="Tutte le categorie"
-                  options={[
-                    { value: '', label: 'Tutte le categorie' },
-                    ...activeCompetitions.map((c) => ({ value: c.value, label: c.label }))
-                  ]}
-                />
-              </div>
-            ) : null}
-            <div style={{ flex: '0 1 150px' }}>
               <Select
-                value={filterActive}
-                onChange={setFilterActive}
-                placeholder="Tutti"
+                value={filterCategory}
+                onChange={setFilterCategory}
+                placeholder="Tutte le categorie"
                 options={[
-                  { value: '', label: 'Tutti' },
-                  { value: '1', label: 'Attivi' },
-                  { value: '0', label: 'Inattivi' }
+                  { value: '', label: 'Tutte le categorie' },
+                  ...activeCompetitions.map((c) => ({ value: c.value, label: c.label }))
                 ]}
               />
-            </div>
-          </div>
+            ) : null}
+            <Select
+              value={filterBand}
+              onChange={setFilterBand}
+              placeholder="Tutte le fasce"
+              options={[{ value: '', label: 'Tutte le fasce' }, ...BAND_OPTIONS]}
+            />
+            <Select
+              value={filterActive}
+              onChange={setFilterActive}
+              placeholder="Tutti"
+              options={[
+                { value: '', label: 'Tutti' },
+                { value: '1', label: 'Attivi' },
+                { value: '0', label: 'Inattivi' }
+              ]}
+            />
+          </FilterBar>
 
-          {loading ? <div className="empty-state" style={{ padding: '24px' }}>Caricamento...</div> : null}
+          {loading ? <ListSkeleton rows={6} /> : null}
 
           {!loading && filtered.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>
@@ -541,7 +554,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
           ) : null}
 
           {!loading && filtered.length > 0 ? (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-scroll">
               <table className="referee-table">
                 <thead>
                   <tr>
@@ -592,8 +605,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                       </td>
                       <td>
                         <span
-                          className={`status-badge ${activeForSeason(r, selectedSeason) ? 'status-final' : 'status-draft'}`}
-                          style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                          className={`status-badge status-badge-sm ${activeForSeason(r, selectedSeason) ? 'status-final' : 'status-draft'}`}
                         >
                           {activeForSeason(r, selectedSeason) ? 'Attivo' : 'Inattivo'}
                         </span>
@@ -644,7 +656,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
               Nessun voto registrato in questa stagione.
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-scroll">
               <table className="referee-table">
                 <thead>
                   <tr>
@@ -670,7 +682,6 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                               <button
                                 key={`${row.id}-${detail.reportId}-${i}`}
                                 type="button"
-                                className="vote-pill-button"
                                 title={`Osservatore: ${detail.observerName || 'non indicato'} · apri il rapporto`}
                                 aria-label={`Voto ${detail.vote}, osservatore ${detail.observerName || 'non indicato'}`}
                                 onClick={(event) => {
@@ -700,7 +711,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
             </div>
           </div>
 
-          <div className="band-filters-row">
+          <div className="filter-bar">
             <div className="band-competition-filter">
               <Select
                 value={bandCompetition}
@@ -741,7 +752,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
               Nessun arbitro in questa fascia per il campionato selezionato.
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-scroll">
               <table className="referee-table">
                 <thead>
                   <tr>

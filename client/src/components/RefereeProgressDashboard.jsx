@@ -114,7 +114,7 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
   }, [data]);
 
   if (!refereeId) return null;
-  if (loading) return <div className="empty-state" style={{ padding: 18 }}>Caricamento andamento...</div>;
+  if (loading) return <div className="empty-state" style={{ padding: 18 }}>Caricamento andamento…</div>;
   if (error) return <div className="error-banner">{error}</div>;
   if (!matches.length) {
     return (

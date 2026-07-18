@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { api, ApiError } from '../lib/api.js';
 import { useCompetitions } from '../lib/competitions.jsx';
+import Modal from '../components/Modal.jsx';
 
 const emptyForm = {
   value: '',
@@ -131,23 +131,6 @@ function EmailTemplateCard() {
         </div>
       </form>
     </section>
-  );
-}
-
-function Modal({ title, children, onClose }) {
-  return createPortal(
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box form-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="section-heading">
-          <div>
-            <h2>{title}</h2>
-          </div>
-          <button type="button" className="ghost-button" onClick={onClose}>Chiudi</button>
-        </div>
-        {children}
-      </div>
-    </div>,
-    document.body
   );
 }
 
@@ -324,7 +307,7 @@ export default function AdminCompetitionsPage({ currentUser }) {
           <p>Crea e rinomina i campionati, imposta i CC delle email e la firma per ognuno.</p>
         </div>
         <div className="hero-actions">
-          <button type="button" className="hero-button" onClick={openCreate}>
+          <button type="button" className="primary-button" onClick={openCreate}>
             + Nuovo campionato
           </button>
         </div>
@@ -341,7 +324,7 @@ export default function AdminCompetitionsPage({ currentUser }) {
           </div>
         </div>
 
-        {loading ? <div className="empty-state">Caricamento campionati...</div> : null}
+        {loading ? <div className="empty-state">Caricamento campionati…</div> : null}
         {!loading && competitions.length === 0 ? (
           <div className="empty-state">Nessun campionato configurato.</div>
         ) : null}

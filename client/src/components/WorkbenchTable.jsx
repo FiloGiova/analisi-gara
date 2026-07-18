@@ -1,19 +1,5 @@
 import StatusBadge from './StatusBadge.jsx';
-import { formatMatchNumber } from '../lib/formatters.js';
-
-function relativeDate(value) {
-  const diff = Date.now() - new Date(value).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'oggi';
-  if (days === 1) return 'ieri';
-  if (days < 7) return `${days} giorni fa`;
-  return new Date(value).toLocaleDateString('it-IT');
-}
-
-function formatDate(value) {
-  if (!value) return '—';
-  try { return new Date(value).toLocaleDateString('it-IT'); } catch (_) { return value; }
-}
+import { formatMatchNumber, formatDate, formatRelativeDate } from '../lib/formatters.js';
 
 function surname(lastName, fullName) {
   return String(lastName || fullName || '').trim() || null;
@@ -51,7 +37,7 @@ export default function WorkbenchTable({ reports, sortColumn, sortDir, onSort, o
   if (!reports.length) return null;
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="table-scroll">
       <table className="workbench-table">
         <thead>
           <tr>
@@ -91,7 +77,7 @@ export default function WorkbenchTable({ reports, sortColumn, sortDir, onSort, o
                   {!surnameFirst && !surnameSecond ? '—' : null}
                 </td>
                 <td><StatusBadge status={report.status} /></td>
-                <td className="updated-cell">{relativeDate(report.updatedAt)}</td>
+                <td className="updated-cell">{formatRelativeDate(report.updatedAt)}</td>
                 <td>
                   <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                     {!isReferee && (

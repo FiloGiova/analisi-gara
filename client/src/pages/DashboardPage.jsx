@@ -1,28 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, downloadReportPdf } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
+import { useCompetitions } from '../lib/competitions.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import WorkbenchTable from '../components/WorkbenchTable.jsx';
-import { formatMatchNumber } from '../lib/formatters.js';
+import FilterBar from '../components/FilterBar.jsx';
+import EmptyState from '../components/EmptyState.jsx';
+import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
+import ListSkeleton from '../components/ListSkeleton.jsx';
 
 function dateValue(value) {
   const t = new Date(value || '').getTime();
   return Number.isFinite(t) ? t : 0;
-}
-
-function formatPendingDate(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    const day = d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const time = iso.length > 10 ? d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
-    return time && time !== '00:00' ? `${day} · ${time}` : day;
-  } catch {
-    return iso;
-  }
 }
 
 function buildSparkline(total, lastMonth) {
@@ -46,25 +38,13 @@ export default function DashboardPage({ currentUser, season }) {
   const [observers, setObservers] = useState([]);
   const [sortColumn, setSortColumn] = useState('updatedAt');
   const [sortDir, setSortDir] = useState('desc');
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportingId, setExportingId] = useState(null);
   const [reportToDelete, setReportToDelete] = useState(null);
   const [showPdfImporter, setShowPdfImporter] = useState(false);
-  const filterRef = useRef(null);
+  const { competitionLabel } = useCompetitions();
   const [sparkline] = useState(() => buildSparkline(0, 0));
-
-  useEffect(() => {
-    if (!filtersOpen) return;
-    function handle(e) {
-      if (filterRef.current && !filterRef.current.contains(e.target)) setFiltersOpen(false);
-    }
-    function handleKey(e) { if (e.key === 'Escape') setFiltersOpen(false); }
-    document.addEventListener('mousedown', handle);
-    document.addEventListener('keydown', handleKey);
-    return () => { document.removeEventListener('mousedown', handle); document.removeEventListener('keydown', handleKey); };
-  }, [filtersOpen]);
 
   useEffect(() => {
     setCompetition('');
@@ -125,7 +105,6 @@ export default function DashboardPage({ currentUser, season }) {
   const isReferee = currentUser?.role === 'referee';
   const canImportPdf = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
   const filterCount = [competition, observer].filter(Boolean).length;
-  const hasFilters = Boolean(search || filterCount);
   const availableCompetitions = Array.from(new Set(reports.map((r) => r.competition).filter(Boolean))).sort();
 
   const sortedReports = [...reports].sort((a, b) => {
@@ -145,7 +124,6 @@ export default function DashboardPage({ currentUser, season }) {
     setSearch('');
     setCompetition('');
     setObserver('');
-    setFiltersOpen(false);
   }
 
   async function handleDelete() {
@@ -217,14 +195,14 @@ export default function DashboardPage({ currentUser, season }) {
           <p className="eyebrow">Workbench · stagione {season}</p>
           <h1>{stats?.total ?? '—'} rapporti, sotto controllo.</h1>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="hero-actions">
           {canImportPdf ? (
-            <button type="button" className="hero-button" onClick={() => setShowPdfImporter(true)}>
+            <button type="button" className="ghost-button" onClick={() => setShowPdfImporter(true)}>
               Importa PDF
             </button>
           ) : null}
-          <button type="button" className="accent-button" onClick={() => navigate('/reports/new')}>
-            Nuovo rapporto
+          <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
+            + Nuovo rapporto
           </button>
         </div>
       </section>
@@ -275,7 +253,7 @@ export default function DashboardPage({ currentUser, season }) {
               <p>Gare in cui sei designato come osservatore e non hanno ancora un rapporto.</p>
             </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll">
             <table className="referee-table">
               <thead>
                 <tr>
@@ -291,7 +269,7 @@ export default function DashboardPage({ currentUser, season }) {
                 {pendingGames.map((g) => (
                   <tr key={g.gameId} className="is-clickable" onClick={() => navigate(`/reports/new?game=${g.gameId}`)}>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{formatMatchNumber(g.matchNumber)}</td>
-                    <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatPendingDate(g.scheduledAt)}</td>
+                    <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDateTime(g.scheduledAt)}</td>
                     <td style={{ fontWeight: 600 }}>{g.teamHome} - {g.teamAway}</td>
                     <td>{g.referee1 || '—'}</td>
                     <td>{g.referee2 || '—'}</td>
@@ -318,79 +296,53 @@ export default function DashboardPage({ currentUser, season }) {
           <span className="workbench-card-title">
             Tutti i rapporti · <strong>{sortedReports.filter((r) => !competition || r.competition === competition).length}</strong> risultati
           </span>
-          <input
-            className="workbench-search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca gara, squadra, arbitro…"
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {hasFilters && (
-              <button type="button" className="filter-reset-btn" onClick={resetFilters} title="Azzera filtri">
-                × Reset
-              </button>
+        </div>
+
+        <div className="workbench-filters">
+          <FilterBar
+            search={{ value: search, onChange: setSearch, placeholder: 'Cerca gara, squadra, arbitro…' }}
+            activeCount={filterCount}
+            onReset={resetFilters}
+          >
+            {availableCompetitions.length > 0 && (
+              <Select
+                value={competition}
+                onChange={setCompetition}
+                placeholder="Campionato"
+                options={[
+                  { value: '', label: 'Tutti i campionati' },
+                  ...availableCompetitions.map((c) => ({ value: c, label: competitionLabel(c) }))
+                ]}
+              />
             )}
-            <div className="filter-drawer-wrap" ref={filterRef}>
-              <button
-                type="button"
-                className={`filter-chip${filterCount > 0 ? ' has-filters' : ''}`}
-                onClick={() => setFiltersOpen((o) => !o)}
-              >
-                {filterCount > 0 && <span className="filter-dot" />}
-                Filtri{filterCount > 0 ? ` · ${filterCount}` : ''}
-              </button>
-              {filtersOpen && (
-                <div className="filter-drawer">
-                  <p className="filter-drawer-title">Filtra rapporti</p>
-                  {availableCompetitions.length > 0 && (
-                    <Select
-                      value={competition}
-                      onChange={setCompetition}
-                      placeholder="Campionato"
-                      options={[
-                        { value: '', label: 'Tutti i campionati' },
-                        ...availableCompetitions.map((c) => ({ value: c, label: c }))
-                      ]}
-                    />
-                  )}
-                  {canFilterObservers && (
-                    <Select
-                      value={observer}
-                      onChange={setObserver}
-                      placeholder="Osservatore"
-                      options={[
-                        { value: '', label: 'Tutti gli osservatori' },
-                        ...observers.map((n) => ({ value: n, label: n }))
-                      ]}
-                    />
-                  )}
-                  <div className="filter-drawer-actions">
-                    {hasFilters && (
-                      <button type="button" className="ghost-button" onClick={resetFilters}>
-                        Reset filtri
-                      </button>
-                    )}
-                    <button type="button" className="primary-button" onClick={() => setFiltersOpen(false)}>
-                      Chiudi
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+            {canFilterObservers && (
+              <Select
+                value={observer}
+                onChange={setObserver}
+                placeholder="Osservatore"
+                options={[
+                  { value: '', label: 'Tutti gli osservatori' },
+                  ...observers.map((n) => ({ value: n, label: n }))
+                ]}
+              />
+            )}
+          </FilterBar>
         </div>
 
         <div className="workbench-body">
           {loading ? (
-            <div className="empty-state">Caricamento rapporti…</div>
+            <ListSkeleton rows={6} />
           ) : sortedReports.length === 0 ? (
-            <div className="empty-state">
-              <h3>Nessun rapporto ancora.</h3>
-              <p>Il primo fischio è sempre quello più rumoroso. Creiamo la prima bozza.</p>
-              <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
-                Nuovo rapporto
-              </button>
-            </div>
+            <EmptyState
+              title="Nessun rapporto ancora."
+              action={(
+                <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
+                  + Nuovo rapporto
+                </button>
+              )}
+            >
+              Il primo fischio è sempre quello più rumoroso. Creiamo la prima bozza.
+            </EmptyState>
           ) : (
             <WorkbenchTable
               reports={sortedReports.filter((r) => !competition || r.competition === competition)}
