@@ -8,3 +8,6 @@ storage/
 *.sqlite-shm
 *.sqlite-wal
 .claude/
+
+# Liste federali e altri documenti con dati personali
+.docs/

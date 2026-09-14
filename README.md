@@ -234,6 +234,40 @@ Il comando locale usa lo stesso parser:
 npm run import:legacy-pdfs -- --dry-run rapporto1.pdf rapporto2.pdf
 ```
 
+## Importazione liste arbitri
+
+A inizio stagione le liste federali (un XLSX per campionato) si caricano con:
+
+```bash
+node scripts/import-referees.js "<file.xlsx>" --competition=DR1            # anteprima
+node scripts/import-referees.js "<file.xlsx>" --competition=DR1 --commit   # applica
+```
+
+Lo script legge la riga di intestazione del foglio (servono almeno **Cognome** e
+**Nome**; riconosce anche Tessera, Provincia, Data di nascita, Mail, Cellulare e
+Data Scadenza Certificato) e confronta ogni riga con il database: prima per
+tessera, poi per nominativo. Gli arbitri già presenti vengono aggiornati, mai
+duplicati, e le colonne assenti dal foglio non sovrascrivono i dati esistenti.
+Senza `--commit` non scrive nulla e stampa il dettaglio campo per campo.
+
+Opzioni utili:
+
+| Opzione | Effetto |
+| --- | --- |
+| `--season=2026/2027` | stagione di destinazione (default: quella corrente) |
+| `--sheet=Lista` | foglio da leggere (default: il primo) |
+| `--rows=5-32` | limita l'import a un intervallo di righe |
+| `--esordienti-col=B` | colonna col flag esordiente: se contiene una `E` iscrive alla fascia Esordienti |
+| `--esordienti-rows=47-54` | righe da iscrivere alla fascia Esordienti |
+
+L'appartenenza a una stagione vive in `referee_season_categories`: un arbitro
+esce da un campionato semplicemente non comparendo nella nuova lista, e la sua
+anagrafica con lo storico resta intatta. In caso di tessera che punta a un
+arbitro e nominativo che ne punta un altro l'import si ferma senza scrivere.
+
+I file `.xls` vecchio formato non sono leggibili: aprili in Excel e salvali come
+`.xlsx`.
+
 ## PDF e storage
 
 Per ogni rapporto vengono generati due PDF. Il nome segue il formato:

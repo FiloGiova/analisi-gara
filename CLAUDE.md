@@ -22,6 +22,9 @@ npm run setup      # first-time init: creates DB, storage dirs, first admin (set
 npm run seed:admin # create/update an admin user
 npm test           # PostgreSQL suite; requires a dedicated TEST_DATABASE_URL
 npm run test:unit  # pure FIP parser tests, no database required
+
+# start-of-season referee list import (idempotent, preview by default)
+node scripts/import-referees.js "<lista.xlsx>" --competition=DR1 [--commit]
 ```
 
 In production the database is Supabase PostgreSQL and persistent files use Supabase Storage. Without Supabase Storage credentials, local files live in `./storage` (gitignored).
@@ -37,6 +40,8 @@ In production the database is Supabase PostgreSQL and persistent files use Supab
 **Competitions are data, not code**: the catalog lives in the `competitions` table (admin CRUD at `#/admin/competitions`, API `/api/competitions`, service [src/services/competitionService.js](src/services/competitionService.js)). `value` is the immutable join key stored as TEXT on reports/games/rosters/bands/assignments; renames touch only `label`; deactivation (`active=0`) hides it from pickers without invalidating historical data. Seeding + defensive backfill of legacy values happen in `seedCompetitions()` in [src/database/connection.js](src/database/connection.js). The client reads the list via `useCompetitions()` from [client/src/lib/competitions.jsx](client/src/lib/competitions.jsx) — never hardcode competition lists.
 
 **Report emails**: `buildEmailPlan()` in [src/services/emailService.js](src/services/emailService.js) is the single resolver for recipient/subject/body/CC — both the preview endpoint and the actual send go through it. Sends require `status='final'` and a `confirmedRecipient` matching the freshly resolved address; every SMTP attempt (success or error) is logged in `report_email_log`. Per-competition CC and signature come from the `competitions` table; the body template is admin-editable (`app_settings` key `report_email_body_template`, pure render/validate functions in [src/services/emailTemplate.js](src/services/emailTemplate.js)). Delivery is SMTP-only (`SMTP_*` env vars); the nodemailer transporter is injectable in tests via `setTransportFactoryForTests()`. Note: Render's Free plan blocks outbound SMTP ports, so sending only works on paid instances (see NEXT_STEPS.md).
+
+**Referee list import**: [scripts/import-referees.js](scripts/import-referees.js) loads a federation XLSX into a season+competition. It maps columns from the sheet's header row, matches existing referees by licence number then by name, and only touches columns the sheet actually provides — so re-running it is safe and never duplicates. Season membership is written to `referee_season_categories` (a referee leaves a competition simply by not appearing in the new list); `--esordienti-col`/`--esordienti-rows` also fill `referee_bands`. Licence numbers are stored without the leading zeros the FIP exports use. Old `.xls` files must be re-saved as `.xlsx` first.
 
 **Reports data model**: a `reports` row holds a few indexed/searchable columns (match number, teams, referees, votes, status `draft`/`final`) plus the full form content as a `payload_json` blob. Each report evaluates two referees; export produces two PDFs named `numGara_Cognome.pdf`, stored under `output/<season>/report-<id>/` and tracked in `exports`.
 
