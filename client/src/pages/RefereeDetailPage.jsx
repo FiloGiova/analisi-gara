@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
 import { currentSportSeason } from '../../../shared/reportTemplate.js';
+import {
+  REFEREE_STATUS_OPTIONS,
+  refereeStatusLabel,
+  refereeStatusTone
+} from '../../../shared/refereeStatus.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
@@ -30,6 +35,7 @@ function refereeForm(referee) {
     province: referee.province || '',
     certificateExpiry: referee.certificateExpiry || '',
     category: referee.category || '',
+    status: referee.seasonStatus || referee.status || 'attivo',
     notes: referee.notes || ''
   };
 }
@@ -136,6 +142,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
   const stats = referee.stats || {};
   const reports = referee.reports || [];
   const fullName = `${referee.firstName || ''} ${referee.lastName || ''}`.trim();
+  const refereeStatus = referee.seasonStatus || referee.status || 'attivo';
 
   async function handleUploadPhoto(file) {
     const result = await api.uploadRefereePhoto(referee.id, file);
@@ -217,8 +224,13 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
             <p className="eyebrow">{selectedSeason === CURRENT_SEASON ? 'Stagione corrente' : 'Archivio storico'}</p>
             <h1>{referee.lastName} {referee.firstName}</h1>
             <p>{referee.category || 'Categoria non assegnata'} · {selectedSeason}</p>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+              <span className={`status-badge status-badge-sm status-${refereeStatusTone(refereeStatus)}`}>
+                {refereeStatusLabel(refereeStatus)}
+              </span>
+            </div>
             {bandRows.length ? (
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
                 {bandRows.map((item) => (
                   <span key={item.bandId} className="shared-pill">
                     {BAND_OPTIONS.find((option) => option.value === item.band)?.label || item.band}
@@ -294,6 +306,17 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                   ...manageableCompetitions.map((value) => ({ value, label: competitionLabel(value) }))
                 ]}
               />
+            </label>
+            <label className="field field-span-3">
+              Stato
+              <Select
+                value={form.status}
+                onChange={(value) => updateForm('status', value)}
+                options={REFEREE_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+              />
+              <small style={{ color: 'var(--muted)', fontWeight: 500 }}>
+                Vale per la stagione {selectedSeason}: solo gli arbitri attivi restano designabili.
+              </small>
             </label>
             <label className="field field-span-3">
               Fasce · {competitionLabel(bandCompetition)}
@@ -376,6 +399,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
           <InfoItem label="Provincia" value={referee.province} />
           <InfoItem label="Nascita" value={formatDate(referee.birthDate)} />
           <InfoItem label="Scad. certificato" value={formatDate(referee.certificateExpiry)} />
+          <InfoItem label="Stato" value={refereeStatusLabel(refereeStatus)} />
         </dl>
       </section>
 

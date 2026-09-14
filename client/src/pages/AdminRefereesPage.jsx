@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { formatDate } from '../lib/formatters.js';
 import { currentSportSeason } from '../../../shared/reportTemplate.js';
+import {
+  REFEREE_STATUS_OPTIONS,
+  isActiveStatus,
+  refereeStatusLabel,
+  refereeStatusTone
+} from '../../../shared/refereeStatus.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import DateInput from '../components/DateInput.jsx';
 import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import FilterBar from '../components/FilterBar.jsx';
-import ConfirmModal from '../components/ConfirmModal.jsx';
+import ColumnsMenu from '../components/ColumnsMenu.jsx';
 import { api, ApiError, downloadRefereeRankingExport, downloadRefereesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
@@ -33,6 +39,33 @@ const BAND_OPTIONS = [
   { value: 'playout', label: 'Playout' }
 ];
 
+// Colonne dell'elenco: "Cognome, Nome" è obbligatoria e resta fuori dal menu.
+const LIST_COLUMNS = [
+  { key: 'license', label: 'Tessera' },
+  { key: 'name', label: 'Cognome, Nome', required: true },
+  { key: 'province', label: 'Provincia' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Telefono' },
+  { key: 'certificate', label: 'Scadenza certificato' },
+  { key: 'category', label: 'Categoria' },
+  { key: 'status', label: 'Stato' },
+  { key: 'notes', label: 'Note' }
+];
+
+const OPTIONAL_COLUMN_KEYS = LIST_COLUMNS.filter((column) => !column.required).map((column) => column.key);
+const COLUMNS_STORAGE_KEY = 'fischiolab.referees.columns';
+
+// La scelta resta sul dispositivo: è una preferenza di lettura, non un dato.
+function loadVisibleColumns() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMNS_STORAGE_KEY) || 'null');
+    if (!Array.isArray(stored)) return OPTIONAL_COLUMN_KEYS;
+    return OPTIONAL_COLUMN_KEYS.filter((key) => stored.includes(key));
+  } catch {
+    return OPTIONAL_COLUMN_KEYS;
+  }
+}
+
 function isExpiringSoon(iso) {
   if (!iso) return false;
   return (new Date(iso) - new Date()) < 90 * 86400 * 1000;
@@ -42,8 +75,8 @@ function seasonTitle(season) {
   return season === CURRENT_SEASON ? 'Anagrafica arbitri' : `Archivio arbitri ${season}`;
 }
 
-function activeForSeason(referee, season) {
-  return season === CURRENT_SEASON ? referee.active : referee.seasonActive;
+function statusForSeason(referee, season) {
+  return season === CURRENT_SEASON ? referee.status : referee.seasonStatus;
 }
 
 export default function AdminRefereesPage({ currentUser, season: selectedSeason }) {
@@ -55,8 +88,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   const [view, setView] = useState('list');
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterActive, setFilterActive] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const [filterBand, setFilterBand] = useState(''); // filtro fascia nell'elenco
+  const [visibleColumns, setVisibleColumns] = useState(loadVisibleColumns);
   const [allBands, setAllBands] = useState([]); // tutte le appartenenze fascia della stagione
   // Vista Fasce
   const bandCompetitions = assignedCompetitions.length ? assignedCompetitions : activeCompetitions.map((c) => c.value);
@@ -69,12 +103,18 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formBands, setFormBands] = useState([]);
-  const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [refereeToToggle, setRefereeToToggle] = useState(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+    } catch {
+      // Preferenza non persistita: la vista resta comunque corretta.
+    }
+  }, [visibleColumns]);
 
   useEffect(() => {
     if (!bandCompetitions.includes(bandCompetition)) {
@@ -179,7 +219,6 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
 
   function startCreate() {
     if (currentUser.role !== 'admin') return;
-    setEditingId(null);
     setForm(EMPTY_FORM);
     setFormBands([]);
     setShowForm(true);
@@ -187,32 +226,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     setSuccess('');
   }
 
-  function startEdit(referee) {
-    if (currentUser.role !== 'admin') return;
-    setEditingId(referee.id);
-    setForm({
-      licenseNumber: referee.licenseNumber || '',
-      firstName: referee.firstName,
-      lastName: referee.lastName,
-      birthDate: referee.birthDate || '',
-      email: referee.email || '',
-      phone: referee.phone || '',
-      province: referee.province || '',
-      certificateExpiry: referee.certificateExpiry || '',
-      category: referee.category || '',
-      notes: referee.notes || ''
-    });
-    setFormBands(allBands
-      .filter((item) => item.refereeId === referee.id && item.competition === referee.category)
-      .map((item) => item.band));
-    setShowForm(true);
-    setError('');
-    setSuccess('');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
   function cancelForm() {
-    setEditingId(null);
     setForm(EMPTY_FORM);
     setFormBands([]);
     setShowForm(false);
@@ -251,16 +265,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
       if (formBands.length && !form.category) {
         throw new ApiError('Seleziona una categoria prima di assegnare una fascia.');
       }
-      if (editingId) {
-        await api.updateReferee(editingId, payload);
-        await syncFormBands(editingId, form.category);
-        setSuccess('Arbitro aggiornato.');
-      } else {
-        const data = await api.createReferee(payload);
-        await syncFormBands(data.referee.id, form.category);
-        setSuccess('Arbitro creato.');
-      }
-      setEditingId(null);
+      const data = await api.createReferee(payload);
+      await syncFormBands(data.referee.id, form.category);
+      setSuccess('Arbitro creato.');
       setForm(EMPTY_FORM);
       setFormBands([]);
       setShowForm(false);
@@ -272,34 +279,11 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     }
   }
 
-  function handleToggleActive(referee) {
-    if (currentUser.role !== 'admin') return;
-    setRefereeToToggle(referee);
-  }
-
-  async function confirmToggleActive() {
-    const referee = refereeToToggle;
-    if (!referee) return;
-    setRefereeToToggle(null);
-    setError('');
-    setSuccess('');
-    try {
-      await api.updateReferee(referee.id, {
-        sportSeason: selectedSeason,
-        active: !referee.active
-      });
-      setSuccess(referee.active ? 'Arbitro disattivato.' : 'Arbitro riattivato.');
-      await refreshSeason();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Operazione non riuscita.');
-    }
-  }
-
   function handleExport() {
     downloadRefereesExport({
       season: selectedSeason,
       competition: assignedCompetitions.length ? '' : filterCategory,
-      activeFilter: filterActive,
+      status: filterStatus,
       band: filterBand,
       search
     });
@@ -312,6 +296,8 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   if (!canAccess) {
     return <div className="empty-state"><h2>Area arbitri non associata</h2></div>;
   }
+
+  const showColumn = (key) => visibleColumns.includes(key);
 
   const bandsByReferee = new Map();
   for (const m of allBands) {
@@ -327,9 +313,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
       (r.province || '').toLowerCase().includes(q) ||
       (r.licenseNumber || '').toLowerCase().includes(q);
     const categoryMatch = assignedCompetitions.length ? assignedCompetitions.includes(r.category) : (!filterCategory || r.category === filterCategory);
-    const activeMatch = filterActive === '' || String(activeForSeason(r, selectedSeason) ? '1' : '0') === filterActive;
+    const statusMatch = !filterStatus || statusForSeason(r, selectedSeason) === filterStatus;
     const bandMatch = !filterBand || Boolean(bandsByReferee.get(r.id)?.has(filterBand));
-    return nameMatch && categoryMatch && activeMatch && bandMatch;
+    return nameMatch && categoryMatch && statusMatch && bandMatch;
   });
   const canManageCurrentSeason = currentUser.role === 'admin' && selectedSeason === CURRENT_SEASON;
   // Le fasce sono storicizzate per stagione: admin e formatori possono quindi
@@ -338,18 +324,6 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
 
   return (
     <div className="page-stack">
-      {refereeToToggle ? (
-        <ConfirmModal
-          title={refereeToToggle.active ? 'Disattiva arbitro' : 'Riattiva arbitro'}
-          confirmLabel={refereeToToggle.active ? 'Sì, disattiva' : 'Sì, riattiva'}
-          confirmClassName={refereeToToggle.active ? 'danger-button' : 'primary-button'}
-          onConfirm={confirmToggleActive}
-          onCancel={() => setRefereeToToggle(null)}
-        >
-          {refereeToToggle.active ? 'Disattivare' : 'Riattivare'}{' '}
-          <strong>{refereeToToggle.lastName} {refereeToToggle.firstName}</strong> per la stagione {selectedSeason}?
-        </ConfirmModal>
-      ) : null}
       <section className="dashboard-hero admin-hero">
         <div>
           <p className="eyebrow">{selectedSeason === CURRENT_SEASON ? 'Stagione corrente' : 'Archivio storico'}</p>
@@ -394,7 +368,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
         <form className="common-card" onSubmit={handleSubmit}>
           <div className="section-heading">
             <div>
-              <h2>{editingId ? 'Modifica arbitro' : 'Nuovo arbitro'}</h2>
+              <h2>Nuovo arbitro</h2>
               <p>
                 {selectedSeason === CURRENT_SEASON
                   ? 'La categoria viene salvata per la stagione corrente.'
@@ -490,7 +464,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
             <button type="button" className="ghost-button" onClick={cancelForm}>Annulla</button>
             <button type="submit" className="primary-button" disabled={busy}>
-              {busy ? 'Salvataggio...' : editingId ? 'Aggiorna arbitro' : 'Crea arbitro'}
+              {busy ? 'Salvataggio...' : 'Crea arbitro'}
             </button>
           </div>
         </form>
@@ -509,14 +483,18 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
 
           <FilterBar
             search={{ value: search, onChange: setSearch, placeholder: 'Cerca per nome, cognome, tessera, provincia…' }}
-            activeCount={(filterCategory ? 1 : 0) + (filterBand ? 1 : 0) + (filterActive ? 1 : 0)}
-            onReset={() => { setFilterCategory(''); setFilterBand(''); setFilterActive(''); }}
+            activeCount={(filterCategory ? 1 : 0) + (filterBand ? 1 : 0) + (filterStatus ? 1 : 0)}
+            onReset={() => { setFilterCategory(''); setFilterBand(''); setFilterStatus(''); }}
+            trailing={
+              <ColumnsMenu columns={LIST_COLUMNS} visible={visibleColumns} onChange={setVisibleColumns} />
+            }
           >
             {!assignedCompetitions.length ? (
               <Select
                 value={filterCategory}
                 onChange={setFilterCategory}
-                placeholder="Tutte le categorie"
+                placeholder="Categoria"
+                placeholderOnEmpty
                 options={[
                   { value: '', label: 'Tutte le categorie' },
                   ...activeCompetitions.map((c) => ({ value: c.value, label: c.label }))
@@ -526,17 +504,18 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
             <Select
               value={filterBand}
               onChange={setFilterBand}
-              placeholder="Tutte le fasce"
+              placeholder="Fascia"
+              placeholderOnEmpty
               options={[{ value: '', label: 'Tutte le fasce' }, ...BAND_OPTIONS]}
             />
             <Select
-              value={filterActive}
-              onChange={setFilterActive}
-              placeholder="Tutti"
+              value={filterStatus}
+              onChange={setFilterStatus}
+              placeholder="Stato"
+              placeholderOnEmpty
               options={[
-                { value: '', label: 'Tutti' },
-                { value: '1', label: 'Attivi' },
-                { value: '0', label: 'Inattivi' }
+                { value: '', label: 'Tutti gli stati' },
+                ...REFEREE_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))
               ]}
             />
           </FilterBar>
@@ -558,83 +537,87 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
               <table className="referee-table">
                 <thead>
                   <tr>
-                    <th>Tessera</th>
+                    {showColumn('license') ? <th>Tessera</th> : null}
                     <th>Cognome, Nome</th>
-                    <th>Prov.</th>
-                    <th>Email</th>
-                    <th>Telefono</th>
-                    <th>Scad. cert.</th>
-                    <th>Cat.</th>
-                    <th>Stato</th>
-                    <th>Note</th>
-                    {canManageCurrentSeason ? <th>Azioni</th> : null}
+                    {showColumn('province') ? <th>Prov.</th> : null}
+                    {showColumn('email') ? <th>Email</th> : null}
+                    {showColumn('phone') ? <th>Telefono</th> : null}
+                    {showColumn('certificate') ? <th>Scad. cert.</th> : null}
+                    {showColumn('category') ? <th>Cat.</th> : null}
+                    {showColumn('status') ? <th>Stato</th> : null}
+                    {showColumn('notes') ? <th>Note</th> : null}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((r) => (
-                    <tr
-                      key={r.id}
-                      className={activeForSeason(r, selectedSeason) ? 'is-clickable' : 'is-disabled is-clickable'}
-                      onClick={() => navigate(`/admin/referees/${r.id}`)}
-                    >
-                      <td style={{ fontFamily: 'monospace', color: 'var(--muted)', fontSize: '0.82rem' }}>
-                        {r.licenseNumber || '-'}
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{r.lastName} {r.firstName}</td>
-                      <td style={{ color: 'var(--muted)' }}>{r.province || '-'}</td>
-                      <td style={{ color: 'var(--teal)', fontSize: '0.82rem' }}>{r.email || '-'}</td>
-                      <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{r.phone || '-'}</td>
-                      <td
-                        style={{
-                          color: isExpiringSoon(r.certificateExpiry) ? 'var(--danger)' : 'var(--muted)',
-                          whiteSpace: 'nowrap',
-                          fontWeight: isExpiringSoon(r.certificateExpiry) ? 600 : 400
-                        }}
+                  {filtered.map((r) => {
+                    const status = statusForSeason(r, selectedSeason);
+                    // La "E" degli esordienti precede la tessera senza spostarla:
+                    // occupa una corsia fissa a sinistra della cella.
+                    const esordiente = Boolean(bandsByReferee.get(r.id)?.has('esordiente'));
+                    const flag = esordiente ? (
+                      <span className="referee-flag" title="Esordiente" aria-label="Esordiente">E</span>
+                    ) : null;
+                    return (
+                      <tr
+                        key={r.id}
+                        className={isActiveStatus(status) ? 'is-clickable' : 'is-disabled is-clickable'}
+                        onClick={() => navigate(`/admin/referees/${r.id}`)}
                       >
-                        {formatDate(r.certificateExpiry)}
-                      </td>
-                      <td>
-                        {r.category ? (
-                          <span
-                            className="status-badge"
-                            style={{ background: 'var(--blue-soft)', color: 'var(--blue)', padding: '3px 8px', fontSize: '0.72rem' }}
-                          >
-                            {r.category}
-                          </span>
-                        ) : '-'}
-                      </td>
-                      <td>
-                        <span
-                          className={`status-badge status-badge-sm ${activeForSeason(r, selectedSeason) ? 'status-final' : 'status-draft'}`}
+                        {showColumn('license') ? (
+                          <td className="referee-license-cell">
+                            {flag}
+                            {r.licenseNumber || '-'}
+                          </td>
+                        ) : null}
+                        <td
+                          className={showColumn('license') ? '' : 'referee-flag-cell'}
+                          style={{ fontWeight: 600 }}
                         >
-                          {activeForSeason(r, selectedSeason) ? 'Attivo' : 'Inattivo'}
-                        </span>
-                      </td>
-                      <td className="referee-notes-cell" title={r.notes || ''}>
-                        {r.notes || '-'}
-                      </td>
-                      {canManageCurrentSeason ? (
-                        <td>
-                          <div className="referee-row-actions" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              onClick={() => startEdit(r)}
-                            >
-                              Modifica
-                            </button>
-                            <button
-                              type="button"
-                              className={r.active ? 'danger-button' : 'ghost-button'}
-                              onClick={() => handleToggleActive(r)}
-                            >
-                              {r.active ? 'Disattiva' : 'Riattiva'}
-                            </button>
-                          </div>
+                          {showColumn('license') ? null : flag}
+                          {r.lastName} {r.firstName}
                         </td>
-                      ) : null}
-                    </tr>
-                  ))}
+                        {showColumn('province') ? (
+                          <td style={{ color: 'var(--muted)' }}>{r.province || '-'}</td>
+                        ) : null}
+                        {showColumn('email') ? (
+                          <td style={{ color: 'var(--teal)', fontSize: '0.82rem' }}>{r.email || '-'}</td>
+                        ) : null}
+                        {showColumn('phone') ? (
+                          <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{r.phone || '-'}</td>
+                        ) : null}
+                        {showColumn('certificate') ? (
+                          <td
+                            style={{
+                              color: isExpiringSoon(r.certificateExpiry) ? 'var(--danger)' : 'var(--muted)',
+                              whiteSpace: 'nowrap',
+                              fontWeight: isExpiringSoon(r.certificateExpiry) ? 600 : 400
+                            }}
+                          >
+                            {formatDate(r.certificateExpiry)}
+                          </td>
+                        ) : null}
+                        {showColumn('category') ? (
+                          <td>
+                            {r.category ? (
+                              <span className="status-badge status-badge-sm status-info">{r.category}</span>
+                            ) : '-'}
+                          </td>
+                        ) : null}
+                        {showColumn('status') ? (
+                          <td>
+                            <span className={`status-badge status-badge-sm status-${refereeStatusTone(status)}`}>
+                              {refereeStatusLabel(status)}
+                            </span>
+                          </td>
+                        ) : null}
+                        {showColumn('notes') ? (
+                          <td className="referee-notes-cell" title={r.notes || ''}>
+                            {r.notes || '-'}
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -768,8 +751,8 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                       <td style={{ fontFamily: 'monospace', color: 'var(--muted)', fontSize: '0.82rem' }}>{m.licenseNumber || '-'}</td>
                       <td style={{ fontWeight: 600 }}>{m.fullName}</td>
                       <td>
-                        <span className={`status-badge ${m.active ? 'status-final' : 'status-draft'}`} style={{ padding: '3px 8px', fontSize: '0.72rem' }}>
-                          {m.active ? 'Attivo' : 'Inattivo'}
+                        <span className={`status-badge status-badge-sm status-${refereeStatusTone(m.status)}`}>
+                          {refereeStatusLabel(m.status)}
                         </span>
                       </td>
                       {canManageBands ? (

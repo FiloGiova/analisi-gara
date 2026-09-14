@@ -16,7 +16,9 @@ function useIsMobile() {
   return mobile;
 }
 
-export default function FilterBar({ search, activeCount = 0, onReset, children }) {
+// `trailing`: controlli che restano in coda alla barra (es. scelta colonne) e
+// non fanno parte dei filtri, quindi non finiscono nel bottom sheet mobile.
+export default function FilterBar({ search, activeCount = 0, onReset, trailing = null, children }) {
   const mobile = useIsMobile();
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -60,6 +62,7 @@ export default function FilterBar({ search, activeCount = 0, onReset, children }
         {searchInput}
         {children}
         {resetButton}
+        {trailing ? <div className="filter-bar-trailing">{trailing}</div> : null}
       </div>
     );
   }
@@ -77,6 +80,7 @@ export default function FilterBar({ search, activeCount = 0, onReset, children }
         {activeCount > 0 ? <span className="filter-dot" aria-hidden="true" /> : null}
         Filtri{activeCount > 0 ? ` · ${activeCount}` : ''}
       </button>
+      {trailing}
       {sheetOpen
         ? createPortal(
             <div className="sheet-overlay" onClick={() => setSheetOpen(false)}>

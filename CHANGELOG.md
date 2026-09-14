@@ -7,6 +7,58 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-14 — Stagione 2026/2027: import liste arbitri e stato a tre valori
+
+**Import liste arbitri.** Nuovo `scripts/import-referees.js`, che sostituisce
+`scripts/seed-referees.js` (lista DR1 2025/2026 incollata nel codice, con i dati
+personali di 48 arbitri versionati nel repo). Legge un XLSX mappando le colonne
+dalla riga di intestazione, quindi funziona sia sull'export FIP sia sulle liste
+compilate a mano; abbina per tessera (normalizzata senza zeri iniziali) e poi
+per nominativo, aggiorna senza duplicare e non sovrascrive con NULL le colonne
+assenti dal foglio. Anteprima per default, scrittura solo con `--commit` e in
+transazione; `--esordienti-col` / `--esordienti-rows` iscrivono anche alla
+fascia. Le liste federali stanno in `.docs/`, ora ignorato da git.
+
+Importate le liste 2026/2027: 53 arbitri DR1 (8 esordienti) e 38 Serie C
+(28 piemontesi + 10 liguri, 6 esordienti). Corretta la scheda NICOLETTI, che
+teneva la tessera di Dennis sul nome di Alex; eliminato l'arbitro di prova
+"Pasticcio Ciccio".
+
+**Stato dell'arbitro a tre valori.** Il booleano attivo/inattivo è diventato
+`status`: `attivo`, `aspettativa`, `dimissioni`.
+
+- Migrazione: colonna `status` su `referees` e `referee_season_categories`
+  (default `attivo`, CHECK sui tre valori), creata e allineata al vecchio flag
+  da `ensureRefereeStatusColumns()` in `src/database/connection.js`. `active`
+  resta la copia booleana (`attivo` → 1) su cui poggiano statistiche, coperture
+  e query storiche, quindi nessuna query esistente cambia semantica.
+- `shared/refereeStatus.js` è la fonte unica di valori, etichette e toni, usata
+  da server e client. `updateReferee` accetta ancora il vecchio `active`.
+- Attenzione: `referees.status` rende ambiguo un `status` non qualificato in
+  ogni query che fa JOIN su `referees`. `listReports()` è stata corretta; per
+  le prossime query, qualificare sempre la colonna con la tabella.
+
+**Elenco arbitri.** Rimossa la colonna Azioni: si modifica aprendo la scheda
+dell'arbitro, dove il form di modifica ha ora il selettore di stato. La "E"
+degli esordienti compare in una corsia fissa a sinistra della tessera, che
+resta allineata. I filtri mostrano il proprio nome quando non sono applicati
+(Categoria, Fascia, Stato) grazie alla prop `placeholderOnEmpty` di `Select`.
+Nuovo `ColumnsMenu` in coda alla barra filtri per scegliere le colonne
+visibili; "Cognome, Nome" non è nascondibile e non compare in elenco. La scelta
+è ricordata in `localStorage`.
+
+**Filtri: stessa grammatica in tutta l'app.** Ogni filtro di elenco mostra il
+proprio nome quando non è applicato e il valore scelto quando lo è, su
+Dashboard (Campionato, Osservatore), Gare (Fase, Giornata, Arbitro, Stato),
+Designazioni (Campionato, Fase, Giornata), Copertura (Campionato, Fase, Fascia)
+e Arbitri (Categoria, Fascia, Stato). Sui `Select` serve la prop
+`placeholderOnEmpty`, sui `MultiSelect` basta `allLabel`. Resta "Tutte le fasi"
+solo nel selettore del template designazioni in Importazioni, che non è un
+filtro: descrive cosa finirà nel file.
+
+**Test**: nuova suite `refereeStatus.test.js` (6 test); suite completa a 116
+test e build Vite verificate senza errori.
+
 ## 2026-07-18 — Indisponibilità osservatori e standard frontend
 
 - Nuova tabella `observer_unavailabilities`: giorni e periodi di calendario,

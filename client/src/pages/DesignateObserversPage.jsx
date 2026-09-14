@@ -171,21 +171,22 @@ export default function DesignateObserversPage({ currentUser, season }) {
           <Select
             value={competition}
             onChange={(v) => { setCompetition(v); setSourceFilter([]); setMatchdayFilter([]); }}
-            placeholder="Tutti i campionati"
+            placeholder="Campionato"
+            placeholderOnEmpty
             options={[{ value: '', label: 'Tutti i campionati' }, ...competitionOptions.map((c) => ({ value: c, label: competitionLabel(c) }))]}
           />
           {sourceOptions.length ? (
             <MultiSelect
               values={sourceFilter}
               onChange={setSourceFilter}
-              allLabel="Tutte le fasi"
+              allLabel="Fase"
               options={sourceOptions.map((s) => ({ value: s, label: s }))}
             />
           ) : null}
           <MultiSelect
             values={matchdayFilter}
             onChange={setMatchdayFilter}
-            allLabel="Tutte le giornate"
+            allLabel="Giornata"
             options={matchdayOptions.map((m) => ({ value: String(m), label: `Giornata ${m}` }))}
           />
         </FilterBar>

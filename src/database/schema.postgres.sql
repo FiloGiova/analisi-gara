@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS referees (
   notes               TEXT,
   photo_path          TEXT,
   active              INTEGER NOT NULL DEFAULT 1,
+  status              TEXT NOT NULL DEFAULT 'attivo' CHECK (status IN ('attivo', 'aspettativa', 'dimissioni')),
   created_at          TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
   updated_at          TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 );
@@ -146,6 +147,7 @@ CREATE TABLE IF NOT EXISTS referee_season_categories (
   sport_season TEXT NOT NULL,
   category     TEXT,
   active       INTEGER NOT NULL DEFAULT 1,
+  status       TEXT NOT NULL DEFAULT 'attivo' CHECK (status IN ('attivo', 'aspettativa', 'dimissioni')),
   created_at   TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
   updated_at   TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
   UNIQUE(referee_id, sport_season),

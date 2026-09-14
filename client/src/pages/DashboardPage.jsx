@@ -309,6 +309,7 @@ export default function DashboardPage({ currentUser, season }) {
                 value={competition}
                 onChange={setCompetition}
                 placeholder="Campionato"
+                placeholderOnEmpty
                 options={[
                   { value: '', label: 'Tutti i campionati' },
                   ...availableCompetitions.map((c) => ({ value: c, label: competitionLabel(c) }))
@@ -320,6 +321,7 @@ export default function DashboardPage({ currentUser, season }) {
                 value={observer}
                 onChange={setObserver}
                 placeholder="Osservatore"
+                placeholderOnEmpty
                 options={[
                   { value: '', label: 'Tutti gli osservatori' },
                   ...observers.map((n) => ({ value: n, label: n }))

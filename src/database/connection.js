@@ -36,6 +36,7 @@ export async function initializeDatabase() {
 
 async function runBackfills() {
   await migrateFederationPdfSources();
+  await ensureRefereeStatusColumns();
   await seedCompetitions();
   await ensureDefaultSeasonCategories();
   await backfillReportSeasons();
@@ -78,6 +79,27 @@ async function migrateFederationPdfSources() {
     if (row?.definition?.includes('federation_pdf') || row?.definition?.includes('pdf_report_import')) continue;
     await getPool().query(`ALTER TABLE ${constraint.table} DROP CONSTRAINT IF EXISTS ${constraint.name}`);
     await getPool().query(`ALTER TABLE ${constraint.table} ADD CONSTRAINT ${constraint.name} CHECK (${constraint.expression})`);
+  }
+}
+
+// Lo stato dell'arbitro ha sostituito il booleano attivo/inattivo con tre
+// valori (attivo, aspettativa, dimissioni). I CREATE TABLE IF NOT EXISTS non
+// aggiungono colonne alle installazioni esistenti: qui la colonna viene creata
+// e allineata al vecchio flag una sola volta. `active` resta la copia booleana
+// su cui poggiano tutte le query storiche.
+async function ensureRefereeStatusColumns() {
+  for (const table of ['referees', 'referee_season_categories']) {
+    await getPool().query(
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'attivo'`
+    );
+    await getPool().query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${table}_status_check`);
+    await getPool().query(
+      `ALTER TABLE ${table} ADD CONSTRAINT ${table}_status_check
+         CHECK (status IN ('attivo', 'aspettativa', 'dimissioni'))`
+    );
+    // Chi era inattivo prima dei tre stati non aveva un motivo registrato:
+    // "dimissioni" è l'unica lettura coerente con l'uscita dalle liste.
+    await dbRun(`UPDATE ${table} SET status = 'dimissioni' WHERE active <> 1 AND status = 'attivo'`);
   }
 }
 

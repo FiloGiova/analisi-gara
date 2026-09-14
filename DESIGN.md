@@ -46,6 +46,7 @@ La fonte autorevole dei token è `client/src/styles.css`. Nuovi componenti devon
 - Form: label sempre visibile, messaggi specifici e azioni con verbo + oggetto.
 - Feedback: banner di errore e successo coerenti; loading skeleton per contenuto strutturato; empty state che spiega la prossima azione.
 - Selettori: riusare `Select`, `MultiSelect` e `DateInput`; opzioni non selezionabili devono essere semanticamente disabilitate e spiegare il motivo.
+- Filtri di elenco: il controllo mostra il nome del filtro quando non è applicato (Categoria, Fascia, Stato…) e il valore scelto quando lo è. Su `Select` si ottiene con `placeholderOnEmpty`, su `MultiSelect` con `allLabel`; l'opzione che azzera il filtro resta in elenco con la dicitura estesa ("Tutte le categorie").
 - Modali solo per compiti circoscritti o conferme realmente necessarie; preferire sezioni inline per flussi ricorrenti.
 
 ## Motion and interaction

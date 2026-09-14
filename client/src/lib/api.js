@@ -403,14 +403,14 @@ export function downloadGamesExport({
 export function downloadRefereesExport({
   season = '',
   competition = '',
-  activeFilter = '',
+  status = '',
   band = '',
   search = ''
 }) {
   const params = new URLSearchParams();
   if (season) params.set('season', season);
   if (competition) params.set('competition', competition);
-  if (activeFilter) params.set('active', activeFilter);
+  if (status) params.set('status', status);
   if (band) params.set('band', band);
   if (search) params.set('search', search);
   const link = document.createElement('a');

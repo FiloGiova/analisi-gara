@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
+import { isRefereeStatus, refereeStatusLabel } from '../../shared/refereeStatus.js';
 import { getRefereeRanking, listBandMembers, listReferees } from './refereeService.js';
 
 const BAND_LABELS = {
@@ -15,8 +16,8 @@ function formatDate(value) {
   return year && month && day ? `${day}/${month}/${year}` : text;
 }
 
-function activeForSeason(referee, season) {
-  return season === currentSportSeason() ? referee.active : referee.seasonActive;
+function statusForSeason(referee, season) {
+  return season === currentSportSeason() ? referee.status : referee.seasonStatus;
 }
 
 function bandsByReferee(members) {
@@ -30,7 +31,7 @@ function bandsByReferee(members) {
 
 export function filterRefereesForExport(referees, bandMap, {
   season,
-  activeFilter = '',
+  statusFilter = '',
   band = '',
   search = ''
 }) {
@@ -41,17 +42,16 @@ export function filterRefereesForExport(referees, bandMap, {
       || referee.lastName.toLowerCase().includes(query)
       || String(referee.province || '').toLowerCase().includes(query)
       || String(referee.licenseNumber || '').toLowerCase().includes(query);
-    const activeMatch = activeFilter === ''
-      || String(activeForSeason(referee, season) ? '1' : '0') === activeFilter;
+    const statusMatch = !statusFilter || statusForSeason(referee, season) === statusFilter;
     const bandMatch = !band || Boolean(bandMap.get(referee.id)?.has(band));
-    return nameMatch && activeMatch && bandMatch;
+    return nameMatch && statusMatch && bandMatch;
   });
 }
 
 export async function buildRefereesWorkbook({
   season,
   competitions = [],
-  activeFilter = '',
+  statusFilter = '',
   band = '',
   search = ''
 }) {
@@ -62,7 +62,7 @@ export async function buildRefereesWorkbook({
   const bandMap = bandsByReferee(bandMembers);
   const referees = filterRefereesForExport(allReferees, bandMap, {
     season,
-    activeFilter,
+    statusFilter,
     band,
     search
   });
@@ -85,12 +85,12 @@ export async function buildRefereesWorkbook({
     'Stato',
     'Note'
   ];
-  const activeLabel = activeFilter === '1' ? 'attivi' : activeFilter === '0' ? 'inattivi' : 'tutti';
+  const statusLabel = isRefereeStatus(statusFilter) ? refereeStatusLabel(statusFilter).toLowerCase() : 'tutti';
   const filterDescription = [
     `Stagione: ${season}`,
     `Campionato: ${competitions.length ? competitions.join(', ') : 'tutti'}`,
     `Fascia: ${BAND_LABELS[band] || 'tutte'}`,
-    `Stato: ${activeLabel}`,
+    `Stato: ${statusLabel}`,
     `Ricerca: ${String(search || '').trim() || 'nessuna'}`
   ].join(' · ');
 
@@ -114,7 +114,7 @@ export async function buildRefereesWorkbook({
       formatDate(referee.certificateExpiry),
       referee.category || '',
       bands.join(', '),
-      activeForSeason(referee, season) ? 'Attivo' : 'Inattivo',
+      refereeStatusLabel(statusForSeason(referee, season)),
       referee.notes || ''
     ]);
   }

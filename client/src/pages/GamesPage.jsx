@@ -325,21 +325,23 @@ export default function GamesPage({ currentUser, season }) {
             <MultiSelect
               values={sourceFilter}
               onChange={setSourceFilter}
-              allLabel="Tutte le fasi"
+              allLabel="Fase"
               options={sourceOptions.map((s) => ({ value: s, label: s }))}
             />
           ) : null}
           <Select
             value={matchday}
             onChange={setMatchday}
-            placeholder="Tutte le giornate"
+            placeholder="Giornata"
+            placeholderOnEmpty
             options={[{ value: '', label: 'Tutte le giornate' }, ...matchdays.map((m) => ({ value: String(m), label: `Giornata ${m}` }))]}
           />
           {refereeOptions.length ? (
             <Select
               value={refereeFilter}
               onChange={setRefereeFilter}
-              placeholder="Tutti gli arbitri"
+              placeholder="Arbitro"
+              placeholderOnEmpty
               options={[{ value: '', label: 'Tutti gli arbitri' }, ...refereeOptions]}
               searchable
             />
@@ -347,7 +349,7 @@ export default function GamesPage({ currentUser, season }) {
           <MultiSelect
             values={stateFilter}
             onChange={setStateFilter}
-            allLabel="Tutti gli stati"
+            allLabel="Stato"
             options={STATE_FILTERS}
           />
         </FilterBar>

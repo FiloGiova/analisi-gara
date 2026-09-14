@@ -20,6 +20,7 @@ import {
 } from '../services/refereeService.js';
 import { buildRefereeRankingWorkbook, buildRefereesWorkbook } from '../services/refereesExportService.js';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
+import { isRefereeStatus } from '../../shared/refereeStatus.js';
 import {
   instructorAssignmentsForUser,
   instructorCompetitionsForSeason
@@ -116,13 +117,11 @@ refereesRouter.get(
     requireRefereeInspection(req);
     const season = String(req.query.season || '').trim() || currentSportSeason();
     const requestedBand = String(req.query.band || '').trim();
-    const activeFilter = ['0', '1'].includes(String(req.query.active || ''))
-      ? String(req.query.active)
-      : '';
+    const requestedStatus = String(req.query.status || '').trim();
     const workbook = await buildRefereesWorkbook({
       season,
       competitions: scopedCompetitions(req, season),
-      activeFilter,
+      statusFilter: isRefereeStatus(requestedStatus) ? requestedStatus : '',
       band: REFEREE_BANDS.includes(requestedBand) ? requestedBand : '',
       search: String(req.query.search || '')
     });

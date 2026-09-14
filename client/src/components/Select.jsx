@@ -7,6 +7,9 @@ export default function Select({
   placeholder = 'Seleziona...',
   disabled = false,
   searchable = false,
+  // Nei filtri il valore vuoto è "nessun filtro": il trigger mostra il nome del
+  // filtro (placeholder) anche se in elenco esiste l'opzione che lo azzera.
+  placeholderOnEmpty = false,
   id
 }) {
   const [open, setOpen] = useState(false);
@@ -17,7 +20,7 @@ export default function Select({
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
-  const selected = options.find((o) => o.value === value);
+  const selected = placeholderOnEmpty && !value ? undefined : options.find((o) => o.value === value);
 
   const filteredOptions = searchable && search.trim()
     ? options.filter((o) => `${o.label} ${o.statusLabel || ''}`.toLowerCase().includes(search.toLowerCase()))

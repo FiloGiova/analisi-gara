@@ -1,4 +1,10 @@
 import { currentSportSeason, EVALUATION_SECTIONS, ratingToNumber } from '../../shared/reportTemplate.js';
+import {
+  DEFAULT_REFEREE_STATUS,
+  isActiveStatus,
+  isRefereeStatus,
+  normalizeRefereeStatus
+} from '../../shared/refereeStatus.js';
 import { dbGet, dbAll, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -44,6 +50,8 @@ function rowToReferee(row) {
     photoPath: row.photo_path || null,
     active: Boolean(row.active),
     seasonActive: row.season_active === undefined ? Boolean(row.active) : Boolean(row.season_active),
+    status: normalizeRefereeStatus(row.status),
+    seasonStatus: normalizeRefereeStatus(row.season_status ?? row.status),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -67,23 +75,31 @@ function normalizeOptionalIsoDate(value, label) {
   return clean;
 }
 
-async function upsertSeasonCategory(refereeId, { sportSeason, category, active }) {
+// `active` resta la copia booleana dello stato: tutte le query storiche e le
+// statistiche continuano a filtrare su di essa.
+async function upsertSeasonCategory(refereeId, { sportSeason, category, status }) {
   const season = normalizeSeason(sportSeason);
   const cleanCategory = asText(category) || null;
-  const seasonActive = active === undefined ? 1 : (active ? 1 : 0);
+  const seasonStatus = normalizeRefereeStatus(status);
+  const seasonActive = isActiveStatus(seasonStatus) ? 1 : 0;
 
   await dbRun(
-    `INSERT INTO referee_season_categories (referee_id, sport_season, category, active)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO referee_season_categories (referee_id, sport_season, category, active, status)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(referee_id, sport_season)
      DO UPDATE SET category = excluded.category,
                    active = excluded.active,
+                   status = excluded.status,
                    updated_at = iso_now()`,
-    [refereeId, season, cleanCategory, seasonActive]
+    [refereeId, season, cleanCategory, seasonActive, seasonStatus]
   );
 
+  // La stagione corrente ha una copia denormalizzata sull'anagrafica.
   if (season === currentSportSeason()) {
-    await dbRun('UPDATE referees SET category = ?, updated_at = iso_now() WHERE id = ?', [cleanCategory, refereeId]);
+    await dbRun(
+      'UPDATE referees SET category = ?, status = ?, active = ?, updated_at = iso_now() WHERE id = ?',
+      [cleanCategory, seasonStatus, seasonActive, refereeId]
+    );
   }
 }
 
@@ -135,7 +151,8 @@ export async function listReferees({ competition = '', competitions = [], season
     `SELECT r.*,
             sc.category AS season_category,
             sc.sport_season,
-            sc.active AS season_active
+            sc.active AS season_active,
+            sc.status AS season_status
      FROM referees r
      JOIN referee_season_categories sc ON sc.referee_id = r.id
      WHERE ${clauses.join(' AND ')}
@@ -153,7 +170,8 @@ export async function getReferee(id, { season = '', competition = '', competitio
     `SELECT r.*,
             sc.category AS season_category,
             sc.sport_season,
-            sc.active AS season_active
+            sc.active AS season_active,
+            sc.status AS season_status
      FROM referees r
      LEFT JOIN referee_season_categories sc
        ON sc.referee_id = r.id AND sc.sport_season = ?
@@ -189,10 +207,12 @@ export async function createReferee({
   certificateExpiry,
   category,
   notes,
+  status,
   sportSeason
 }) {
   if (!asText(firstName)) throw new HttpError(400, 'Nome obbligatorio.');
   if (!asText(lastName)) throw new HttpError(400, 'Cognome obbligatorio.');
+  if (status !== undefined && !isRefereeStatus(status)) throw new HttpError(400, 'Stato arbitro non valido.');
 
   const normalizedBirthDate = normalizeOptionalIsoDate(birthDate, 'Data di nascita');
   const normalizedCertificateExpiry = normalizeOptionalIsoDate(certificateExpiry, 'Scadenza certificato');
@@ -216,12 +236,15 @@ export async function createReferee({
   );
 
   const newId = result.rows[0].id;
-  await upsertSeasonCategory(newId, { sportSeason: season, category, active: true });
+  await upsertSeasonCategory(newId, { sportSeason: season, category, status });
   return getReferee(newId, { season });
 }
 
 export async function updateReferee(id, updates) {
   await getReferee(id, { season: updates.sportSeason });
+  if (updates.status !== undefined && !isRefereeStatus(updates.status)) {
+    throw new HttpError(400, 'Stato arbitro non valido.');
+  }
   const fields = [];
   const params = [];
 
@@ -234,16 +257,13 @@ export async function updateReferee(id, updates) {
     phone: 'phone',
     province: 'province',
     certificateExpiry: 'certificate_expiry',
-    active: 'active',
     notes: 'notes'
   };
 
   for (const [jsKey, dbCol] of Object.entries(map)) {
     if (updates[jsKey] !== undefined) {
       fields.push(`${dbCol} = ?`);
-      if (jsKey === 'active') {
-        params.push(updates[jsKey] ? 1 : 0);
-      } else if (jsKey === 'birthDate') {
+      if (jsKey === 'birthDate') {
         params.push(normalizeOptionalIsoDate(updates[jsKey], 'Data di nascita'));
       } else if (jsKey === 'certificateExpiry') {
         params.push(normalizeOptionalIsoDate(updates[jsKey], 'Scadenza certificato'));
@@ -259,12 +279,20 @@ export async function updateReferee(id, updates) {
     await dbRun(`UPDATE referees SET ${fields.join(', ')} WHERE id = ?`, params);
   }
 
-  if (updates.category !== undefined || updates.active !== undefined || updates.sportSeason !== undefined) {
+  // `status` e il vecchio `active` scrivono entrambi sulla riga di stagione,
+  // che è l'unico punto in cui i due valori vengono tenuti allineati.
+  const statusUpdate = updates.status !== undefined
+    ? normalizeRefereeStatus(updates.status)
+    : updates.active !== undefined
+    ? normalizeRefereeStatus(updates.active)
+    : undefined;
+
+  if (updates.category !== undefined || statusUpdate !== undefined || updates.sportSeason !== undefined) {
     const current = await getReferee(id, { season: updates.sportSeason });
     await upsertSeasonCategory(id, {
       sportSeason: updates.sportSeason,
       category: updates.category !== undefined ? updates.category : current.category,
-      active: updates.active !== undefined ? updates.active : current.seasonActive
+      status: statusUpdate !== undefined ? statusUpdate : current.seasonStatus
     });
   }
 
@@ -273,13 +301,18 @@ export async function updateReferee(id, updates) {
 
 export async function listSeasonCategories(refereeId) {
   const rows = await dbAll(
-    `SELECT id, sport_season AS "sportSeason", category, active, created_at AS "createdAt", updated_at AS "updatedAt"
+    `SELECT id, sport_season AS "sportSeason", category, active, status,
+            created_at AS "createdAt", updated_at AS "updatedAt"
      FROM referee_season_categories
      WHERE referee_id = ?
      ORDER BY sport_season DESC`,
     [refereeId]
   );
-  return rows.map((row) => ({ ...row, active: Boolean(row.active) }));
+  return rows.map((row) => ({
+    ...row,
+    active: Boolean(row.active),
+    status: normalizeRefereeStatus(row.status)
+  }));
 }
 
 function rowToRefereeReport(row) {
@@ -500,7 +533,7 @@ export async function listRosters(refereeId) {
 
 export async function addRoster(refereeId, { competition, sportSeason }) {
   await getReferee(refereeId, { season: sportSeason });
-  await upsertSeasonCategory(refereeId, { sportSeason, category: competition, active: true });
+  await upsertSeasonCategory(refereeId, { sportSeason, category: competition, status: DEFAULT_REFEREE_STATUS });
   return listRosters(refereeId);
 }
 
@@ -531,7 +564,7 @@ export async function listBandMembers({ competition = '', competitions = [], sea
   }
   const rows = await dbAll(
     `SELECT rb.id AS band_id, rb.band, rb.competition, rb.sport_season,
-            r.id, r.first_name, r.last_name, r.license_number, r.active
+            r.id, r.first_name, r.last_name, r.license_number, r.active, r.status
        FROM referee_bands rb
        JOIN referees r ON r.id = rb.referee_id
       WHERE ${clauses.join(' AND ')}
@@ -546,7 +579,8 @@ export async function listBandMembers({ competition = '', competitions = [], sea
     refereeId: row.id,
     fullName: `${row.last_name} ${row.first_name}`.trim(),
     licenseNumber: row.license_number || '',
-    active: Boolean(row.active)
+    active: Boolean(row.active),
+    status: normalizeRefereeStatus(row.status)
   }));
 }
 

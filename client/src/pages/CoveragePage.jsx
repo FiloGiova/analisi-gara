@@ -238,13 +238,14 @@ export default function CoveragePage({ currentUser, season }) {
             <Select
               value={competition}
               onChange={(value) => { setCompetition(value); setPhaseIds([]); }}
-              placeholder="Tutti i campionati"
+              placeholder="Campionato"
+              placeholderOnEmpty
               options={competitionSelectOptions}
             />
             <MultiSelect
               values={phaseIds}
               onChange={setPhaseIds}
-              allLabel={phaseOptions.length ? 'Tutte le fasi' : 'Nessuna fase disponibile'}
+              allLabel={phaseOptions.length ? 'Fase' : 'Nessuna fase disponibile'}
               options={phaseOptions.map((item) => ({
                 value: String(item.id),
                 label: competition || !item.competition ? item.name : `${item.name} · ${item.competition}`
@@ -254,7 +255,8 @@ export default function CoveragePage({ currentUser, season }) {
             <Select
               value={band}
               onChange={setBand}
-              placeholder="Tutte le fasce"
+              placeholder="Fascia"
+              placeholderOnEmpty
               options={[{ value: '', label: 'Tutte le fasce' }, ...BANDS]}
             />
           </FilterBar>

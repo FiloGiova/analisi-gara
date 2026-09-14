@@ -499,18 +499,20 @@ export async function listReports({ search = '', status = '', season = '', obser
 
   appendUserVisibilityClause(clauses, params, user);
 
+  // La query fa JOIN su `referees`, che ha anch'essa `status`: qui i filtri
+  // vanno sempre qualificati con la tabella.
   if (status === 'draft' || status === 'final') {
-    clauses.push('status = ?');
+    clauses.push('reports.status = ?');
     params.push(status);
   }
 
   if (season) {
-    clauses.push('sport_season = ?');
+    clauses.push('reports.sport_season = ?');
     params.push(season);
   }
 
   if (observer) {
-    clauses.push('observer_name = ?');
+    clauses.push('reports.observer_name = ?');
     params.push(observer);
   }
 
@@ -531,7 +533,7 @@ export async function listReports({ search = '', status = '', season = '', obser
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = await dbAll(
     `SELECT reports.id,
-            status,
+            reports.status,
             observer_name,
             report_date,
             match_number,

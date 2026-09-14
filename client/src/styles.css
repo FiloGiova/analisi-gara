@@ -3500,6 +3500,126 @@ dd {
   white-space: nowrap;
 }
 
+/* Marcatore fascia (es. "E" degli esordienti): sta in una corsia fissa a
+   sinistra della cella, così tessera e nomi restano allineati con o senza. */
+.referee-license-cell {
+  position: relative;
+  padding-left: 26px !important;
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* Stessa corsia quando la tessera è nascosta e il marcatore precede il nome. */
+.referee-flag-cell {
+  position: relative;
+  padding-left: 26px !important;
+}
+
+.referee-flag {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-family: "Montserrat", "Aptos", "Trebuchet MS", sans-serif;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* ── Menu colonne visibili (coda della barra filtri) ── */
+
+.filter-bar-trailing {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.columns-menu {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.columns-menu-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.columns-menu-trigger:hover,
+.columns-menu.is-open .columns-menu-trigger {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.columns-menu-trigger:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.columns-menu-icon {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 14px;
+}
+
+.columns-menu-icon span {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.columns-menu-count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 15px;
+}
+
+.columns-menu-list {
+  right: 0;
+  left: auto;
+  min-width: 200px;
+}
+
+.columns-menu-title {
+  padding: 8px 12px 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
 .referee-row-actions {
   display: flex;
   justify-content: flex-end;
