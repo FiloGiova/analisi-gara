@@ -17,6 +17,7 @@ import { api, ApiError, downloadRefereeRankingExport, downloadRefereesExport } f
 import { navigate } from '../lib/navigation.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
+import { can, hasRole } from '../../../shared/permissions.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -82,7 +83,7 @@ function statusForSeason(referee, season) {
 export default function AdminRefereesPage({ currentUser, season: selectedSeason }) {
   const { activeCompetitions, competitionLabel } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, selectedSeason);
-  const canAccess = currentUser.role === 'admin' || assignedCompetitions.length > 0;
+  const canAccess = can(currentUser, 'referees:inspect');
   const [referees, setReferees] = useState([]);
   const [ranking, setRanking] = useState([]);
   const [view, setView] = useState('list');
@@ -218,7 +219,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
   }
 
   function startCreate() {
-    if (currentUser.role !== 'admin') return;
+    if (!hasRole(currentUser, 'admin')) return;
     setForm(EMPTY_FORM);
     setFormBands([]);
     setShowForm(true);
@@ -317,7 +318,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
     const bandMatch = !filterBand || Boolean(bandsByReferee.get(r.id)?.has(filterBand));
     return nameMatch && categoryMatch && statusMatch && bandMatch;
   });
-  const canManageCurrentSeason = currentUser.role === 'admin' && selectedSeason === CURRENT_SEASON;
+  const canManageCurrentSeason = hasRole(currentUser, 'admin') && selectedSeason === CURRENT_SEASON;
   // Le fasce sono storicizzate per stagione: admin e formatori possono quindi
   // completare o correggere anche quelle delle stagioni archiviate.
   const canManageBands = currentUser.role === 'admin' || currentUser.role === 'instructor';

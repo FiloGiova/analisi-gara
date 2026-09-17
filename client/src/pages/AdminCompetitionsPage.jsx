@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Modal from '../components/Modal.jsx';
+import { can } from '../../../shared/permissions.js';
 
 const emptyForm = {
   value: '',
@@ -159,14 +160,14 @@ export default function AdminCompetitionsPage({ currentUser }) {
   }
 
   useEffect(() => {
-    if (currentUser.role === 'admin') {
+    if (can(currentUser, 'competitions:manage')) {
       loadCompetitions();
     } else {
       setLoading(false);
     }
   }, [currentUser.role]);
 
-  if (currentUser.role !== 'admin') {
+  if (!can(currentUser, 'competitions:manage')) {
     return (
       <div className="empty-state">
         <h2>Area riservata agli admin</h2>

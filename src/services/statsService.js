@@ -1,4 +1,5 @@
 import { dbGet, dbAll } from '../database/db.js';
+import { hasAnyRoleSql } from '../database/userRoles.js';
 import { HttpError } from '../utils/httpError.js';
 import { availabilityByObserverOnDate, availabilityPeriodLabel } from './observerAvailabilityService.js';
 
@@ -475,10 +476,10 @@ export async function getObserverSuggestions({ gameId }) {
   ];
 
   const candidates = await dbAll(
-    `SELECT id, display_name, role
-       FROM users
-      WHERE active = 1 AND role IN ('observer', 'instructor')
-      ORDER BY display_name`
+    `SELECT u.id, u.display_name, u.role
+       FROM users u
+      WHERE u.active = 1 AND ${hasAnyRoleSql('u', ['observer', 'instructor'])}
+      ORDER BY u.display_name`
   );
   const unavailableByObserver = await availabilityByObserverOnDate(candidates.map((candidate) => candidate.id), gameDate);
 

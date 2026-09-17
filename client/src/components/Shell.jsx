@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { navigate } from '../lib/navigation.js';
 import UserAvatar from './UserAvatar.jsx';
 import SeasonSelector from './SeasonSelector.jsx';
+import { can, hasRole } from '../../../shared/permissions.js';
 
 const ICONS = {
   games: (
@@ -51,12 +52,14 @@ const ICONS = {
   )
 };
 
+// Ogni voce ha la capability che la abilita: l'operatore vede solo le sue,
+// senza che il menu debba conoscere i ruoli.
 const ADMIN_ENTRIES = [
-  { path: '/admin/users', label: 'Utenti' },
-  { path: '/admin/competitions', label: 'Campionati' },
-  { path: '/admin/sources', label: 'Sorgenti gare' },
-  { path: '/admin/imports', label: 'Import designazioni' },
-  { path: '/admin/logs', label: 'Log' }
+  { path: '/admin/users', label: 'Utenti', capability: 'users:manage' },
+  { path: '/admin/competitions', label: 'Campionati', capability: 'competitions:manage' },
+  { path: '/admin/sources', label: 'Sorgenti gare', capability: 'sources:manage' },
+  { path: '/admin/imports', label: 'Import designazioni', capability: 'designations:import' },
+  { path: '/admin/logs', label: 'Log', capability: 'logs:view' }
 ];
 
 export default function Shell({
@@ -75,10 +78,14 @@ export default function Shell({
   const instructorCompetitions = user.instructorCompetitions?.length
     ? user.instructorCompetitions
     : [user.instructorCompetition || user.formatterCompetition].filter(Boolean);
-  const isReferee = user.role === 'referee';
-  // Admin e formatori (con almeno un campionato) vedono le sezioni gestionali
-  // (Gare, Statistiche, Arbitri). Gli osservatori no.
-  const canSeeManagement = user.role === 'admin' || (user.role === 'instructor' && instructorCompetitions.length > 0);
+  const isReferee = hasRole(user, 'referee');
+  const adminEntries = ADMIN_ENTRIES.filter((entry) => can(user, entry.capability));
+  // Chi gestisce gare o rapporti altrui vede le sezioni gestionali; l'operatore
+  // entra per le gare, ma non per statistiche e arbitri.
+  const canSeeGames = can(user, 'games:manage') || can(user, 'designations:assign');
+  const canSeeStats = can(user, 'stats:view');
+  const canSeeReferees = can(user, 'referees:inspect');
+  const canSeeManagement = canSeeGames || canSeeStats || canSeeReferees;
   const homePath = isReferee ? '/me' : '/';
 
   function navClass(section) {
@@ -133,11 +140,13 @@ export default function Shell({
   // Bottom tab bar mobile: sezioni principali per ruolo, max 5 voci.
   const tabs = [];
   if (canSeeManagement) {
-    tabs.push({ section: 'games', label: 'Gare', icon: ICONS.games, onPress: () => go('/') });
-    tabs.push({ section: 'reports', label: 'Rapporti', icon: ICONS.reports, onPress: () => go('/reports') });
-    tabs.push({ section: 'coverage', label: 'Statistiche', icon: ICONS.coverage, onPress: () => go('/coverage') });
-    tabs.push({ section: 'referees', label: 'Arbitri', icon: ICONS.referees, onPress: () => go('/admin/referees') });
-    if (user.role === 'admin') {
+    if (canSeeGames) tabs.push({ section: 'games', label: 'Gare', icon: ICONS.games, onPress: () => go('/') });
+    if (can(user, 'reports:write') || can(user, 'reports:read')) {
+      tabs.push({ section: 'reports', label: 'Rapporti', icon: ICONS.reports, onPress: () => go('/reports') });
+    }
+    if (canSeeStats) tabs.push({ section: 'coverage', label: 'Statistiche', icon: ICONS.coverage, onPress: () => go('/coverage') });
+    if (canSeeReferees) tabs.push({ section: 'referees', label: 'Arbitri', icon: ICONS.referees, onPress: () => go('/admin/referees') });
+    if (adminEntries.length) {
       tabs.push({ section: 'admin', label: 'Admin', icon: ICONS.admin, onPress: () => setAdminSheetOpen(true) });
     }
   } else {
@@ -172,7 +181,7 @@ export default function Shell({
         <SeasonSelector value={season} seasons={seasons} onChange={onSeasonChange} />
 
         <nav className="topbar-actions">
-          {canSeeManagement ? (
+          {canSeeGames ? (
             <button
               type="button"
               className={navClass('games')}
@@ -182,15 +191,17 @@ export default function Shell({
               Gare
             </button>
           ) : null}
-          <button
-            type="button"
-            className={navClass('reports')}
-            onClick={() => navigate(isReferee ? '/me' : canSeeManagement ? '/reports' : '/')}
-            aria-current={activeSection === 'reports' ? 'page' : undefined}
-          >
-            {isReferee ? 'I miei rapporti' : 'Rapporti'}
-          </button>
-          {canSeeManagement ? (
+          {isReferee || can(user, 'reports:write') || can(user, 'reports:read') ? (
+            <button
+              type="button"
+              className={navClass('reports')}
+              onClick={() => navigate(isReferee ? '/me' : canSeeManagement ? '/reports' : '/')}
+              aria-current={activeSection === 'reports' ? 'page' : undefined}
+            >
+              {isReferee ? 'I miei rapporti' : 'Rapporti'}
+            </button>
+          ) : null}
+          {canSeeStats ? (
             <button
               type="button"
               className={navClass('coverage')}
@@ -200,7 +211,7 @@ export default function Shell({
               Statistiche
             </button>
           ) : null}
-          {canSeeManagement ? (
+          {canSeeReferees ? (
             <button
               type="button"
               className={navClass('referees')}
@@ -210,7 +221,7 @@ export default function Shell({
               Arbitri
             </button>
           ) : null}
-          {user.role === 'admin' ? (
+          {adminEntries.length ? (
             <div className={`admin-menu ${menuOpen ? 'is-open' : ''}`} ref={menuRef}>
               <button
                 type="button"
@@ -225,7 +236,7 @@ export default function Shell({
               </button>
               {menuOpen ? (
                 <div className="admin-dropdown" role="menu">
-                  {ADMIN_ENTRIES.map((entry) => (
+                  {adminEntries.map((entry) => (
                     <button key={entry.path} type="button" role="menuitem" onClick={() => go(entry.path)}>
                       {entry.label}
                     </button>
@@ -280,7 +291,7 @@ export default function Shell({
                 <div className="filter-sheet-handle" aria-hidden="true" />
                 <p className="filter-sheet-title">Amministrazione</p>
                 <div className="menu-sheet-list">
-                  {ADMIN_ENTRIES.map((entry) => (
+                  {adminEntries.map((entry) => (
                     <button key={entry.path} type="button" onClick={() => go(entry.path)}>
                       {entry.label}
                     </button>

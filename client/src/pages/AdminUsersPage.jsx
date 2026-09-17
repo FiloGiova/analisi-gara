@@ -6,12 +6,13 @@ import Select from '../components/Select.jsx';
 import Modal from '../components/Modal.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { navigate } from '../lib/navigation.js';
+import { ROLE_LABELS, ROLE_DESCRIPTIONS, can, hasRole, normalizeRoles } from '../../../shared/permissions.js';
 
 const emptyNewUser = {
   username: '',
   displayName: '',
   password: '',
-  role: 'observer',
+  roles: ['observer'],
   instructorAssignments: []
 };
 
@@ -23,21 +24,60 @@ const emptyPasswordForm = {
 
 const emptyEditForm = {
   displayName: '',
-  role: 'observer',
+  roles: ['observer'],
   active: true,
   instructorAssignments: []
 };
 
-const ROLE_OPTIONS = [
-  { value: 'observer', label: 'Osservatore' },
-  { value: 'instructor', label: 'Formatore' },
-  { value: 'admin', label: 'Admin' }
-];
+// Un utente può avere più ruoli e i permessi si sommano. L'arbitro non compare
+// tra le opzioni: è esclusivo e nasce dal collegamento con l'anagrafica.
+const ROLE_OPTIONS = ['observer', 'instructor', 'operator', 'admin'];
 
-function UserRoleBadge({ role }) {
-  const label = role === 'admin' ? 'Admin' : role === 'instructor' ? 'Formatore' : role === 'referee' ? 'Arbitro' : 'Osservatore';
-  const className = role === 'admin' ? 'status-final' : role === 'instructor' || role === 'referee' ? 'status-draft' : '';
-  return <span className={`status-badge ${className}`}>{label}</span>;
+const ROLE_BADGE_CLASS = {
+  admin: 'status-final',
+  instructor: 'status-draft',
+  referee: 'status-draft',
+  operator: 'status-info',
+  observer: ''
+};
+
+function UserRolesBadges({ roles = [] }) {
+  const list = roles.length ? roles : ['observer'];
+  return (
+    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+      {list.map((role) => (
+        <span key={role} className={`status-badge status-badge-sm ${ROLE_BADGE_CLASS[role] || ''}`}>
+          {ROLE_LABELS[role] || role}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function RoleChecklist({ value = [], onChange, disabled = false }) {
+  function toggle(role) {
+    const next = value.includes(role) ? value.filter((item) => item !== role) : [...value, role];
+    onChange(normalizeRoles(next.length ? next : ['observer']));
+  }
+
+  return (
+    <div className="role-checklist">
+      {ROLE_OPTIONS.map((role) => (
+        <label key={role} className={`role-option${value.includes(role) ? ' is-selected' : ''}`}>
+          <input
+            type="checkbox"
+            checked={value.includes(role)}
+            onChange={() => toggle(role)}
+            disabled={disabled}
+          />
+          <span>
+            <strong>{ROLE_LABELS[role]}</strong>
+            <small>{ROLE_DESCRIPTIONS[role]}</small>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
 }
 
 function UserStatusBadge({ active }) {
@@ -178,19 +218,21 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
   }
 
   useEffect(() => {
-    if (currentUser.role === 'admin') {
+    if (can(currentUser, 'users:manage')) {
       loadUsers();
     } else {
       setLoading(false);
     }
-  }, [currentUser.role]);
+  }, [currentUser.role, currentUser.roles]);
 
   function updateNewUser(field, value) {
     setNewUser((previous) => ({
       ...previous,
       [field]: value,
-      ...(field === 'role' && value !== 'instructor' ? { instructorAssignments: [] } : {}),
-      ...(field === 'role' && value === 'instructor' && previous.instructorAssignments.length === 0
+      // Le assegnazioni servono solo al formatore: compaiono e spariscono con
+      // la spunta del ruolo.
+      ...(field === 'roles' && !value.includes('instructor') ? { instructorAssignments: [] } : {}),
+      ...(field === 'roles' && value.includes('instructor') && previous.instructorAssignments.length === 0
         ? { instructorAssignments: [defaultAssignment()] }
         : {})
     }));
@@ -204,8 +246,10 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     setEditForm((previous) => ({
       ...previous,
       [field]: value,
-      ...(field === 'role' && value !== 'instructor' ? { instructorAssignments: [] } : {}),
-      ...(field === 'role' && value === 'instructor' && previous.instructorAssignments.length === 0
+      // Le assegnazioni servono solo al formatore: compaiono e spariscono con
+      // la spunta del ruolo.
+      ...(field === 'roles' && !value.includes('instructor') ? { instructorAssignments: [] } : {}),
+      ...(field === 'roles' && value.includes('instructor') && previous.instructorAssignments.length === 0
         ? { instructorAssignments: [defaultAssignment()] }
         : {})
     }));
@@ -214,7 +258,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
   function updateUserPayload(user, updates = {}) {
     return {
       displayName: user.displayName,
-      role: user.role,
+      roles: user.roles?.length ? user.roles : [user.role],
       instructorAssignments: instructorAssignments(user),
       active: user.active,
       ...updates
@@ -251,7 +295,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     event.preventDefault();
     setError('');
     setSuccess('');
-    if (newUser.role === 'instructor' && !validAssignments(newUser.instructorAssignments)) {
+    if (newUser.roles.includes('instructor') && !validAssignments(newUser.instructorAssignments)) {
       setError('Completa almeno una stagione e un campionato per il formatore.');
       return;
     }
@@ -259,7 +303,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     try {
       await api.createUser({
         ...newUser,
-        instructorAssignments: newUser.role === 'instructor' ? newUser.instructorAssignments : []
+        instructorAssignments: newUser.roles.includes('instructor') ? newUser.instructorAssignments : []
       });
       setNewUser(emptyNewUser);
       setShowCreateModal(false);
@@ -276,7 +320,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     setEditUser(user);
     setEditForm({
       displayName: user.displayName || user.username,
-      role: user.role,
+      roles: user.roles?.length ? user.roles : [user.role],
       active: Boolean(user.active),
       instructorAssignments: instructorAssignments(user)
     });
@@ -289,7 +333,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
 
     setError('');
     setSuccess('');
-    if (editForm.role === 'instructor' && !validAssignments(editForm.instructorAssignments)) {
+    if (editForm.roles.includes('instructor') && !validAssignments(editForm.instructorAssignments)) {
       setError('Completa almeno una stagione e un campionato per il formatore.');
       return;
     }
@@ -297,9 +341,9 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     try {
       await api.updateUser(editUser.id, updateUserPayload(editUser, {
         displayName: editForm.displayName,
-        role: editForm.role,
+        roles: editForm.roles,
         active: editUser.id === currentUser.id ? true : editForm.active,
-        instructorAssignments: editForm.role === 'instructor' ? editForm.instructorAssignments : []
+        instructorAssignments: editForm.roles.includes('instructor') ? editForm.instructorAssignments : []
       }));
       setEditUser(null);
       setEditForm(emptyEditForm);
@@ -362,7 +406,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     }
   }
 
-  if (currentUser.role !== 'admin') {
+  if (!can(currentUser, 'users:manage')) {
     return (
       <div className="empty-state">
         <h2>Area riservata agli admin</h2>
@@ -417,15 +461,11 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                 required
               />
             </label>
-            <label className="field">
-              Ruolo
-              <Select
-                value={newUser.role}
-                onChange={(v) => updateNewUser('role', v)}
-                options={ROLE_OPTIONS}
-              />
-            </label>
-            {newUser.role === 'instructor' ? (
+            <div className="field">
+              <span>Ruoli</span>
+              <RoleChecklist value={newUser.roles} onChange={(value) => updateNewUser('roles', value)} />
+            </div>
+            {newUser.roles.includes('instructor') ? (
               <div className="field">
                 <span>Storico campionati formatore</span>
                 <InstructorAssignmentsEditor
@@ -528,14 +568,16 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                 autoComplete="off"
               />
             </label>
-            <label className="field">
-              Ruolo
-              <Select
-                value={editForm.role}
-                onChange={(value) => updateEditForm('role', value)}
-                options={ROLE_OPTIONS}
-              />
-            </label>
+            <div className="field">
+              <span>Ruoli</span>
+              {hasRole(editUser, 'referee') ? (
+                <p style={{ color: 'var(--muted)', margin: 0 }}>
+                  Utenza arbitro: è un ruolo esclusivo e non si combina con gli altri.
+                </p>
+              ) : (
+                <RoleChecklist value={editForm.roles} onChange={(value) => updateEditForm('roles', value)} />
+              )}
+            </div>
             <label className="field">
               Stato
               <Select
@@ -548,7 +590,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                 ]}
               />
             </label>
-            {editForm.role === 'instructor' ? (
+            {editForm.roles.includes('instructor') ? (
               <div className="field">
                 <span>Storico campionati formatore</span>
                 <InstructorAssignmentsEditor
@@ -616,12 +658,12 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                       {user.username}
                     </td>
                     <td style={{ fontWeight: 600 }}>{user.displayName || user.username}</td>
-                    <td><UserRoleBadge role={user.role} /></td>
+                    <td><UserRolesBadges roles={user.roles} /></td>
                     <td><UserStatusBadge active={user.active} /></td>
                     <td>
-                      {user.role === 'instructor'
+                      {hasRole(user, 'instructor')
                         ? formatAssignments(instructorAssignments(user), competitionLabel)
-                        : user.role === 'referee'
+                        : hasRole(user, 'referee')
                           ? `Arbitro #${user.refereeId || '-'}`
                           : '-'}
                     </td>
@@ -640,7 +682,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                         </button>
                         {openActionsId === user.id ? (
                           <div className="row-menu-dropdown">
-                            {['observer', 'instructor'].includes(user.role) ? (
+                            {can(user, 'reports:write') && !hasRole(user, 'referee') ? (
                               <button type="button" onClick={() => navigate(`/observers/${user.id}`)}>Indisponibilità</button>
                             ) : null}
                             <button type="button" onClick={() => openEditModal(user)}>Modifica</button>

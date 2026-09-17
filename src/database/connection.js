@@ -46,6 +46,7 @@ async function runBackfills() {
   await backfillOfficialExternalNames();
   await cleanupLegacyExportRows();
   await migrateUserRoles();
+  await backfillUserRoles();
   await backfillInstructorAssignments();
 }
 
@@ -298,6 +299,24 @@ function legacyInstructorCompetitions(value) {
 // Prima dello storico i campionati erano globali. Per non togliere visibilità
 // sui dati già consultabili, la prima migrazione li replica su tutte le stagioni
 // presenti; da quel momento l'admin può differenziare ogni stagione.
+// Popola `user_roles` dal vecchio campo singolo, una volta sola: da qui in poi
+// la tabella e' la fonte di verita' e users.role ne e' la copia principale.
+async function backfillUserRoles() {
+  await dbRun(
+    `INSERT INTO user_roles (user_id, role)
+     SELECT u.id,
+            CASE
+              WHEN u.role IN ('admin', 'operator', 'instructor', 'observer', 'referee') THEN u.role
+              WHEN u.role IN ('formatter', 'formatore') THEN 'instructor'
+              WHEN u.role = 'user' AND COALESCE(TRIM(u.formatter_competition), '') <> '' THEN 'instructor'
+              ELSE 'observer'
+            END
+       FROM users u
+      WHERE NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id)
+     ON CONFLICT DO NOTHING`
+  );
+}
+
 async function backfillInstructorAssignments() {
   const seasons = new Set([currentSportSeason()]);
   const seasonRows = await dbAll(`

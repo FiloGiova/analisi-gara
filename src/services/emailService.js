@@ -9,6 +9,7 @@ import { getCompetitionByValue } from './competitionService.js';
 import { getSetting } from './settingsService.js';
 import { DEFAULT_EMAIL_BODY_TEMPLATE, EMAIL_TEMPLATE_KEY, renderEmailTemplate } from './emailTemplate.js';
 import { HttpError } from '../utils/httpError.js';
+import { hasRole } from '../../shared/permissions.js';
 
 // Factory sostituibile nei test: node:test non può mockare gli import ESM.
 let transportFactory = (smtp) =>
@@ -83,7 +84,7 @@ async function refereeSurname(refereeId, fallbackName) {
 // Valida e calcola tutto ciò che serve all'invio senza inviare nulla:
 // è la base sia del preview sia dell'invio vero, così restano coerenti.
 export async function buildEmailPlan(reportId, role, user) {
-  if (user?.role === 'referee') {
+  if (hasRole(user, 'referee')) {
     throw new HttpError(403, 'Gli arbitri hanno accesso in sola lettura.');
   }
   if (!['first', 'second'].includes(role)) {

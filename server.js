@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { config } from './src/config.js';
 import { initializeDatabase } from './src/database/connection.js';
 import { dbGet, dbRun } from './src/database/db.js';
-import { attachUser, requireAdmin, requireAdminOrInstructor, requireAuth, requireReportAuthors } from './src/middleware/auth.js';
+import { attachUser, requireAdmin, requireAdminOrInstructor, requireAuth, requireCapability, requireReportAuthors } from './src/middleware/auth.js';
 import { authRouter } from './src/routes/auth.routes.js';
 import { reportsRouter } from './src/routes/reports.routes.js';
 import { usersRouter } from './src/routes/users.routes.js';
@@ -61,9 +61,9 @@ app.use('/api/referees', requireAuth, refereePhotosRouter);
 app.use('/api/referees', requireAuth, refereesRouter);
 app.use('/api/games', requireAuth, gamesRouter);
 app.use('/api/observers', requireAuth, observersRouter);
-app.use('/api/sources', requireAuth, requireAdmin, sourcesRouter);
-app.use('/api/imports', requireAuth, requireAdmin, importsRouter);
-app.use('/api/stats', requireAuth, requireAdminOrInstructor, statsRouter);
+app.use('/api/sources', requireAuth, requireCapability('sources:manage'), sourcesRouter);
+app.use('/api/imports', requireAuth, requireCapability('designations:import'), importsRouter);
+app.use('/api/stats', requireAuth, requireCapability('stats:view'), statsRouter);
 if (config.aiEnabled) {
   app.use('/api/ai', requireAuth, requireReportAuthors, aiRouter);
 }

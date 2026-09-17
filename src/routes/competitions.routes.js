@@ -1,6 +1,6 @@
 import express from 'express';
 import { listCompetitions, createCompetition, updateCompetition } from '../services/competitionService.js';
-import { requireAdmin } from '../middleware/auth.js';
+import { requireCapability } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/httpError.js';
 
 export const competitionsRouter = express.Router();
@@ -16,7 +16,7 @@ competitionsRouter.get(
 
 competitionsRouter.post(
   '/',
-  requireAdmin,
+  requireCapability('competitions:manage'),
   asyncHandler(async (req, res) => {
     res.status(201).json({ competition: await createCompetition(req.body || {}) });
   })
@@ -24,7 +24,7 @@ competitionsRouter.post(
 
 competitionsRouter.put(
   '/:id',
-  requireAdmin,
+  requireCapability('competitions:manage'),
   asyncHandler(async (req, res) => {
     res.json({ competition: await updateCompetition(Number(req.params.id), req.body || {}) });
   })

@@ -1032,6 +1032,50 @@ input.filter-search {
   accent-color: var(--teal);
 }
 
+/* ── Selezione ruoli (più ruoli per utente) ──────────────────── */
+
+.role-checklist {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.role-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.role-option:hover {
+  border-color: var(--teal);
+}
+
+.role-option.is-selected {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.role-option input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--teal);
+}
+
+.role-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.role-option small {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 /* ── Filtro periodo (calendario in stile app) ────────────────── */
 
 .period-filter .custom-select-trigger {

@@ -9,6 +9,7 @@ import { formatMatchNumber, formatDate } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
 import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
+import { can } from '../../../shared/permissions.js';
 
 
 const BANDS = [
@@ -91,7 +92,7 @@ export default function CoveragePage({ currentUser, season }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
-  const canAccess = currentUser.role === 'admin' ||
+  const canAccess = can(currentUser, 'stats:view') ||
     (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
 
   // Cambio stagione (dal selettore globale nella topbar): filtri da azzerare.

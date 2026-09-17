@@ -4,6 +4,7 @@ import { HttpError } from '../utils/httpError.js';
 import { listGames, setOfficial, getOfficialRow } from './gameService.js';
 import { resolveRefereeName, resolveObserverName, normalizedNameKey, cleanExternalName } from './nameMatching.js';
 import { listReferees } from './refereeService.js';
+import { hasRole } from '../../shared/permissions.js';
 
 // Import/export designazioni via XLSX. Il numero gara è la chiave: il file del
 // designatore aggiorna gare già presenti, mai ne crea di nuove.
@@ -377,8 +378,8 @@ export async function applyDesignationsImport({ sportSeason, rows, user = null }
         row.gameId,
         {
           role: item.role,
-          refereeId: item.role === 'observer' ? null : item.resolvedId,
-          userId: item.role === 'observer' ? item.resolvedId : null,
+          refereeId: hasRole(item, 'observer') ? null : item.resolvedId,
+          userId: hasRole(item, 'observer') ? item.resolvedId : null,
           externalName: item.name,
           source: 'xlsx',
           status: 'confirmed'

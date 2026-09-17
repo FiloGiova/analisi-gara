@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS')
 );
 
+-- Ruoli dell'utente: un utente puo' averne piu' di uno e i permessi si sommano
+-- (vedi shared/permissions.js). `users.role` resta il ruolo principale, usato
+-- dove serve una parola sola e dal codice non ancora convertito.
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL CHECK (role IN ('admin', 'operator', 'instructor', 'observer', 'referee')),
+  created_at TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD HH24:MI:SS'),
+  PRIMARY KEY (user_id, role)
+);
+
 CREATE TABLE IF NOT EXISTS instructor_competition_assignments (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL,

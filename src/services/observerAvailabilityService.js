@@ -1,5 +1,7 @@
 import { dbAll, dbGet, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
+import { hasAnyRoleSql } from '../database/userRoles.js';
+import { hasRole } from '../../shared/permissions.js';
 
 const OBSERVER_ROLES = new Set(['observer', 'instructor']);
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -68,12 +70,13 @@ export function availabilityPeriodLabel(availability) {
 async function getObserverRow(userId) {
   const id = asPositiveInteger(userId, 'ID osservatore');
   const observer = await dbGet(
-    `SELECT id, username, display_name, role, photo_path, active, created_at, updated_at
-       FROM users
-      WHERE id = ?`,
+    `SELECT u.id, u.username, u.display_name, u.role, u.photo_path, u.active, u.created_at, u.updated_at,
+            ${hasAnyRoleSql('u', [...OBSERVER_ROLES])} AS is_observer
+       FROM users u
+      WHERE u.id = ?`,
     [id]
   );
-  if (!observer || !OBSERVER_ROLES.has(observer.role)) {
+  if (!observer || !observer.is_observer) {
     throw new HttpError(404, 'Osservatore non trovato.');
   }
   return observer;
@@ -81,8 +84,11 @@ async function getObserverRow(userId) {
 
 function assertCanManage(actor, observerId) {
   if (!actor) throw new HttpError(401, 'Accesso richiesto.');
-  if (actor.role === 'admin' || actor.role === 'instructor') return;
-  if (actor.id === observerId && OBSERVER_ROLES.has(actor.role)) return;
+  // Admin e formatori gestiscono chiunque; osservatori e formatori gestiscono
+  // anche il proprio profilo. Non è un permesso per campionato: le
+  // indisponibilità riguardano le persone, non le competizioni.
+  if (hasRole(actor, 'admin') || hasRole(actor, 'instructor')) return;
+  if (actor.id === observerId && [...OBSERVER_ROLES].some((role) => hasRole(actor, role))) return;
   throw new HttpError(403, 'Non puoi gestire le indisponibilità di questo osservatore.');
 }
 
@@ -106,7 +112,7 @@ export async function listObserversWithAvailability() {
             MIN(CASE WHEN ou.start_date > ? THEN ou.start_date END) AS next_future_from
        FROM users u
        LEFT JOIN observer_unavailabilities ou ON ou.user_id = u.id
-      WHERE u.role IN ('observer', 'instructor')
+      WHERE ${hasAnyRoleSql('u', [...OBSERVER_ROLES])}
       GROUP BY u.id, u.username, u.display_name, u.role, u.photo_path, u.active
       ORDER BY u.active DESC, LOWER(u.display_name) ASC`,
     [today, today, today]

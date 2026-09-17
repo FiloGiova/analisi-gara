@@ -4,6 +4,7 @@ import { getCookie } from '../utils/cookies.js';
 import { hashSessionToken } from '../utils/passwords.js';
 import { HttpError } from '../utils/httpError.js';
 import { publicUserFromRow } from '../services/userService.js';
+import { can, hasRole } from '../../shared/permissions.js';
 
 export async function getCurrentUser(req) {
   const token = getCookie(req, config.sessionCookieName);
@@ -55,8 +56,42 @@ export function requireAuth(req, _res, next) {
   next();
 }
 
+// Guardia per capability: è il modo giusto di proteggere una rotta, perché
+// segue la tabella dei permessi in shared/permissions.js invece di elencare
+// ruoli qui. Il perimetro per campionato resta responsabilità del servizio.
+export function requireCapability(capability) {
+  return function guard(req, _res, next) {
+    if (!req.user) {
+      next(new HttpError(401, 'Accesso richiesto.'));
+      return;
+    }
+    if (!can(req.user, capability)) {
+      next(new HttpError(403, 'Permessi insufficienti.'));
+      return;
+    }
+    next();
+  };
+}
+
+// Alcune schermate servono a più di un ruolo per motivi diversi (per esempio
+// i candidati per un nome da associare: li vede chi designa e chi confronta
+// gli alias): basta una delle capability elencate.
+export function requireAnyCapability(...capabilities) {
+  return function guard(req, _res, next) {
+    if (!req.user) {
+      next(new HttpError(401, 'Accesso richiesto.'));
+      return;
+    }
+    if (!capabilities.some((capability) => can(req.user, capability))) {
+      next(new HttpError(403, 'Permessi insufficienti.'));
+      return;
+    }
+    next();
+  };
+}
+
 export function requireAdmin(req, _res, next) {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || !hasRole(req.user, 'admin')) {
     next(new HttpError(403, 'Permessi amministratore richiesti.'));
     return;
   }
@@ -64,7 +99,7 @@ export function requireAdmin(req, _res, next) {
 }
 
 export function requireReferee(req, _res, next) {
-  if (!req.user || req.user.role !== 'referee' || !req.user.refereeId) {
+  if (!req.user || !hasRole(req.user, 'referee') || !req.user.refereeId) {
     next(new HttpError(403, 'Permessi arbitro richiesti.'));
     return;
   }
@@ -76,7 +111,7 @@ export function requireAdminOrInstructor(req, _res, next) {
     next(new HttpError(401, 'Accesso richiesto.'));
     return;
   }
-  if (req.user.role !== 'admin' && req.user.role !== 'instructor') {
+  if (!hasRole(req.user, 'admin') && !hasRole(req.user, 'instructor')) {
     next(new HttpError(403, 'Permessi insufficienti.'));
     return;
   }
@@ -88,7 +123,7 @@ export function requireReportAuthors(req, _res, next) {
     next(new HttpError(401, 'Accesso richiesto.'));
     return;
   }
-  if (req.user.role !== 'admin' && req.user.role !== 'instructor' && req.user.role !== 'observer') {
+  if (!can(req.user, 'reports:write')) {
     next(new HttpError(403, 'Permessi insufficienti.'));
     return;
   }

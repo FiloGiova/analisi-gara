@@ -13,6 +13,7 @@ import ListSkeleton from '../components/ListSkeleton.jsx';
 import PeriodFilter from '../components/PeriodFilter.jsx';
 import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
 import { gameDateKey, isGameInPeriod, todayIso, formatPeriodLabel } from '../../../shared/gamePeriod.js';
+import { can, isScopedOnly } from '../../../shared/permissions.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -61,8 +62,9 @@ function matchdayHeaderFor(games, index) {
 export default function GamesPage({ currentUser, season }) {
   const { activeCompetitions, competitionLabel } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
-  const canManage = currentUser.role === 'admin' ||
-    (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
+  // Gare: le gestisce chi le crea/modifica (admin, operatore, formatore) e
+  // chi designa; l'elenco serve a entrambi.
+  const canManage = can(currentUser, 'games:manage') || can(currentUser, 'designations:assign');
   const [games, setGames] = useState([]);
   const [matchday, setMatchday] = useState('');
   const [competition, setCompetition] = useState('');
@@ -124,7 +126,7 @@ export default function GamesPage({ currentUser, season }) {
     return present.length ? present : activeCompetitions.map((item) => item.value);
   }, [assignedCompetitions.join('|'), currentUser.role, games, activeCompetitions]);
 
-  const showCompetitionFilter = currentUser.role === 'admin' || competitionOptions.length > 1;
+  const showCompetitionFilter = !isScopedOnly(currentUser, 'games:manage') || competitionOptions.length > 1;
 
   // Gli altri filtri si restringono al campionato scelto: fasi, giornate e
   // arbitri di un altro campionato non servono a nessuno.

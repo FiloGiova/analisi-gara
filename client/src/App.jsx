@@ -24,6 +24,7 @@ import CoveragePage from './pages/CoveragePage.jsx';
 import ObserversPage from './pages/ObserversPage.jsx';
 import ObserverDetailPage from './pages/ObserverDetailPage.jsx';
 import { CompetitionsProvider } from './lib/competitions.jsx';
+import { can, hasRole } from '../../shared/permissions.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -96,14 +97,13 @@ export default function App() {
     return <LoginPage onLogin={setUser} />;
   }
 
-  const isReferee = user.role === 'referee';
-  const instructorCompetitions = user.instructorCompetitions?.length
-    ? user.instructorCompetitions
-    : [user.instructorCompetition || user.formatterCompetition].filter(Boolean);
-  const canSeeManagement = user.role === 'admin' || (user.role === 'instructor' && instructorCompetitions.length > 0);
+  const isReferee = hasRole(user, 'referee');
+  // La home dipende da cosa l'utente può fare: gare per chi le gestisce o le
+  // designa, rapporti per gli osservatori, i propri rapporti per gli arbitri.
+  const canSeeGames = can(user, 'games:manage') || can(user, 'designations:assign');
   let page = isReferee
     ? <RefereeHomePage currentUser={user} season={season} />
-    : canSeeManagement
+    : canSeeGames
       ? <GamesPage currentUser={user} season={season} />
       : <DashboardPage currentUser={user} season={season} />;
   if (!isReferee && route.name === 'dashboard') page = <DashboardPage currentUser={user} season={season} />;
@@ -157,7 +157,7 @@ export default function App() {
   }
 
   let activeSection = '';
-  if (route.name === 'home') activeSection = isReferee || !canSeeManagement ? 'reports' : 'games';
+  if (route.name === 'home') activeSection = isReferee || !canSeeGames ? 'reports' : 'games';
   if (['games', 'gameDetail', 'designateObservers', 'observers', 'observerDetail'].includes(route.name)) activeSection = 'games';
   if (['dashboard', 'newReport', 'editReport', 'reportDetail', 'refereeHome'].includes(route.name)) activeSection = 'reports';
   if (route.name === 'coverage') activeSection = 'coverage';

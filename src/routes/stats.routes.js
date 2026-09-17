@@ -5,6 +5,7 @@ import { buildStatsWorkbook } from '../services/statsExportService.js';
 import { REFEREE_BANDS } from '../services/refereeService.js';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
 import { instructorCompetitionsForSeason } from '../../shared/instructorAssignments.js';
+import { hasRole } from '../../shared/permissions.js';
 
 // Montato con requireAuth + requireAdminOrInstructor in server.js.
 export const statsRouter = express.Router();
@@ -18,7 +19,7 @@ function seasonParam(req) {
 // - formatore: solo i suoi campionati (il richiesto, se tra i suoi, altrimenti 403).
 function effectiveCompetitions(req) {
   const requested = String(req.query.competition || '').trim();
-  if (req.user?.role === 'instructor') {
+  if (hasRole(req.user, 'instructor')) {
     const allowed = instructorCompetitionsForSeason(req.user, seasonParam(req));
     if (!allowed.length) {
       throw new HttpError(403, 'Nessun campionato assegnato alla tua utenza per questa stagione.');

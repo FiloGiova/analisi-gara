@@ -7,6 +7,57 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-17 — Ruoli multipli, ruolo Operatore e log dei rapporti
+
+**Log delle azioni sui rapporti.** Nuova tabella `report_events` e terza tab
+"Rapporti" nei Log (solo admin): creazione, modifica, passaggio a definitivo,
+import da PDF federale, allegato caricato/eliminato, PDF generato, invio email
+e cancellazione, ciascuno con autore, ruolo e dati della gara. La tabella non
+ha FK verso `reports` e copia i dati identificativi come testo: l'evento più
+interessante — la cancellazione — deve sopravvivere al rapporto che descrive.
+Il registro è laterale: se la sua scrittura fallisce viene annotata in console
+ma l'azione dell'osservatore non fallisce. Parte dalle azioni successive al
+rilascio, senza ricostruzione dello storico.
+
+**Ruoli multipli.** Un utente può avere più ruoli e i permessi si sommano
+(`user_roles`; `users.role` resta il ruolo principale per il codice storico e
+per le etichette). La tabella di chi-può-cosa vive in
+[shared/permissions.js](shared/permissions.js), letta sia dal server sia dal
+client: `can(user, 'capability', { competition, season })` invece dei confronti
+sparsi su `role`. Una capability è concessa `global` oppure `scoped` (solo sui
+campionati assegnati al formatore per quella stagione), così sommare i ruoli non
+allarga mai il perimetro del formatore: tecnico + formatore DR1 gestisce le gare
+di tutti i campionati ma vede i rapporti solo di DR1.
+
+- Guardie: `requireCapability` / `requireAnyCapability` in
+  [src/middleware/auth.js](src/middleware/auth.js); le query che selezionano
+  utenti per ruolo passano da `hasAnyRoleSql()` in
+  [src/database/userRoles.js](src/database/userRoles.js), che copre anche le
+  righe non ancora migrate.
+- **L'arbitro resta esclusivo**: è l'unico ruolo restrittivo (nasconde voti e
+  Potenzialità), quindi non si combina con gli altri.
+- Schermata Utenti: i ruoli si spuntano da un elenco con la descrizione di
+  ciascuno, al posto della tendina a scelta singola.
+- Migrazione idempotente: ogni utente esistente riceve la riga in `user_roles`
+  ricavata dal vecchio campo, valori storici (`formatter`, `user`) compresi.
+
+**Nuovo ruolo Operatore.** Utenza di servizio per il lavoro di background:
+sorgenti gare e sincronizzazioni, import designazioni XLSX, import dei PDF dei
+rapporti, sezione Campionati, conferma dei nomi da associare, creazione,
+modifica e cancellazione gare. **Non** compila rapporti, **non** vede la sezione
+Arbitri (quindi nemmeno le classifiche), **non** gestisce utenti e **non** vede
+i log. Se è anche osservatore compila i rapporti delle gare in cui è designato;
+se è anche formatore ottiene il perimetro del formatore sui suoi campionati.
+
+- Chi importa un rapporto non ne diventa l'autore: la modifica richiede la
+  capability "compila rapporti", quindi un operatore può importare i PDF senza
+  poter poi metterci mano (valeva anche per il formatore).
+- Aggiunto il pulsante "Cancella gara" nel dettaglio gara: l'API esisteva già
+  ma non era raggiungibile da nessuna schermata.
+
+Test: `tests/permissions.test.js` (8 casi puri) e `tests/userRoles.test.js`
+(6 casi su database), più `tests/reportEvents.test.js` (4 casi). Suite: 158 test.
+
 ## 2026-09-17 — Filtri gare: campionato al posto dello stato
 
 - **Elenco gare**: rimosso il filtro "Stato"; al suo posto, in testa alla barra,

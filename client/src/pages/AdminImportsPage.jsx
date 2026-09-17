@@ -3,6 +3,7 @@ import MultiSelect from '../components/MultiSelect.jsx';
 import { api, ApiError, downloadDesignationsTemplate } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber } from '../lib/formatters.js';
+import { can } from '../../../shared/permissions.js';
 
 const ROLE_LABELS = {
   referee1: '1° arbitro',
@@ -37,7 +38,7 @@ export default function AdminImportsPage({ currentUser, season }) {
   const [phaseOptions, setPhaseOptions] = useState([]);
   const fileRef = useRef(null);
 
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = can(currentUser, 'designations:import');
 
   useEffect(() => {
     setPreview(null);

@@ -13,6 +13,7 @@ import PeriodFilter from '../components/PeriodFilter.jsx';
 import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
 import { gameDateKey, isGameInPeriod, formatPeriodLabel } from '../../../shared/gamePeriod.js';
 import { availabilityOnDate, formatAvailabilityPeriod, observerOptionForDate } from '../lib/observerAvailability.js';
+import { can } from '../../../shared/permissions.js';
 
 function refereeLabel(official) {
   if (!official) return '—';
@@ -22,8 +23,7 @@ function refereeLabel(official) {
 export default function DesignateObserversPage({ currentUser, season }) {
   const { activeCompetitions, competitionLabel } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
-  const canManage = currentUser.role === 'admin' ||
-    (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
+  const canManage = can(currentUser, 'designations:assign');
   const [games, setGames] = useState([]);
   const [observers, setObservers] = useState([]);
   const [competition, setCompetition] = useState('');

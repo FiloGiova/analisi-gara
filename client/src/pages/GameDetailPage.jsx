@@ -9,6 +9,7 @@ import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
 import { availabilityOnDate, formatAvailabilityPeriod, observerOptionForDate } from '../lib/observerAvailability.js';
+import { can } from '../../../shared/permissions.js';
 
 const REFEREE_ROLES = [
   { role: 'referee1', label: '1° arbitro' },
@@ -42,8 +43,13 @@ function SourceBadge({ official }) {
 
 export default function GameDetailPage({ id, currentUser }) {
   const { activeCompetitions } = useCompetitions();
-  const canManage = currentUser.role === 'admin' || currentUser.role === 'instructor';
-  const isAdmin = currentUser.role === 'admin';
+  const canManage = can(currentUser, 'games:manage') || can(currentUser, 'designations:assign');
+  const canManageAliases = can(currentUser, 'aliases:manage');
+  const canEditGame = can(currentUser, 'games:manage');
+  const canImportReports = can(currentUser, 'reports:import');
+  const canWriteReports = can(currentUser, 'reports:write');
+  const canDeleteGame = can(currentUser, 'games:delete');
+  const canAssign = can(currentUser, 'designations:assign');
   const [game, setGame] = useState(null);
   const [referees, setReferees] = useState([]);
   const [observers, setObservers] = useState([]);
@@ -53,6 +59,7 @@ export default function GameDetailPage({ id, currentUser }) {
   const [editForm, setEditForm] = useState(null);
   const [pendingForce, setPendingForce] = useState(null);
   const [roleToClear, setRoleToClear] = useState(null);
+  const [confirmDeleteGame, setConfirmDeleteGame] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [openRefEditors, setOpenRefEditors] = useState({}); // role -> mostra i controlli di riassegnazione
@@ -191,6 +198,17 @@ export default function GameDetailPage({ id, currentUser }) {
     setRoleToClear(role);
   }
 
+  async function handleDeleteGame() {
+    setError('');
+    try {
+      await api.deleteGame(game.id);
+      navigate('/games');
+    } catch (err) {
+      setConfirmDeleteGame(false);
+      setError(err instanceof ApiError ? err.message : 'Cancellazione non riuscita.');
+    }
+  }
+
   async function confirmClearOfficial() {
     const role = roleToClear;
     if (!role) return;
@@ -255,14 +273,14 @@ export default function GameDetailPage({ id, currentUser }) {
 
   useEffect(() => {
     const observerOfficial = game?.officials?.observer;
-    if (!isAdmin || !observerOfficial || observerOfficial.userId || !observerOfficial.externalName) {
+    if (!canManageAliases || !observerOfficial || observerOfficial.userId || !observerOfficial.externalName) {
       setObserverCandidates([]);
       return;
     }
     api.getAliasCandidates(observerOfficial.externalName, 'observer')
       .then((data) => setObserverCandidates(data.candidates || []))
       .catch(() => setObserverCandidates([]));
-  }, [isAdmin, game?.officials?.observer?.externalName, game?.officials?.observer?.userId]);
+  }, [canManageAliases, game?.officials?.observer?.externalName, game?.officials?.observer?.userId]);
 
   async function toggleLock(role, official) {
     await assignOfficial(role, {
@@ -325,7 +343,7 @@ export default function GameDetailPage({ id, currentUser }) {
           </div>
         </div>
         <div className="hero-actions">
-          {canManage ? (
+          {canImportReports ? (
             <button type="button" className="ghost-button" onClick={() => setShowPdfImporter(true)}>
               Importa rapporti PDF
             </button>
@@ -334,13 +352,18 @@ export default function GameDetailPage({ id, currentUser }) {
             <button type="button" className="primary-button" onClick={() => navigate(`/reports/${game.reportId}`)}>
               Apri rapporto
             </button>
-          ) : (
+          ) : canWriteReports ? (
             <button type="button" className="primary-button" onClick={() => setNewReportChoice(true)}>
               Compila rapporto
             </button>
-          )}
-          {canManage && !editing ? (
+          ) : null}
+          {canEditGame && !editing ? (
             <button type="button" className="ghost-button" onClick={startEdit}>Modifica gara</button>
+          ) : null}
+          {canDeleteGame && !editing ? (
+            <button type="button" className="danger-button" onClick={() => setConfirmDeleteGame(true)}>
+              Cancella gara
+            </button>
           ) : null}
         </div>
       </section>
@@ -459,14 +482,14 @@ export default function GameDetailPage({ id, currentUser }) {
                 ) : (
                   <span style={{ color: 'var(--muted)' }}>{role === 'referee3' ? 'Non previsto' : 'Non ancora designato'}</span>
                 )}
-                {canManage && official && !openRefEditors[role] ? (
+                {canAssign && official && !openRefEditors[role] ? (
                   <div style={{ marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
                     <button type="button" className="ghost-button" onClick={() => setOpenRefEditors((p) => ({ ...p, [role]: true }))}>
                       Modifica
                     </button>
                   </div>
                 ) : null}
-                {canManage && (!official || openRefEditors[role]) ? (
+                {canAssign && (!official || openRefEditors[role]) ? (
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                     <Select
                       value={official?.refereeId ? String(official.refereeId) : ''}
@@ -495,7 +518,7 @@ export default function GameDetailPage({ id, currentUser }) {
                     ) : null}
                   </div>
                 ) : null}
-                {isAdmin && unresolved ? (
+                {canManageAliases && unresolved ? (
                   <div style={{ flexBasis: '100%', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', paddingLeft: '90px' }}>
                     <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>Associa a:</span>
                     <Select
@@ -555,7 +578,7 @@ export default function GameDetailPage({ id, currentUser }) {
               Gara scoperta
             </span>
           )}
-          {canManage ? (
+          {canAssign ? (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
               <button type="button" className="ghost-button" onClick={() => (suggestions ? setSuggestions(null) : loadSuggestions())} disabled={suggestBusy}>
                 {suggestBusy ? 'Calcolo…' : suggestions ? 'Nascondi suggerimenti' : 'Suggerisci osservatore'}
@@ -579,7 +602,7 @@ export default function GameDetailPage({ id, currentUser }) {
           ) : null}
         </div>
 
-        {isAdmin && observer && !observer.userId && observer.externalName ? (
+        {canManageAliases && observer && !observer.userId && observer.externalName ? (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '10px' }}>
             <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>Associa "{observer.externalName}" a:</span>
             <Select
@@ -723,6 +746,18 @@ export default function GameDetailPage({ id, currentUser }) {
           <div className="empty-state" style={{ padding: '16px' }}>Nessuna modifica registrata.</div>
         )}
       </section>
+
+      {confirmDeleteGame ? (
+        <ConfirmModal
+          title="Cancella gara"
+          confirmLabel="Sì, cancella"
+          onConfirm={handleDeleteGame}
+          onCancel={() => setConfirmDeleteGame(false)}
+        >
+          Cancellare la gara <strong>{formatMatchNumber(game.matchNumber)}</strong> ({game.teamHome} - {game.teamAway})?
+          {' '}Restano nel database solo le gare collegate a un rapporto, che vanno gestite dal rapporto.
+        </ConfirmModal>
+      ) : null}
 
       {roleToClear ? (
         <ConfirmModal

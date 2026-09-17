@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAdmin, requireAdminOrInstructor } from '../middleware/auth.js';
+import { requireAnyCapability, requireCapability } from '../middleware/auth.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 import { buildDesignationsWorkbook, designationsFileName } from '../services/designationsExportService.js';
 import { isValidIsoDate } from '../../shared/gamePeriod.js';
@@ -27,20 +27,20 @@ import { getObserverSuggestions } from '../services/statsService.js';
 import { buildGamesWorkbook } from '../services/gamesExportService.js';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
 import { instructorCompetitionsForSeason } from '../../shared/instructorAssignments.js';
+import { can, hasRole } from '../../shared/permissions.js';
 
 export const gamesRouter = express.Router();
 const NO_INSTRUCTOR_SCOPE = '__no_instructor_scope__';
 
-// Le designazioni sono dati interni: la sezione gare è riservata ad admin e
-// formatori. Gli osservatori possono raggiungere solo il prefill di una gara per
-// compilarne il rapporto; arbitri esclusi del tutto.
+// Le designazioni sono dati interni: entra chi gestisce le gare (admin,
+// operatore, formatore) o chi designa. Gli osservatori possono raggiungere solo
+// il prefill di una gara per compilarne il rapporto; arbitri esclusi del tutto.
 gamesRouter.use((req, _res, next) => {
-  const role = req.user?.role;
-  if (role === 'admin' || role === 'instructor') {
+  if (can(req.user, 'games:manage') || can(req.user, 'designations:assign')) {
     next();
     return;
   }
-  if (role === 'observer' && req.method === 'GET' && /\/report-prefill$/.test(req.path)) {
+  if (can(req.user, 'reports:write') && req.method === 'GET' && /\/report-prefill$/.test(req.path)) {
     next();
     return;
   }
@@ -49,14 +49,14 @@ gamesRouter.use((req, _res, next) => {
 
 // Campionati a cui il formatore è ristretto ([] = admin, nessuna restrizione).
 function scopedCompetitions(req, season = '') {
-  if (req.user?.role !== 'instructor') return [];
+  if (!hasRole(req.user, 'instructor')) return [];
   const competitions = instructorCompetitionsForSeason(req.user, season || currentSportSeason());
   return competitions.length ? competitions : [NO_INSTRUCTOR_SCOPE];
 }
 
 async function gameWithAccess(req, id) {
   const game = await getGame(id);
-  if (req.user?.role === 'instructor') {
+  if (hasRole(req.user, 'instructor')) {
     const allowed = scopedCompetitions(req, game.sportSeason);
     const isDesignatedObserver = game.officials?.observer?.userId === req.user.id;
     if (!allowed.includes(game.competition || '') && !isDesignatedObserver) {
@@ -76,7 +76,7 @@ gamesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const requestedSeason = String(req.query.season || '').trim();
-    const season = requestedSeason || (req.user?.role === 'instructor' ? currentSportSeason() : '');
+    const season = requestedSeason || (hasRole(req.user, 'instructor') ? currentSportSeason() : '');
     res.json({
       games: await listGames({
         season,
@@ -102,7 +102,7 @@ gamesRouter.get(
 
 gamesRouter.get(
   '/observers',
-  requireAdminOrInstructor,
+  requireCapability('designations:assign'),
   asyncHandler(async (_req, res) => {
     res.json({ observers: await listAssignableObservers() });
   })
@@ -117,9 +117,9 @@ function periodParam(req, name) {
 
 gamesRouter.get(
   '/designations/export',
-  requireAdminOrInstructor,
+  requireCapability('designations:assign'),
   asyncHandler(async (req, res) => {
-    const season = String(req.query.season || '').trim() || (req.user?.role === 'instructor' ? currentSportSeason() : '');
+    const season = String(req.query.season || '').trim() || (hasRole(req.user, 'instructor') ? currentSportSeason() : '');
     const dateFrom = periodParam(req, 'dateFrom');
     const dateTo = periodParam(req, 'dateTo');
     const competition = String(req.query.competition || '').trim();
@@ -143,9 +143,9 @@ gamesRouter.get(
 
 gamesRouter.get(
   '/export',
-  requireAdminOrInstructor,
+  requireCapability('games:manage'),
   asyncHandler(async (req, res) => {
-    const season = String(req.query.season || '').trim() || (req.user?.role === 'instructor' ? currentSportSeason() : '');
+    const season = String(req.query.season || '').trim() || (hasRole(req.user, 'instructor') ? currentSportSeason() : '');
     const workbook = await buildGamesWorkbook({
       season,
       competitions: scopedCompetitions(req, season),
@@ -165,7 +165,7 @@ gamesRouter.get(
   })
 );
 
-gamesRouter.post('/aliases', requireAdmin, asyncHandler(async (req, res) => {
+gamesRouter.post('/aliases', requireCapability('aliases:manage'), asyncHandler(async (req, res) => {
   const { source, externalName, refereeId, userId } = req.body || {};
   if (!['fip_public', 'xlsx'].includes(String(source))) {
     throw new HttpError(400, 'Origine alias non valida.');
@@ -203,7 +203,7 @@ gamesRouter.post('/aliases', requireAdmin, asyncHandler(async (req, res) => {
 
 gamesRouter.get(
   '/alias-candidates',
-  requireAdminOrInstructor,
+  requireAnyCapability('aliases:manage', 'designations:assign'),
   asyncHandler(async (req, res) => {
     const name = String(req.query.name || '');
     res.json({
@@ -221,12 +221,12 @@ gamesRouter.get('/:id/report-prefill', asyncHandler(async (req, res) => {
   res.json({ prefill: await gameForReportPrefill(Number(req.params.id)) });
 }));
 
-gamesRouter.get('/:id/observer-suggestions', requireAdminOrInstructor, asyncHandler(async (req, res) => {
+gamesRouter.get('/:id/observer-suggestions', requireCapability('designations:assign'), asyncHandler(async (req, res) => {
   await gameWithAccess(req, Number(req.params.id));
   res.json({ suggestions: await getObserverSuggestions({ gameId: Number(req.params.id) }) });
 }));
 
-gamesRouter.post('/', requireAdminOrInstructor, asyncHandler(async (req, res) => {
+gamesRouter.post('/', requireCapability('games:manage'), asyncHandler(async (req, res) => {
   // Il formatore può creare gare solo nei propri campionati.
   const comps = scopedCompetitions(req, String(req.body?.sportSeason || '').trim());
   if (comps.length && !comps.includes(String(req.body?.competition || '').trim())) {
@@ -236,7 +236,7 @@ gamesRouter.post('/', requireAdminOrInstructor, asyncHandler(async (req, res) =>
   res.status(201).json({ game });
 }));
 
-gamesRouter.put('/:id', requireAdminOrInstructor, asyncHandler(async (req, res) => {
+gamesRouter.put('/:id', requireCapability('games:manage'), asyncHandler(async (req, res) => {
   await gameWithAccess(req, Number(req.params.id));
   const game = await updateGame(Number(req.params.id), req.body || {}, {
     user: req.user,
@@ -247,12 +247,12 @@ gamesRouter.put('/:id', requireAdminOrInstructor, asyncHandler(async (req, res) 
   res.json({ game });
 }));
 
-gamesRouter.delete('/:id', requireAdmin, asyncHandler(async (req, res) => {
+gamesRouter.delete('/:id', requireCapability('games:delete'), asyncHandler(async (req, res) => {
   await deleteGame(Number(req.params.id), { user: req.user });
   res.json({ ok: true });
 }));
 
-gamesRouter.put('/:id/officials/:role', requireAdminOrInstructor, asyncHandler(async (req, res) => {
+gamesRouter.put('/:id/officials/:role', requireCapability('designations:assign'), asyncHandler(async (req, res) => {
   await gameWithAccess(req, Number(req.params.id));
   const game = await setOfficial(
     Number(req.params.id),
@@ -270,7 +270,7 @@ gamesRouter.put('/:id/officials/:role', requireAdminOrInstructor, asyncHandler(a
   res.json({ game });
 }));
 
-gamesRouter.delete('/:id/officials/:role', requireAdminOrInstructor, asyncHandler(async (req, res) => {
+gamesRouter.delete('/:id/officials/:role', requireCapability('designations:assign'), asyncHandler(async (req, res) => {
   await gameWithAccess(req, Number(req.params.id));
   const game = await removeOfficial(Number(req.params.id), String(req.params.role), { user: req.user });
   res.json({ game });

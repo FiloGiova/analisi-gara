@@ -1,4 +1,5 @@
 import { dbGet, dbAll, dbRun, dbTx } from '../database/db.js';
+import { hasAnyRoleSql } from '../database/userRoles.js';
 import { HttpError } from '../utils/httpError.js';
 import {
   availabilityForObserverOnDate,
@@ -524,10 +525,10 @@ export async function deleteGame(id, { user = null } = {}) {
 // Utenti assegnabili come osservatori (tutti i ruoli interni tranne gli arbitri).
 export async function listAssignableObservers() {
   const rows = await dbAll(
-    `SELECT id, display_name, role
-       FROM users
-      WHERE active = 1 AND role IN ('observer', 'instructor')
-      ORDER BY display_name`
+    `SELECT u.id, u.display_name, u.role
+       FROM users u
+      WHERE u.active = 1 AND ${hasAnyRoleSql('u', ['observer', 'instructor'])}
+      ORDER BY u.display_name`
   );
   const ranges = await availabilityRangesByObserver(rows.map((row) => row.id));
   return rows.map((row) => ({

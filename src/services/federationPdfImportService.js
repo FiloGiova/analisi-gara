@@ -5,6 +5,8 @@ import { HttpError } from '../utils/httpError.js';
 import { cleanExternalName, normalizedNameKey } from '../utils/personNames.js';
 import { instructorCompetitionsForSeason } from '../../shared/instructorAssignments.js';
 import { logReportEvent } from './reportEventService.js';
+import { lacksAllRolesSql } from '../database/userRoles.js';
+import { hasRole } from '../../shared/permissions.js';
 import {
   resolveObserverName,
   resolveRefereeName
@@ -58,7 +60,7 @@ function assertImportAccess(user) {
 }
 
 function assertCompetitionAccess(user, sportSeason, ...competitions) {
-  if (user?.role !== 'instructor') return;
+  if (!hasRole(user, 'instructor')) return;
   const allowed = instructorCompetitionsForSeason(user, sportSeason);
   if (!allowed.length || competitions.filter(Boolean).some((competition) => !allowed.includes(competition))) {
     throw new HttpError(403, 'Il PDF o la gara appartengono a un campionato non assegnato alla tua utenza.');
@@ -521,7 +523,7 @@ async function applyOneGroup({ items, decision, user, syncRunId, contextGameId =
     const firstReferee = await client.get('SELECT id, first_name, last_name FROM referees WHERE id = ?', [firstRefereeId]);
     const secondReferee = await client.get('SELECT id, first_name, last_name FROM referees WHERE id = ?', [secondRefereeId]);
     if (!firstReferee || !secondReferee) throw new HttpError(404, 'Uno degli arbitri selezionati non esiste più.');
-    if (user.role === 'instructor') {
+    if (hasRole(user, 'instructor')) {
       const scopedRows = await client.all(
         `SELECT referee_id FROM referee_season_categories
           WHERE sport_season = ? AND category = ? AND referee_id IN (?, ?)`,
@@ -534,7 +536,10 @@ async function applyOneGroup({ items, decision, user, syncRunId, contextGameId =
     }
     let observer = null;
     if (observerUserId) {
-      observer = await client.get(`SELECT id, display_name, role FROM users WHERE id = ? AND role != 'referee'`, [observerUserId]);
+      observer = await client.get(
+        `SELECT u.id, u.display_name, u.role FROM users u WHERE u.id = ? AND ${lacksAllRolesSql('u', ['referee'])}`,
+        [observerUserId]
+      );
       if (!observer) throw new HttpError(404, 'Osservatore selezionato non trovato.');
     }
 

@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireAdmin } from '../middleware/auth.js';
+import { can, hasRole } from '../../shared/permissions.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 import {
   listReferees,
@@ -29,16 +30,18 @@ import {
 export const refereesRouter = express.Router();
 
 function scopedCompetitions(req, season = '') {
-  if (req.user?.role === 'instructor') {
+  if (hasRole(req.user, 'instructor')) {
     return instructorCompetitionsForSeason(req.user, season || String(req.query.season || '').trim() || currentSportSeason());
   }
   const competition = String(req.query.competition || '').trim();
   return competition ? [competition] : [];
 }
 
+// Anagrafica arbitri, schede e classifiche: l'admin le vede tutte, il formatore
+// solo se ha campionati assegnati. Chi non ha la capability (per esempio
+// l'operatore) non entra affatto nella sezione.
 function requireRefereeInspection(req) {
-  if (req.user?.role === 'admin') return;
-  if (req.user?.role === 'instructor' && scopedCompetitions(req).length) return;
+  if (can(req.user, 'referees:inspect')) return;
   throw new HttpError(403, 'Sezione arbitri non abilitata per questa utenza.');
 }
 
@@ -46,16 +49,22 @@ refereesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const { season = '', activeOnly = '' } = req.query;
-    if (req.user?.role === 'referee') {
+    if (hasRole(req.user, 'referee')) {
       res.json({ referees: [] });
       return;
     }
-    if (req.user?.role === 'observer' && !String(req.query.competition || '').trim()) {
+    // Gli osservatori vedono l'anagrafica solo filtrata per campionato (serve a
+    // compilare il rapporto); chi non ispeziona né compila non la vede affatto.
+    if (!can(req.user, 'referees:inspect') && !can(req.user, 'reports:write')) {
+      res.json({ referees: [] });
+      return;
+    }
+    if (hasRole(req.user, 'observer') && !String(req.query.competition || '').trim()) {
       res.json({ referees: [] });
       return;
     }
     const competitions = scopedCompetitions(req, String(season).trim());
-    if (req.user?.role === 'instructor' && !competitions.length) {
+    if (hasRole(req.user, 'instructor') && !competitions.length) {
       res.json({ referees: [] });
       return;
     }
@@ -73,7 +82,7 @@ refereesRouter.get(
   '/seasons',
   asyncHandler(async (req, res) => {
     requireRefereeInspection(req);
-    if (req.user?.role === 'instructor' && Array.isArray(req.user.instructorAssignments)) {
+    if (hasRole(req.user, 'instructor') && Array.isArray(req.user.instructorAssignments)) {
       res.json({ seasons: instructorAssignmentsForUser(req.user).map((assignment) => assignment.sportSeason) });
       return;
     }
@@ -137,7 +146,7 @@ refereesRouter.get(
 // vincolato al perimetro del formatore.
 function effectiveBandCompetitions(req) {
   const requested = String(req.query.competition || '').trim();
-  if (req.user?.role === 'instructor') {
+  if (hasRole(req.user, 'instructor')) {
     const allowed = scopedCompetitions(req);
     if (requested) {
       if (!allowed.includes(requested)) throw new HttpError(403, 'Campionato non assegnato alla tua utenza.');
@@ -149,8 +158,8 @@ function effectiveBandCompetitions(req) {
 }
 
 function assertBandManage(req, competition, season = '') {
-  if (req.user?.role === 'admin') return;
-  if (req.user?.role === 'instructor') {
+  if (hasRole(req.user, 'admin')) return;
+  if (hasRole(req.user, 'instructor')) {
     const comps = scopedCompetitions(req, season);
     if (comps.includes(competition)) return;
     throw new HttpError(403, 'Campionato non assegnato alla tua utenza.');
@@ -195,7 +204,7 @@ refereesRouter.delete('/bands/:bandId', asyncHandler(async (req, res) => {
 refereesRouter.get('/:id/progress', asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   // Auth: admin sempre; referee solo per il proprio id; instructor se ha visibilità sull'arbitro
-  if (req.user?.role === 'referee') {
+  if (hasRole(req.user, 'referee')) {
     if (req.user.refereeId !== id) {
       throw new HttpError(403, 'Non puoi accedere a questo andamento.');
     }
@@ -211,7 +220,7 @@ refereesRouter.get('/:id/progress', asyncHandler(async (req, res) => {
   res.json({
     progress: await getRefereeProgress(id, {
       season,
-      competitions: req.user?.role === 'instructor' ? scopedCompetitions(req, season) : []
+      competitions: hasRole(req.user, 'instructor') ? scopedCompetitions(req, season) : []
     })
   });
 }));
@@ -232,10 +241,10 @@ refereesRouter.post('/', requireAdmin, asyncHandler(async (req, res) => {
 }));
 
 refereesRouter.put('/:id', asyncHandler(async (req, res) => {
-  if (req.user?.role !== 'admin' && req.user?.role !== 'instructor') {
+  if (!can(req.user, 'referees:inspect')) {
     throw new HttpError(403, 'Permessi insufficienti per modificare l’arbitro.');
   }
-  if (req.user.role === 'instructor') {
+  if (!hasRole(req.user, 'admin')) {
     const competitions = scopedCompetitions(req, String(req.body?.sportSeason || '').trim());
     await getReferee(Number(req.params.id), {
       season: String(req.body?.sportSeason || '').trim(),
@@ -252,7 +261,7 @@ refereesRouter.put('/:id', asyncHandler(async (req, res) => {
   res.json({
     referee: await getReferee(id, {
       season,
-      competitions: req.user?.role === 'instructor' ? scopedCompetitions(req, season) : []
+      competitions: hasRole(req.user, 'instructor') ? scopedCompetitions(req, season) : []
     })
   });
 }));
@@ -264,7 +273,7 @@ refereesRouter.get('/:id/rosters', asyncHandler(async (req, res) => {
     competitions: scopedCompetitions(req, String(req.query.season || '').trim())
   });
   const rosters = await listRosters(Number(req.params.id));
-  if (req.user?.role === 'instructor') {
+  if (hasRole(req.user, 'instructor')) {
     const season = String(req.query.season || '').trim() || currentSportSeason();
     const competitions = scopedCompetitions(req, season);
     res.json({

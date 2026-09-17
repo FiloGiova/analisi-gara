@@ -1,4 +1,5 @@
 import { dbGet, dbAll, dbRun } from '../database/db.js';
+import { lacksAllRolesSql } from '../database/userRoles.js';
 import { HttpError } from '../utils/httpError.js';
 import { recordGameChange } from './gameService.js';
 
@@ -85,8 +86,10 @@ export async function resolveRefereeName(externalName, { source }) {
   return { refereeId: null, via: null, candidates: await listRefereeCandidates(externalName) };
 }
 
+// Chi può essere l'osservatore di un rapporto: chiunque non sia un'utenza
+// arbitro (che è un ruolo esclusivo e di sola lettura).
 function loadObserverUsers() {
-  return dbAll(`SELECT id, display_name, active FROM users WHERE role != 'referee'`);
+  return dbAll(`SELECT u.id, u.display_name, u.active FROM users u WHERE ${lacksAllRolesSql('u', ['referee'])}`);
 }
 
 export async function listObserverCandidates(externalName, { limit = 5 } = {}) {
@@ -142,7 +145,7 @@ export async function resolveObserverName(externalName, { source }) {
 export async function saveObserverAlias({ source, externalName, userId, verifiedBy = null }) {
   const key = normalizedNameKey(externalName);
   if (!key) throw new HttpError(400, 'Nominativo esterno non valido.');
-  const user = await dbGet(`SELECT id FROM users WHERE id = ? AND role != 'referee'`, [userId]);
+  const user = await dbGet(`SELECT u.id FROM users u WHERE u.id = ? AND ${lacksAllRolesSql('u', ['referee'])}`, [userId]);
   if (!user) throw new HttpError(404, 'Utente osservatore non trovato.');
 
   await dbRun(

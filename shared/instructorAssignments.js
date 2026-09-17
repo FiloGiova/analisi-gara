@@ -21,8 +21,20 @@ export function instructorAssignmentsForUser(user) {
     .filter((assignment) => assignment.sportSeason && assignment.competitions.length);
 }
 
+// Con i ruoli multipli il formatore può non essere il ruolo "principale":
+// il controllo guarda l'insieme dei ruoli, ricadendo sul vecchio campo singolo.
+// La verifica sta qui e non in shared/permissions.js per non creare un import
+// circolare tra i due moduli.
+function hasInstructorRole(user) {
+  const list = Array.isArray(user?.roles) && user.roles.length ? user.roles : [user?.role];
+  return list.some((role) => {
+    const clean = String(role || '').trim();
+    return clean === 'instructor' || clean === 'formatter' || clean === 'formatore';
+  });
+}
+
 export function instructorCompetitionsForSeason(user, season = '') {
-  if (user?.role !== 'instructor') return [];
+  if (!hasInstructorRole(user)) return [];
   const assignments = instructorAssignmentsForUser(user);
   if (Array.isArray(user?.instructorAssignments)) {
     const cleanSeason = String(season || '').trim();

@@ -12,6 +12,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
 import ListSkeleton from '../components/ListSkeleton.jsx';
+import { can } from '../../../shared/permissions.js';
 
 function dateValue(value) {
   const t = new Date(value || '').getTime();
@@ -105,7 +106,7 @@ export default function DashboardPage({ currentUser, season }) {
 
   const canFilterObservers = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
   const isReferee = currentUser?.role === 'referee';
-  const canImportPdf = currentUser?.role === 'admin' || currentUser?.role === 'instructor';
+  const canImportPdf = can(currentUser, 'reports:import');
   const filterCount = [competition, observer].filter(Boolean).length;
   const availableCompetitions = Array.from(new Set(reports.map((r) => r.competition).filter(Boolean))).sort();
 

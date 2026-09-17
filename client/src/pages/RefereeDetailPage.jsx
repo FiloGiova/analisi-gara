@@ -17,6 +17,7 @@ import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx
 import UserAvatar from '../components/UserAvatar.jsx';
 import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
+import { hasRole } from '../../../shared/permissions.js';
 
 const CURRENT_SEASON = currentSportSeason();
 const BAND_OPTIONS = [
@@ -51,7 +52,7 @@ function InfoItem({ label, value }) {
 }
 
 function canInspectReferees(user, season) {
-  if (user?.role === 'admin') return true;
+  if (hasRole(user, 'admin')) return true;
   if (user?.role !== 'instructor') return false;
   return instructorCompetitionsForSeason(user, season).length > 0;
 }

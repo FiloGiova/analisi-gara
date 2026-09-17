@@ -6,6 +6,7 @@ import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
+import { can } from '../../../shared/permissions.js';
 
 function emptyForm(season) {
   return {
@@ -41,7 +42,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = can(currentUser, 'sources:manage');
 
   async function load() {
     setLoading(true);

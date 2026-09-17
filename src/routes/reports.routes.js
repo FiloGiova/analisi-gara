@@ -22,12 +22,13 @@ import { listPendingAssignmentsForUser } from '../services/gameService.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 import { sendReportToReferee, previewReportEmail, isEmailEnabled } from '../services/emailService.js';
 import { listEmailLogForReport } from '../services/emailLogService.js';
-import { requireAdminOrInstructor } from '../middleware/auth.js';
+import { requireAdminOrInstructor, requireCapability } from '../middleware/auth.js';
 import {
   applyFederationPdfImport,
   previewFederationPdfImport
 } from '../services/federationPdfImportService.js';
 import { logReportEvent } from '../services/reportEventService.js';
+import { hasRole } from '../../shared/permissions.js';
 
 export const reportsRouter = express.Router();
 
@@ -119,7 +120,7 @@ reportsRouter.get(
 
 reportsRouter.post(
   '/pdf-import/preview',
-  requireAdminOrInstructor,
+  requireCapability('reports:import'),
   receivePdfFiles,
   asyncHandler(async (req, res) => {
     requirePdfFiles(req);
@@ -135,7 +136,7 @@ reportsRouter.post(
 
 reportsRouter.post(
   '/pdf-import/apply',
-  requireAdminOrInstructor,
+  requireCapability('reports:import'),
   receivePdfFiles,
   asyncHandler(async (req, res) => {
     requirePdfFiles(req);
@@ -253,7 +254,7 @@ reportsRouter.post(
   asyncHandler(async (req, res) => {
     const report = await getReport(Number(req.params.id), req.user);
     assertExportable(report);
-    if (req.user?.role === 'referee') {
+    if (hasRole(req.user, 'referee')) {
       const role = report.firstRefereeId === req.user.refereeId ? 'first'
         : report.secondRefereeId === req.user.refereeId ? 'second'
         : null;
@@ -291,7 +292,7 @@ reportsRouter.get(
     const report = await getReport(Number(req.params.id), req.user);
     assertExportable(report);
 
-    if (req.user?.role === 'referee') {
+    if (hasRole(req.user, 'referee')) {
       const myRefereeId = req.user.refereeId;
       const requestedRefereeId = role === 'first' ? report.firstRefereeId : report.secondRefereeId;
       if (!myRefereeId || requestedRefereeId !== myRefereeId) {
@@ -314,7 +315,7 @@ reportsRouter.get(
   asyncHandler(async (req, res) => {
     // Il controllo accessi è quello del rapporto; gli arbitri restano esclusi
     // perché lo storico espone i destinatari dell'altro arbitro.
-    if (req.user?.role === 'referee') {
+    if (hasRole(req.user, 'referee')) {
       throw new HttpError(403, 'Storico invii non accessibile.');
     }
     await getReport(Number(req.params.id), req.user);
@@ -370,7 +371,7 @@ reportsRouter.get(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     await getReport(id, req.user);
-    if (req.user?.role === 'referee') throw new HttpError(403, 'Allegato non accessibile.');
+    if (hasRole(req.user, 'referee')) throw new HttpError(403, 'Allegato non accessibile.');
     await streamReportAttachment(id, res);
   })
 );

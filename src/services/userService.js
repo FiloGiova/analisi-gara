@@ -3,6 +3,8 @@ import { currentSportSeason } from '../../shared/reportTemplate.js';
 import { allowedCompetitionValues } from './competitionService.js';
 import { hashPassword, verifyPassword } from '../utils/passwords.js';
 import { HttpError } from '../utils/httpError.js';
+import { normalizeRoles, primaryRole, ROLES as ROLE_LIST } from '../../shared/permissions.js';
+import { hasAnyRoleSql } from '../database/userRoles.js';
 
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
 const ROLES = new Set(['admin', 'instructor', 'observer', 'referee']);
@@ -90,9 +92,31 @@ function normalizeInstructorAssignments(value, legacyCompetitionInput, allowed) 
     .sort((a, b) => b.sportSeason.localeCompare(a.sportSeason));
 }
 
-function validateRoleConfiguration(role, assignments) {
-  if (role === 'instructor' && !assignments.length) {
+function validateRoleConfiguration(roles, assignments) {
+  if (roles.includes('instructor') && !assignments.length) {
     throw new HttpError(400, 'Assegna almeno una stagione e un campionato al formatore.');
+  }
+}
+
+// I ruoli richiesti dal chiamante: il nuovo elenco, oppure il vecchio campo
+// singolo per le chiamate (e i test) non ancora convertiti.
+function rolesInput({ roles, role, competitions = '' }, fallback = null) {
+  if (Array.isArray(roles) && roles.length) return normalizeRoles(roles);
+  if (role !== undefined && role !== null && role !== '') {
+    return normalizeRoles([normalizeRole(role, competitions)]);
+  }
+  return fallback ? normalizeRoles(fallback) : null;
+}
+
+async function loadUserRoles(userId) {
+  const rows = await dbAll('SELECT role FROM user_roles WHERE user_id = ? ORDER BY role', [userId]);
+  return rows.map((row) => row.role);
+}
+
+async function replaceUserRoles(client, userId, roles) {
+  await client.run('DELETE FROM user_roles WHERE user_id = ?', [userId]);
+  for (const role of roles) {
+    await client.run('INSERT INTO user_roles (user_id, role) VALUES (?, ?) ON CONFLICT DO NOTHING', [userId, role]);
   }
 }
 
@@ -135,17 +159,18 @@ function normalizeRefereeId(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-async function validateRefereeConfiguration({ role, refereeId, exceptUserId = null }) {
-  if (role !== 'referee') return null;
+async function validateRefereeConfiguration({ roles, refereeId, exceptUserId = null }) {
+  if (!roles.includes('referee')) return null;
   const cleanRefereeId = normalizeRefereeId(refereeId);
   if (!cleanRefereeId) {
     throw new HttpError(400, 'Collega un arbitro anagrafico all’utente referee.');
   }
   const referee = await dbGet('SELECT id FROM referees WHERE id = ?', [cleanRefereeId]);
   if (!referee) throw new HttpError(404, 'Arbitro collegato non trovato.');
+  const refereeClause = hasAnyRoleSql('u', ['referee']);
   const existing = exceptUserId
-    ? await dbGet("SELECT id FROM users WHERE referee_id = ? AND role = 'referee' AND id <> ?", [cleanRefereeId, exceptUserId])
-    : await dbGet("SELECT id FROM users WHERE referee_id = ? AND role = 'referee'", [cleanRefereeId]);
+    ? await dbGet(`SELECT u.id FROM users u WHERE u.referee_id = ? AND ${refereeClause} AND u.id <> ?`, [cleanRefereeId, exceptUserId])
+    : await dbGet(`SELECT u.id FROM users u WHERE u.referee_id = ? AND ${refereeClause}`, [cleanRefereeId]);
   if (existing) throw new HttpError(409, 'Esiste già un utente collegato a questo arbitro.');
   return cleanRefereeId;
 }
@@ -163,10 +188,15 @@ function validatePassword(password) {
 }
 
 export async function publicUserFromRow(row, allowedValues = null) {
-  const role = normalizeRole(row.role, row.formatter_competition);
-  const storedAssignments = role === 'instructor' ? await loadInstructorAssignments(row.id) : [];
+  const storedRoles = await loadUserRoles(row.id);
+  const roles = storedRoles.length
+    ? normalizeRoles(storedRoles)
+    : normalizeRoles([normalizeRole(row.role, row.formatter_competition)]);
+  const role = primaryRole(roles);
+  const isInstructor = roles.includes('instructor');
+  const storedAssignments = isInstructor ? await loadInstructorAssignments(row.id) : [];
   let instructorAssignments = [];
-  if (role === 'instructor') {
+  if (isInstructor) {
     if (storedAssignments.length) {
       instructorAssignments = storedAssignments;
     } else if (String(row.formatter_competition || '').trim()) {
@@ -184,7 +214,8 @@ export async function publicUserFromRow(row, allowedValues = null) {
     username: row.username,
     displayName: row.display_name,
     role,
-    refereeId: role === 'referee' ? row.referee_id || null : null,
+    roles,
+    refereeId: roles.includes('referee') ? row.referee_id || null : null,
     photoPath: row.photo_path || null,
     instructorCompetition: instructorCompetitions[0] || '',
     instructorCompetitions,
@@ -198,21 +229,23 @@ export async function publicUserFromRow(row, allowedValues = null) {
 }
 
 async function activeAdminCount(exceptUserId = null) {
+  const adminClause = hasAnyRoleSql('u', ['admin']);
   if (exceptUserId) {
     return (
-      await dbGet("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1 AND id <> ?", [exceptUserId])
+      await dbGet(`SELECT COUNT(*) AS count FROM users u WHERE ${adminClause} AND u.active = 1 AND u.id <> ?`, [exceptUserId])
     ).count;
   }
 
-  return (await dbGet("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1")).count;
+  return (await dbGet(`SELECT COUNT(*) AS count FROM users u WHERE ${adminClause} AND u.active = 1`)).count;
 }
 
-async function ensureCanChangeAdminState({ id, nextRole, nextActive }) {
+async function ensureCanChangeAdminState({ id, nextRoles, nextActive }) {
   const current = await dbGet('SELECT id, role, active FROM users WHERE id = ?', [id]);
   if (!current) throw new HttpError(404, 'Utente non trovato.');
 
-  const wasActiveAdmin = current.role === 'admin' && Boolean(current.active);
-  const remainsActiveAdmin = nextRole === 'admin' && Boolean(nextActive);
+  const currentRoles = await loadUserRoles(id);
+  const wasActiveAdmin = (currentRoles.length ? currentRoles : [current.role]).includes('admin') && Boolean(current.active);
+  const remainsActiveAdmin = nextRoles.includes('admin') && Boolean(nextActive);
   if (wasActiveAdmin && !remainsActiveAdmin && (await activeAdminCount(id)) === 0) {
     throw new HttpError(400, "Non puoi rimuovere l'ultimo amministratore attivo.");
   }
@@ -227,6 +260,7 @@ export async function upsertUser({
   password,
   displayName = username,
   role = 'admin',
+  roles,
   instructorCompetition,
   instructorAssignments,
   formatterCompetition = '',
@@ -237,23 +271,24 @@ export async function upsertUser({
   validatePassword(password);
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
-  const cleanRole = normalizeRole(role, competitionInput);
-  const assignments = cleanRole === 'instructor'
+  const cleanRoles = rolesInput({ roles, role, competitions: competitionInput });
+  const cleanRole = primaryRole(cleanRoles);
+  const assignments = cleanRoles.includes('instructor')
     ? normalizeInstructorAssignments(instructorAssignments, competitionInput, await allowedCompetitionValues())
     : [];
-  validateRoleConfiguration(cleanRole, assignments);
+  validateRoleConfiguration(cleanRoles, assignments);
   const instructorCompetitions = assignmentCompetitions(assignments);
   const cleanInstructorCompetition = instructorCompetitions.length ? JSON.stringify(instructorCompetitions) : null;
   const existing = await dbGet('SELECT id FROM users WHERE username = ?', [cleanUsername]);
   const cleanRefereeId = await validateRefereeConfiguration({
-    role: cleanRole,
+    roles: cleanRoles,
     refereeId,
     exceptUserId: existing?.id || null
   });
   const passwordHash = hashPassword(password);
 
   if (existing) {
-    await ensureCanChangeAdminState({ id: existing.id, nextRole: cleanRole, nextActive: true });
+    await ensureCanChangeAdminState({ id: existing.id, nextRoles: cleanRoles, nextActive: true });
     await dbTx(async (client) => {
       await client.run(
         `UPDATE users
@@ -268,6 +303,7 @@ export async function upsertUser({
         [passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId, existing.id]
       );
       await replaceInstructorAssignments(client, existing.id, assignments);
+      await replaceUserRoles(client, existing.id, cleanRoles);
     });
     return existing.id;
   }
@@ -279,6 +315,7 @@ export async function upsertUser({
       [cleanUsername, passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId]
     );
     await replaceInstructorAssignments(client, result.rows[0].id, assignments);
+    await replaceUserRoles(client, result.rows[0].id, cleanRoles);
     return result.rows[0].id;
   });
 }
@@ -298,6 +335,7 @@ export async function createUser({
   password,
   displayName,
   role = 'observer',
+  roles,
   instructorCompetition,
   instructorAssignments,
   formatterCompetition = '',
@@ -311,13 +349,14 @@ export async function createUser({
   if (existing) throw new HttpError(409, 'Username già presente.');
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
-  const cleanRole = normalizeRole(role, competitionInput);
-  const assignments = cleanRole === 'instructor'
+  const cleanRoles = rolesInput({ roles, role, competitions: competitionInput });
+  const cleanRole = primaryRole(cleanRoles);
+  const assignments = cleanRoles.includes('instructor')
     ? normalizeInstructorAssignments(instructorAssignments, competitionInput, await allowedCompetitionValues())
     : [];
-  validateRoleConfiguration(cleanRole, assignments);
+  validateRoleConfiguration(cleanRoles, assignments);
   const instructorCompetitions = assignmentCompetitions(assignments);
-  const cleanRefereeId = await validateRefereeConfiguration({ role: cleanRole, refereeId });
+  const cleanRefereeId = await validateRefereeConfiguration({ roles: cleanRoles, refereeId });
 
   const id = await dbTx(async (client) => {
     const result = await client.run(
@@ -333,6 +372,7 @@ export async function createUser({
       ]
     );
     await replaceInstructorAssignments(client, result.rows[0].id, assignments);
+    await replaceUserRoles(client, result.rows[0].id, cleanRoles);
     return result.rows[0].id;
   });
 
@@ -348,30 +388,34 @@ export async function getUser(id) {
   return publicUserFromRow(row);
 }
 
-export async function updateUser({ id, displayName, role, active, instructorCompetition, instructorAssignments, formatterCompetition, refereeId }) {
+export async function updateUser({ id, displayName, role, roles, active, instructorCompetition, instructorAssignments, formatterCompetition, refereeId }) {
   const current = await dbGet('SELECT id, display_name, role, formatter_competition, referee_id, active FROM users WHERE id = ?', [id]);
   if (!current) throw new HttpError(404, 'Utente non trovato.');
 
   const competitionInput = instructorCompetitionInput({ instructorCompetition, formatterCompetition });
-  const nextRole = normalizeRole(role || current.role, competitionInput ?? current.formatter_competition);
+  const currentRoles = await loadUserRoles(id);
+  const nextRoles = rolesInput(
+    { roles, role, competitions: competitionInput ?? current.formatter_competition },
+    currentRoles.length ? currentRoles : [current.role]
+  );
+  const nextRole = primaryRole(nextRoles);
   const nextActive = active === undefined ? Boolean(current.active) : Boolean(active);
-  const currentAssignments = nextRole === 'instructor' ? await loadInstructorAssignments(id) : [];
-  const nextAssignments = nextRole !== 'instructor'
+  const isInstructor = nextRoles.includes('instructor');
+  const currentAssignments = isInstructor ? await loadInstructorAssignments(id) : [];
+  const nextAssignments = !isInstructor
     ? []
     : instructorAssignments === undefined && competitionInput === undefined
       ? currentAssignments
       : normalizeInstructorAssignments(instructorAssignments, competitionInput, await allowedCompetitionValues());
-  validateRoleConfiguration(nextRole, nextAssignments);
+  validateRoleConfiguration(nextRoles, nextAssignments);
   const nextCompetitions = assignmentCompetitions(nextAssignments);
   const nextInstructorCompetition = nextCompetitions.length ? JSON.stringify(nextCompetitions) : null;
-  const nextRefereeId = nextRole === 'referee'
-    ? await validateRefereeConfiguration({
-        role: nextRole,
-        refereeId: refereeId === undefined ? current.referee_id : refereeId,
-        exceptUserId: id
-      })
-    : null;
-  await ensureCanChangeAdminState({ id, nextRole, nextActive });
+  const nextRefereeId = await validateRefereeConfiguration({
+    roles: nextRoles,
+    refereeId: refereeId === undefined ? current.referee_id : refereeId,
+    exceptUserId: id
+  });
+  await ensureCanChangeAdminState({ id, nextRoles, nextActive });
 
   await dbTx(async (client) => {
     await client.run(
@@ -386,6 +430,7 @@ export async function updateUser({ id, displayName, role, active, instructorComp
       [String(displayName || current.display_name).trim(), nextRole, nextInstructorCompetition, nextRefereeId, nextActive ? 1 : 0, id]
     );
     await replaceInstructorAssignments(client, id, nextAssignments);
+    await replaceUserRoles(client, id, nextRoles);
     if (!nextActive) {
       await client.run('DELETE FROM sessions WHERE user_id = ?', [id]);
     }

@@ -14,9 +14,11 @@ import {
 } from '../../shared/reportTemplate.js';
 import { config } from '../config.js';
 import { dbGet, dbAll, dbRun } from '../database/db.js';
+import { hasAnyRoleSql } from '../database/userRoles.js';
 import { getCompetitionByValue } from './competitionService.js';
 import { logReportEvent } from './reportEventService.js';
 import { HttpError } from '../utils/httpError.js';
+import { can, hasRole } from '../../shared/permissions.js';
 import {
   instructorAssignmentsForUser,
   instructorCompetitionsForSeason
@@ -71,15 +73,15 @@ function observerNameForUser(user) {
 }
 
 function isAdmin(user) {
-  return user?.role === 'admin';
+  return hasRole(user, 'admin');
 }
 
 function isInstructor(user) {
-  return Boolean(user) && user.role === 'instructor';
+  return Boolean(user) && hasRole(user, 'instructor');
 }
 
 function isReferee(user) {
-  return Boolean(user) && user.role === 'referee';
+  return Boolean(user) && hasRole(user, 'referee');
 }
 
 function isRestrictedUser(user) {
@@ -244,6 +246,11 @@ async function assertReportMutationAccess(report, user) {
     throw new HttpError(403, 'Gli arbitri hanno accesso in sola lettura.');
   }
   if (!user || isAdmin(user)) return;
+  // Chi ha importato un rapporto non diventa per questo il suo autore: senza
+  // la capability di compilare, la modifica resta preclusa.
+  if (!can(user, 'reports:write')) {
+    throw new HttpError(403, 'Questa utenza non può modificare i rapporti.');
+  }
   // Osservatori e formatori possono modificare i rapporti che hanno creato o
   // quelli di cui sono l'osservatore designato della gara.
   if (report.createdBy === user.id) return;
@@ -254,6 +261,11 @@ async function assertReportMutationAccess(report, user) {
 function assertReportCreationAccess(user) {
   if (isReferee(user)) {
     throw new HttpError(403, 'Gli arbitri hanno accesso in sola lettura.');
+  }
+  // Compilare un rapporto è una capability: chi fa solo lavoro di servizio
+  // (operatore) può importarli, non scriverli.
+  if (user && !can(user, 'reports:write')) {
+    throw new HttpError(403, 'Questa utenza non può compilare rapporti.');
   }
 }
 
@@ -480,9 +492,9 @@ async function resolveObserver(payload, user) {
   const explicit = asNullableInteger(payload.observerUserId);
   if (explicit) {
     const selected = await dbGet(
-      `SELECT id, display_name
-         FROM users
-        WHERE id = ? AND active = 1 AND role IN ('observer', 'instructor')`,
+      `SELECT u.id, u.display_name
+         FROM users u
+        WHERE u.id = ? AND u.active = 1 AND ${hasAnyRoleSql('u', ['observer', 'instructor'])}`,
       [explicit]
     );
     if (!selected) throw new HttpError(400, 'L’osservatore selezionato non è più disponibile.');
@@ -491,11 +503,11 @@ async function resolveObserver(payload, user) {
   const name = asText(payload.observerName);
   if (!name) return { id: null, name: '' };
   const matches = await dbAll(
-    `SELECT id, display_name
-       FROM users
-      WHERE active = 1
-        AND role IN ('observer', 'instructor')
-        AND LOWER(TRIM(display_name)) = LOWER(TRIM(?))`,
+    `SELECT u.id, u.display_name
+       FROM users u
+      WHERE u.active = 1
+        AND ${hasAnyRoleSql('u', ['observer', 'instructor'])}
+        AND LOWER(TRIM(u.display_name)) = LOWER(TRIM(?))`,
     [name]
   );
   if (matches.length === 1) return { id: matches[0].id, name: matches[0].display_name };

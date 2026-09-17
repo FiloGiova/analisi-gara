@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatDateTime } from '../lib/formatters.js';
 import { api, ApiError } from '../lib/api.js';
+import { can } from '../../../shared/permissions.js';
 
 const PAGE_SIZE = 50;
 
@@ -268,7 +269,7 @@ function ReportEventsTab() {
 export default function AdminLogsPage({ currentUser }) {
   const [tab, setTab] = useState('access');
 
-  if (currentUser.role !== 'admin') {
+  if (!can(currentUser, 'logs:view')) {
     return (
       <div className="empty-state">
         <h2>Area riservata agli admin</h2>
