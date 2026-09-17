@@ -47,6 +47,7 @@ La fonte autorevole dei token è `client/src/styles.css`. Nuovi componenti devon
 - Feedback: banner di errore e successo coerenti; loading skeleton per contenuto strutturato; empty state che spiega la prossima azione.
 - Selettori: riusare `Select`, `MultiSelect` e `DateInput`; opzioni non selezionabili devono essere semanticamente disabilitate e spiegare il motivo.
 - Filtri di elenco: il controllo mostra il nome del filtro quando non è applicato (Categoria, Fascia, Stato…) e il valore scelto quando lo è. Su `Select` si ottiene con `placeholderOnEmpty`, su `MultiSelect` con `allLabel`; l'opzione che azzera il filtro resta in elenco con la dicitura estesa ("Tutte le categorie").
+- Filtro periodo: `PeriodFilter` è l'unico modo di scegliere un intervallo di date in un elenco. Il trigger usa gli stili di `Select`, i preset coprono i casi frequenti (oggi, weekend, prossimi giorni) e il calendario è disegnato con i token: mai `input type="date"`, che ogni sistema operativo rende a modo suo. Dentro il bottom sheet mobile il pannello si espande in linea.
 - Modali solo per compiti circoscritti o conferme realmente necessarie; preferire sezioni inline per flussi ricorrenti.
 
 ## Motion and interaction

@@ -28,7 +28,7 @@ async function loadReportEvaluations(status, type, season, competitions = [], ph
   const reports = await dbAll(
     `SELECT r.id AS report_id, r.game_id, r.report_date, r.match_number, r.team_home, r.team_away,
             r.observer_id, r.observer_name, COALESCE(u.display_name, r.observer_name) AS observer_label,
-            g.matchday, r.first_referee_id, r.second_referee_id,
+            g.matchday, r.first_referee_id, r.second_referee_id, r.report_type,
             r.first_referee_vote, r.second_referee_vote
        FROM reports r
        LEFT JOIN users u ON u.id = r.observer_id
@@ -57,6 +57,7 @@ async function loadReportEvaluations(status, type, season, competitions = [], ph
         observerId: report.observer_id,
         observerKey: observerKeyOf(report.observer_id, report.observer_name),
         observerLabel: report.observer_label || report.observer_name,
+        reportType: report.report_type === 'video' ? 'video' : 'full',
         vote: vote || ''
       });
     }

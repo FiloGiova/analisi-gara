@@ -4,11 +4,14 @@ import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
-import { api, ApiError } from '../lib/api.js';
+import { api, ApiError, downloadDesignationsExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
+import PeriodFilter from '../components/PeriodFilter.jsx';
+import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
+import { gameDateKey, isGameInPeriod, formatPeriodLabel } from '../../../shared/gamePeriod.js';
 import { availabilityOnDate, formatAvailabilityPeriod, observerOptionForDate } from '../lib/observerAvailability.js';
 
 function refereeLabel(official) {
@@ -26,6 +29,8 @@ export default function DesignateObserversPage({ currentUser, season }) {
   const [competition, setCompetition] = useState('');
   const [sourceFilter, setSourceFilter] = useState([]); // fasi (nomi sorgente)
   const [matchdayFilter, setMatchdayFilter] = useState([]); // giornate (stringhe)
+  const [period, setPeriod] = useState({ from: '', to: '' }); // data inizio / data fine
+  const [onlyAssigned, setOnlyAssigned] = useState(false);
   const [suggestions, setSuggestions] = useState({}); // gameId -> { loading } | { error } | { items }
   const [openSuggest, setOpenSuggest] = useState(null); // gameId con pannello suggerimenti aperto
   const [loading, setLoading] = useState(true);
@@ -50,6 +55,7 @@ export default function DesignateObserversPage({ currentUser, season }) {
     setCompetition('');
     setSourceFilter([]);
     setMatchdayFilter([]);
+    setPeriod({ from: '', to: '' });
     if (canManage) loadGames();
   }, [canManage, season]);
 
@@ -84,16 +90,42 @@ export default function DesignateObserversPage({ currentUser, season }) {
     [gamesInCompetition]
   );
 
+  const daysWithGames = useMemo(
+    () => Array.from(new Set(gamesInCompetition.map((game) => gameDateKey(game)).filter(Boolean))),
+    [gamesInCompetition]
+  );
+
+  const hasPeriod = Boolean(period.from || period.to);
   // Di default non si mostra nulla: bisogna prima scegliere almeno un filtro.
-  const hasFilter = Boolean(competition) || sourceFilter.length > 0 || matchdayFilter.length > 0;
+  // Anche il solo periodo basta: "le gare di questo weekend" è una richiesta
+  // completa, a prescindere dalla giornata.
+  const hasFilter = Boolean(competition) || sourceFilter.length > 0 || matchdayFilter.length > 0 || hasPeriod;
 
   const filtered = games.filter((game) => {
     if (game.status === 'cancelled') return false;
     if (competition && game.competition !== competition) return false;
     if (sourceFilter.length && !sourceFilter.includes(game.sourceName)) return false;
     if (matchdayFilter.length && !matchdayFilter.includes(String(game.matchday))) return false;
+    if (!isGameInPeriod(game, period.from, period.to)) return false;
+    if (onlyAssigned && !game.officials.observer) return false;
     return true;
-  });
+  }).sort((first, second) => (hasPeriod
+    ? String(first.scheduledAt || '').localeCompare(String(second.scheduledAt || ''))
+    : 0));
+
+  const uncoveredCount = filtered.filter((game) => !game.officials.observer).length;
+
+  function handleExport() {
+    downloadDesignationsExport({
+      season,
+      competition,
+      sourceNames: sourceFilter,
+      matchdays: matchdayFilter,
+      dateFrom: period.from,
+      dateTo: period.to,
+      onlyAssigned
+    });
+  }
 
   async function assignObserver(gameId, userId) {
     if (!userId) return;
@@ -165,8 +197,19 @@ export default function DesignateObserversPage({ currentUser, season }) {
 
       <section className="common-card">
         <FilterBar
-          activeCount={(competition ? 1 : 0) + (sourceFilter.length ? 1 : 0) + (matchdayFilter.length ? 1 : 0)}
-          onReset={() => { setCompetition(''); setSourceFilter([]); setMatchdayFilter([]); }}
+          activeCount={
+            (competition ? 1 : 0) +
+            (sourceFilter.length ? 1 : 0) +
+            (matchdayFilter.length ? 1 : 0) +
+            (hasPeriod ? 1 : 0)
+          }
+          onReset={() => {
+            setCompetition('');
+            setSourceFilter([]);
+            setMatchdayFilter([]);
+            setPeriod({ from: '', to: '' });
+            setOnlyAssigned(false);
+          }}
         >
           <Select
             value={competition}
@@ -189,12 +232,18 @@ export default function DesignateObserversPage({ currentUser, season }) {
             allLabel="Giornata"
             options={matchdayOptions.map((m) => ({ value: String(m), label: `Giornata ${m}` }))}
           />
+          <PeriodFilter
+            from={period.from}
+            to={period.to}
+            onChange={setPeriod}
+            daysWithGames={daysWithGames}
+          />
         </FilterBar>
 
         {!hasFilter ? (
           <div className="empty-state" style={{ padding: '28px', textAlign: 'center' }}>
             <h3>Scegli i filtri</h3>
-            <p>Seleziona campionato, fase o giornata per vedere le gare da coprire.</p>
+            <p>Seleziona campionato, fase, giornata o un periodo per vedere le gare da coprire.</p>
           </div>
         ) : null}
 
@@ -202,7 +251,33 @@ export default function DesignateObserversPage({ currentUser, season }) {
           <div className="section-heading" style={{ marginTop: '14px' }}>
             <div>
               <h2>Gare ({filtered.length})</h2>
-              <p>Le gare senza osservatore sono scoperte: sono quelle da coprire.</p>
+              <p>
+                {[
+                  competition ? competitionLabel(competition) : 'Tutti i campionati',
+                  sourceFilter.length ? sourceFilter.join(', ') : null,
+                  matchdayFilter.length ? `Giornata ${matchdayFilter.join(', ')}` : null,
+                  hasPeriod ? formatPeriodLabel(period.from, period.to) : null,
+                  `${uncoveredCount} scoperte`
+                ].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={onlyAssigned}
+                  onChange={(event) => setOnlyAssigned(event.target.checked)}
+                />
+                <span>Solo gare con osservatore</span>
+              </label>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleExport}
+                disabled={loading || filtered.length === 0}
+              >
+                Esporta vista XLSX ({filtered.length})
+              </button>
             </div>
           </div>
         ) : null}
@@ -249,6 +324,7 @@ export default function DesignateObserversPage({ currentUser, season }) {
                         <td>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <GameStateBadge state={game.derivedState} />
+                            <ReportTypeBadge type={game.reportType} />
                             {assignedUnavailability ? (
                               <span className="status-badge status-badge-sm status-alert" title={formatAvailabilityPeriod(assignedUnavailability)}>
                                 INDISPONIBILE

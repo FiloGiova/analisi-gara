@@ -72,7 +72,7 @@ async function loadOfficialsByGame(gameIds) {
 async function loadReportsByGame(gameIds) {
   if (!gameIds.length) return new Map();
   const placeholders = gameIds.map(() => '?').join(', ');
-  const rows = await dbAll(`SELECT id, game_id, status FROM reports WHERE game_id IN (${placeholders})`, gameIds);
+  const rows = await dbAll(`SELECT id, game_id, status, report_type FROM reports WHERE game_id IN (${placeholders})`, gameIds);
   const map = new Map();
   for (const row of rows) {
     // In caso di più rapporti per gara prevale il definitivo.
@@ -130,6 +130,7 @@ function rowToGame(row, officials = {}, report = null) {
     officials,
     reportId: report?.id || null,
     reportStatus: report?.status || null,
+    reportType: report ? (report.report_type === 'video' ? 'video' : 'full') : null,
     derivedState: deriveGameState(row, officials, report),
     needsAlias: needsAlias(officials)
   };

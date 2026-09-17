@@ -1,6 +1,8 @@
 import express from 'express';
 import { requireAdmin, requireAdminOrInstructor } from '../middleware/auth.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
+import { buildDesignationsWorkbook, designationsFileName } from '../services/designationsExportService.js';
+import { isValidIsoDate } from '../../shared/gamePeriod.js';
 import {
   listGames,
   listGameSeasons,
@@ -106,6 +108,39 @@ gamesRouter.get(
   })
 );
 
+// Le date arrivano dai filtri del client: si accettano solo ISO valide, il
+// resto equivale a "nessun limite".
+function periodParam(req, name) {
+  const value = String(req.query[name] || '').trim();
+  return isValidIsoDate(value) ? value : '';
+}
+
+gamesRouter.get(
+  '/designations/export',
+  requireAdminOrInstructor,
+  asyncHandler(async (req, res) => {
+    const season = String(req.query.season || '').trim() || (req.user?.role === 'instructor' ? currentSportSeason() : '');
+    const dateFrom = periodParam(req, 'dateFrom');
+    const dateTo = periodParam(req, 'dateTo');
+    const competition = String(req.query.competition || '').trim();
+    const workbook = await buildDesignationsWorkbook({
+      season,
+      competitions: scopedCompetitions(req, season),
+      competition,
+      sourceNames: repeatedParam(req, 'sources'),
+      matchdays: repeatedParam(req, 'matchdays'),
+      dateFrom,
+      dateTo,
+      onlyAssigned: req.query.onlyAssigned === '1' || req.query.onlyAssigned === 'true'
+    });
+    const fileName = designationsFileName({ season, competition, dateFrom, dateTo });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  })
+);
+
 gamesRouter.get(
   '/export',
   requireAdminOrInstructor,
@@ -120,7 +155,9 @@ gamesRouter.get(
       stateFilters,
       sourceNames: repeatedParam(req, 'sources'),
       refereeId: req.query.refereeId ? Number(req.query.refereeId) : null,
-      search: String(req.query.search || '')
+      search: String(req.query.search || ''),
+      dateFrom: periodParam(req, 'dateFrom'),
+      dateTo: periodParam(req, 'dateTo')
     });
     const fileName = `gare_${(season || 'tutte').replace('/', '-')}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

@@ -7,6 +7,7 @@ import Select from '../components/Select.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import WorkbenchTable from '../components/WorkbenchTable.jsx';
 import FilterBar from '../components/FilterBar.jsx';
+import NewReportChoice from '../components/NewReportChoice.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
@@ -43,6 +44,7 @@ export default function DashboardPage({ currentUser, season }) {
   const [exportingId, setExportingId] = useState(null);
   const [reportToDelete, setReportToDelete] = useState(null);
   const [showPdfImporter, setShowPdfImporter] = useState(false);
+  const [newReportChoice, setNewReportChoice] = useState(null); // { gameId } finché non si sceglie il tipo
   const { competitionLabel } = useCompetitions();
   const [sparkline] = useState(() => buildSparkline(0, 0));
 
@@ -94,7 +96,7 @@ export default function DashboardPage({ currentUser, season }) {
   useEffect(() => {
     function handleKey(e) {
       if (e.key === 'n' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-        navigate('/reports/new');
+        setNewReportChoice({ gameId: null });
       }
     }
     window.addEventListener('keydown', handleKey);
@@ -167,6 +169,9 @@ export default function DashboardPage({ currentUser, season }) {
 
   return (
     <div className="page-stack">
+      {newReportChoice ? (
+        <NewReportChoice gameId={newReportChoice.gameId} onClose={() => setNewReportChoice(null)} />
+      ) : null}
       {showPdfImporter ? (
         <FederationPdfImporter
           onClose={() => setShowPdfImporter(false)}
@@ -201,7 +206,7 @@ export default function DashboardPage({ currentUser, season }) {
               Importa PDF
             </button>
           ) : null}
-          <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
+          <button type="button" className="primary-button" onClick={() => setNewReportChoice({ gameId: null })}>
             + Nuovo rapporto
           </button>
         </div>
@@ -267,7 +272,7 @@ export default function DashboardPage({ currentUser, season }) {
               </thead>
               <tbody>
                 {pendingGames.map((g) => (
-                  <tr key={g.gameId} className="is-clickable" onClick={() => navigate(`/reports/new?game=${g.gameId}`)}>
+                  <tr key={g.gameId} className="is-clickable" onClick={() => setNewReportChoice({ gameId: g.gameId })}>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{formatMatchNumber(g.matchNumber)}</td>
                     <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDateTime(g.scheduledAt)}</td>
                     <td style={{ fontWeight: 600 }}>{g.teamHome} - {g.teamAway}</td>
@@ -277,7 +282,7 @@ export default function DashboardPage({ currentUser, season }) {
                       <button
                         type="button"
                         className="primary-button"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/reports/new?game=${g.gameId}`); }}
+                        onClick={(e) => { e.stopPropagation(); setNewReportChoice({ gameId: g.gameId }); }}
                       >
                         Compila
                       </button>
@@ -338,7 +343,7 @@ export default function DashboardPage({ currentUser, season }) {
             <EmptyState
               title="Nessun rapporto ancora."
               action={(
-                <button type="button" className="primary-button" onClick={() => navigate('/reports/new')}>
+                <button type="button" className="primary-button" onClick={() => setNewReportChoice({ gameId: null })}>
                   + Nuovo rapporto
                 </button>
               )}

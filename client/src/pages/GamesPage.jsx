@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
@@ -10,6 +10,9 @@ import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
+import PeriodFilter from '../components/PeriodFilter.jsx';
+import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
+import { gameDateKey, isGameInPeriod, todayIso, formatPeriodLabel } from '../../../shared/gamePeriod.js';
 
 const CURRENT_SEASON = currentSportSeason();
 
@@ -50,6 +53,32 @@ function officialLabel(official) {
   return official.refereeName || official.userName || official.externalName || '—';
 }
 
+// Righe-separatore dell'elenco: si vede subito dove comincia ogni giornata
+// mentre si scorre, anche aprendo la pagina a metà stagione.
+function matchdayGroupKey(game) {
+  return game ? `${game.sourceName || ''}|${game.matchday ?? ''}` : null;
+}
+
+function matchdayHeaderFor(games, index) {
+  const game = games[index];
+  if (index > 0 && matchdayGroupKey(games[index - 1]) === matchdayGroupKey(game)) return null;
+
+  let end = index;
+  while (end + 1 < games.length && matchdayGroupKey(games[end + 1]) === matchdayGroupKey(game)) end += 1;
+  const dates = games.slice(index, end + 1).map((item) => gameDateKey(item)).filter(Boolean).sort();
+  const range = dates.length ? formatPeriodLabel(dates[0], dates[dates.length - 1]) : '';
+
+  return (
+    <tr className="matchday-row">
+      <td colSpan={9}>
+        {game.matchday ? `Giornata ${game.matchday}` : 'Senza giornata'}
+        {game.sourceName ? ` · ${game.sourceName}` : ''}
+        {range ? <span className="matchday-row-dates">{range}</span> : null}
+      </td>
+    </tr>
+  );
+}
+
 export default function GamesPage({ currentUser, season }) {
   const { activeCompetitions } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
@@ -61,6 +90,16 @@ export default function GamesPage({ currentUser, season }) {
   const [sourceFilter, setSourceFilter] = useState([]); // fasi selezionate (menu a tendina multi)
   const [refereeFilter, setRefereeFilter] = useState('');
   const [search, setSearch] = useState('');
+  // Il periodo apre l'elenco sulla giornata in corso invece che sulla prima di
+  // ottobre; l'ultimo scelto resta per la sessione (tornare dal dettaglio gara
+  // non deve riportare al default).
+  const [period, setPeriod] = useState(() => {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem('games-period') || 'null');
+      if (stored && (stored.from !== undefined)) return stored;
+    } catch (_) { /* sessionStorage non disponibile: si usa il default */ }
+    return { from: todayIso(), to: '' };
+  });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
@@ -91,6 +130,12 @@ export default function GamesPage({ currentUser, season }) {
     if (canManage) loadGames();
   }, [canManage, season]);
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('games-period', JSON.stringify(period));
+    } catch (_) { /* niente sessionStorage: il periodo vale solo per questa pagina */ }
+  }, [period.from, period.to]);
+
   const matchdays = useMemo(
     () => Array.from(new Set(games.map((g) => g.matchday).filter((m) => m !== null))).sort((a, b) => a - b),
     [games]
@@ -116,7 +161,13 @@ export default function GamesPage({ currentUser, season }) {
     [games]
   );
 
-  const filtered = games.filter((game) => {
+  const daysWithGames = useMemo(
+    () => Array.from(new Set(games.map((game) => gameDateKey(game)).filter(Boolean))),
+    [games]
+  );
+
+  const matchesFilters = (game, { ignorePeriod = false } = {}) => {
+    if (!ignorePeriod && !isGameInPeriod(game, period.from, period.to)) return false;
     if (matchday && String(game.matchday) !== matchday) return false;
     if (stateFilter.length) {
       const cats = gameStateCategories(game);
@@ -145,7 +196,22 @@ export default function GamesPage({ currentUser, season }) {
       if (!haystack.includes(q)) return false;
     }
     return true;
-  });
+  };
+
+  // Con un periodo attivo l'ordine è cronologico: chi filtra "questo weekend"
+  // si aspetta le gare in ordine di data, anche quelle rinviate da altre giornate.
+  const hasPeriod = Boolean(period.from || period.to);
+  const filtered = games
+    .filter((game) => matchesFilters(game))
+    .sort((first, second) => (hasPeriod
+      ? String(first.scheduledAt || '').localeCompare(String(second.scheduledAt || ''))
+      : 0));
+
+  // Quante gare troverebbe la stessa ricerca senza limiti di periodo: serve
+  // all'uscita di sicurezza dell'empty state.
+  const outsidePeriodCount = hasPeriod
+    ? games.filter((game) => matchesFilters(game, { ignorePeriod: true })).length
+    : 0;
 
   function updateForm(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -158,7 +224,9 @@ export default function GamesPage({ currentUser, season }) {
       stateFilters: stateFilter,
       sourceNames: sourceFilter,
       refereeId: refereeFilter,
-      search
+      search,
+      dateFrom: period.from,
+      dateTo: period.to
     });
   }
 
@@ -312,15 +380,23 @@ export default function GamesPage({ currentUser, season }) {
             (sourceFilter.length ? 1 : 0) +
             (matchday ? 1 : 0) +
             (refereeFilter ? 1 : 0) +
-            (stateFilter.length ? 1 : 0)
+            (stateFilter.length ? 1 : 0) +
+            (hasPeriod ? 1 : 0)
           }
           onReset={() => {
             setSourceFilter([]);
             setMatchday('');
             setRefereeFilter('');
             setStateFilter([]);
+            setPeriod({ from: '', to: '' });
           }}
         >
+          <PeriodFilter
+            from={period.from}
+            to={period.to}
+            onChange={setPeriod}
+            daysWithGames={daysWithGames}
+          />
           {sourceOptions.length ? (
             <MultiSelect
               values={sourceFilter}
@@ -360,7 +436,14 @@ export default function GamesPage({ currentUser, season }) {
           <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>
             {games.length === 0
               ? 'Nessuna gara in questa stagione. Configura una sorgente FIP (menu Admin → Sorgenti gare) oppure crea una gara manualmente.'
-              : 'Nessuna gara corrisponde ai filtri.'}
+              : `Nessuna gara corrisponde ai filtri${hasPeriod ? ` nel periodo ${formatPeriodLabel(period.from, period.to)}` : ''}.`}
+            {outsidePeriodCount > 0 ? (
+              <div style={{ marginTop: '12px' }}>
+                <button type="button" className="primary-button" onClick={() => setPeriod({ from: '', to: '' })}>
+                  Cerca in tutta la stagione ({outsidePeriodCount})
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -381,8 +464,10 @@ export default function GamesPage({ currentUser, season }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((game) => (
-                  <tr key={game.id} className="is-clickable" onClick={() => navigate(`/games/${game.id}`)}>
+                {filtered.map((game, index) => (
+                  <Fragment key={game.id}>
+                    {matchdayHeaderFor(filtered, index)}
+                  <tr className="is-clickable" onClick={() => navigate(`/games/${game.id}`)}>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{formatMatchNumber(game.matchNumber)}</td>
                     <td style={{ color: 'var(--muted)' }}>{game.matchday ?? '—'}</td>
                     <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDateTime(game.scheduledAt)}</td>
@@ -401,6 +486,7 @@ export default function GamesPage({ currentUser, season }) {
                     <td>
                       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                         <GameStateBadge state={game.derivedState} />
+                        <ReportTypeBadge type={game.reportType} />
                         {game.needsAlias ? (
                           <span className="status-badge status-badge-sm status-cancelled">
                             Nomi da associare
@@ -409,6 +495,7 @@ export default function GamesPage({ currentUser, season }) {
                       </div>
                     </td>
                   </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

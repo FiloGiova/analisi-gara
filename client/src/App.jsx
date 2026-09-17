@@ -6,6 +6,7 @@ import Shell from './components/Shell.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ReportFormPage from './pages/ReportFormPage.jsx';
+import ReportVideoFormPage from './pages/ReportVideoFormPage.jsx';
 import ReportDetailPage from './pages/ReportDetailPage.jsx';
 import AdminUsersPage from './pages/AdminUsersPage.jsx';
 import AdminLogsPage from './pages/AdminLogsPage.jsx';
@@ -117,8 +118,16 @@ export default function App() {
   if (!isReferee && route.name === 'coverage') {
     page = <CoveragePage currentUser={user} season={season} />;
   }
-  if (!isReferee && route.name === 'newReport') page = <ReportFormPage currentUser={user} features={features} gameId={route.gameId} season={season} />;
-  if (!isReferee && route.name === 'editReport') page = <ReportFormPage id={route.id} currentUser={user} features={features} season={season} />;
+  if (!isReferee && route.name === 'newReport') {
+    page = route.reportType === 'video'
+      ? <ReportVideoFormPage currentUser={user} gameId={route.gameId} season={season} />
+      : <ReportFormPage currentUser={user} features={features} gameId={route.gameId} season={season} />;
+  }
+  if (!isReferee && route.name === 'editReport') {
+    page = route.reportType === 'video'
+      ? <ReportVideoFormPage id={route.id} currentUser={user} season={season} />
+      : <ReportFormPage id={route.id} currentUser={user} features={features} season={season} />;
+  }
   if (route.name === 'reportDetail') page = <ReportDetailPage id={route.id} currentUser={user} />;
   if (route.name === 'account') page = (
     <AccountPage

@@ -32,10 +32,19 @@ export function parseRoute(path) {
   if (segments[0] === 'games') return { name: 'games' };
   if (segments[0] === 'reports' && segments.length === 1) return { name: 'dashboard' };
   if (segments[0] === 'reports' && segments[1] === 'new') {
-    return { name: 'newReport', gameId: query.game ? Number(query.game) : null };
+    // ?type=video apre il rapporto a video: stessa rotta, form diverso.
+    return {
+      name: 'newReport',
+      gameId: query.game ? Number(query.game) : null,
+      reportType: query.type === 'video' ? 'video' : 'full'
+    };
   }
   if (segments[0] === 'reports' && segments[1] && segments[2] === 'edit') {
-    return { name: 'editReport', id: Number(segments[1]) };
+    return {
+      name: 'editReport',
+      id: Number(segments[1]),
+      reportType: query.type === 'video' ? 'video' : 'full'
+    };
   }
   if (segments[0] === 'reports' && segments[1]) return { name: 'reportDetail', id: Number(segments[1]) };
 

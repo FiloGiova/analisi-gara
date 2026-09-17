@@ -8,6 +8,7 @@ import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDate } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
+import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
 
 
 const BANDS = [
@@ -360,9 +361,11 @@ export default function CoveragePage({ currentUser, season }) {
                                     }
                                     title={entry.type === 'scheduled'
                                       ? 'Visionamento programmato · apri la gara'
-                                      : entry.type === 'draft'
-                                        ? 'Rapporto in bozza · apri il rapporto'
-                                        : `Voto: ${entry.vote || 'non indicato'} · apri il rapporto`}
+                                      : entry.reportType === 'video'
+                                        ? 'Rapporto a video · apri il rapporto'
+                                        : entry.type === 'draft'
+                                          ? 'Rapporto in bozza · apri il rapporto'
+                                          : `Voto: ${entry.vote || 'non indicato'} · apri il rapporto`}
                                   >
                                     {entry.type === 'scheduled' ? '○' : entry.type === 'draft' ? '◐' : '✓'} {entry.observerLabel}
                                   </button>
@@ -555,6 +558,7 @@ export default function CoveragePage({ currentUser, season }) {
                   {detail.completed.map((item, i) => (
                     <li key={i}>
                       ✓ {formatDate(item.date)} · gara {formatMatchNumber(item.matchNumber)} · {item.teams}{' '}
+                      <ReportTypeBadge type={item.reportType} />{' '}
                       {item.reportId ? (
                         <button type="button" className="ghost-button" style={{ padding: '5px 10px' }} onClick={() => navigate(`/reports/${item.reportId}`)}>
                           Apri rapporto

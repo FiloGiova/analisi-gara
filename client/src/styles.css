@@ -988,6 +988,435 @@ input.filter-search {
   flex-shrink: 0;
 }
 
+/* Visionature a video sotto la curva: non hanno valutazioni per sezione,
+   quindi si mostrano come tacche invece di bucare i grafici. */
+
+.progress-video-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.progress-video-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.progress-video-tick {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+/* Spunta in linea accanto alle azioni di una sezione. */
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.inline-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--teal);
+}
+
+/* ── Filtro periodo (calendario in stile app) ────────────────── */
+
+.period-filter .custom-select-trigger {
+  white-space: nowrap;
+}
+
+.period-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-dropdown);
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.period-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 164px;
+  padding-right: var(--space-4);
+  border-right: 1px solid var(--line-soft);
+}
+
+.period-preset {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.period-preset:hover,
+.period-preset:focus-visible {
+  background: var(--surface-soft);
+}
+
+.period-preset.is-active {
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.period-calendar {
+  width: 268px;
+}
+
+.period-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: capitalize;
+}
+
+.period-nav {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.period-nav:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.period-weekdays,
+.period-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.period-weekdays span {
+  padding-bottom: 4px;
+  color: var(--muted-2);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.period-day {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.period-day:hover {
+  background: var(--surface-soft);
+}
+
+.period-day.is-outside {
+  color: var(--muted-2);
+}
+
+.period-day.is-in-range {
+  background: var(--blue-soft);
+  color: var(--blue);
+  border-radius: 0;
+}
+
+.period-day.is-start {
+  border-top-left-radius: var(--radius-pill);
+  border-bottom-left-radius: var(--radius-pill);
+}
+
+.period-day.is-end {
+  border-top-right-radius: var(--radius-pill);
+  border-bottom-right-radius: var(--radius-pill);
+}
+
+.period-day.is-start,
+.period-day.is-end {
+  background: var(--blue);
+  color: #fff;
+  font-weight: 700;
+}
+
+.period-day.is-today {
+  box-shadow: inset 0 0 0 2px var(--teal);
+}
+
+/* Pallino dei giorni con gare: si vede a colpo d'occhio dove si gioca. */
+.period-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: var(--radius-pill);
+  background: var(--orange);
+}
+
+.period-day.is-start .period-dot,
+.period-day.is-end .period-dot {
+  background: #fff;
+}
+
+.period-manual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.period-manual label {
+  display: grid;
+  gap: 2px;
+}
+
+.period-manual span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.period-manual input {
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.period-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.period-filter.is-inline {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.period-inline-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.period-filter.is-inline .period-panel {
+  position: static;
+  flex-direction: column;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.period-filter.is-inline .period-presets {
+  flex-direction: row;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding-right: 0;
+  border-right: 0;
+}
+
+.period-filter.is-inline .period-preset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+}
+
+.period-filter.is-inline .period-calendar {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .period-panel {
+    position: fixed;
+    left: var(--space-3);
+    right: var(--space-3);
+    top: auto;
+    bottom: calc(var(--space-4) + 64px);
+    flex-direction: column;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .period-presets {
+    flex-direction: row;
+    flex-wrap: wrap;
+    min-width: 0;
+    padding-right: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+    padding-bottom: var(--space-3);
+  }
+
+  .period-preset {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+  }
+
+  .period-calendar {
+    width: 100%;
+  }
+}
+
+/* ── Righe-separatore per giornata nell'elenco gare ──────────── */
+
+.matchday-row td {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  padding: 8px 12px;
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--line);
+}
+
+.matchday-row .matchday-row-dates {
+  margin-left: 8px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── Rapporto a video ────────────────────────────────────────── */
+
+.video-judgement-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.video-judgement-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.video-judgement-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.attachment-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.attachment-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.attachment-meta strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-meta span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.attachment-dropzone {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: var(--space-6);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.attachment-dropzone.is-dragging,
+.attachment-dropzone:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.report-type-choice {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.report-type-option {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.report-type-option:hover,
+.report-type-option:focus-visible {
+  border-color: var(--teal);
+  box-shadow: var(--shadow-sm);
+}
+
+.report-type-option strong {
+  font-size: 1rem;
+}
+
+.report-type-option span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 /* ── Bottom tab bar (mobile) ─────────────────────────────────── */
 
 .tabbar {
@@ -3782,6 +4211,12 @@ dd {
   color: var(--blue);
   font-size: 2rem;
   line-height: 1;
+}
+
+/* Riga di dettaglio della metrica (es. "di cui 3 a video"). */
+.metric-card small {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .history-list {

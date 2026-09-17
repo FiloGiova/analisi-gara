@@ -7,6 +7,72 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-17 — Rapporto a video, export designazioni e filtro periodo
+
+**Rapporto a video.** Nuovo tipo di rapporto per le visionature da video: solo
+osservatore/formatore/admin, un giudizio per arbitro su scala a quattro valori
+(Molto bene / Bene / Malino / Male) e un allegato PDF o XLSX. Conta come
+visionatura ovunque si contino i rapporti, ma non ha voto, non produce PDF e
+non si invia per email.
+
+- Database: `reports.report_type` (`full`/`video`, default `full`) e colonne
+  `attachment_path/name/type/size/uploaded_at`. Migrazione idempotente in
+  `ensureReportTypeColumns()` ([src/database/connection.js](src/database/connection.js)):
+  i rapporti esistenti restano completi.
+- [shared/reportTemplate.js](shared/reportTemplate.js): `VIDEO_JUDGMENT_OPTIONS`,
+  `VIDEO_REQUIRED_FIELDS`, `createEmptyVideoReport()`, `normalizeReportType()`.
+  Il tipo si sceglie alla creazione e non cambia più con una modifica.
+- [src/services/reportAttachmentService.js](src/services/reportAttachmentService.js):
+  un allegato per rapporto, sostituibile, max 10 MB, tipo riconosciuto dalla
+  firma del file e non dall'estensione. Rotte `POST/DELETE /api/reports/:id/attachment`
+  e `GET /api/reports/:id/attachment/download`, che nega il ruolo `referee`:
+  l'allegato è un documento interno e non è filtrabile come il payload web.
+- Client: nuova pagina [ReportVideoFormPage](client/src/pages/ReportVideoFormPage.jsx)
+  (una schermata, niente barra di avanzamento), bivio `NewReportChoice` su
+  "Nuovo rapporto" e "Compila rapporto", dettaglio rapporto in versione corta,
+  card allegato riusabile.
+- Marcatore: badge testuale **VIDEO** negli elenchi (rapporti, gare,
+  designazioni, scheda arbitro) invece di una sigla accanto al nome. Nella
+  scheda arbitro la metrica "Rapporti" mostra "di cui N a video", la colonna
+  Voto porta il giudizio e le curve dell'andamento non si bucano: le
+  visionature a video sono elencate come tacche sopra i grafici.
+- Classifica arbitri: nuova colonna `videoReportsCount` (le medie restano
+  costruite sui soli voti).
+
+**Bug corretto (preesistente).** `getRefereeStats` contava `Number('')` come
+voto 0: un rapporto senza voto (bozza o, da oggi, a video) abbassava la media
+dell'arbitro. Ora si contano solo i voti davvero inseriti, come già faceva la
+query della classifica.
+
+**Export XLSX delle designazioni osservatori.** Pulsante "Esporta vista XLSX"
+nella pagina Designa osservatori, con lo stesso vocabolario degli altri export.
+Esporta esattamente le gare filtrate (campionato, fase, giornate, periodo),
+con l'intestazione che dichiara i filtri, il conteggio delle scoperte e un nome
+file parlante (`designazioni_DR1_03-10-2026_04-10-2026_2026-2027.xlsx`). Spunta
+"solo gare con osservatore"; le scoperte restano in elenco marcate in rosso.
+Nuovo [src/services/designationsExportService.js](src/services/designationsExportService.js)
+e rotta `GET /api/games/designations/export`.
+
+**Filtro periodo (data inizio / data fine).** Nuovo componente `PeriodFilter`:
+trigger in stile `Select`, preset (oggi, weekend, prossimi 7 giorni, da oggi,
+mese, tutta la stagione), calendario disegnato con i token dell'app — niente
+`input type="date"` — con i giorni che hanno gare segnati da un pallino, più i
+due campi `DateInput` per chi preferisce digitare.
+
+- Elenco gare: il periodo predefinito è **"da oggi"**, quindi la pagina si apre
+  sulla giornata in corso invece che sulla prima di ottobre; l'ultimo periodo
+  resta in `sessionStorage` per la sessione. Righe-separatore sticky per
+  giornata, ordine cronologico quando c'è un periodo attivo (le rinviate
+  compaiono dove sono giocate davvero) e, se i filtri non trovano nulla,
+  l'empty state offre "Cerca in tutta la stagione (N)".
+- Designa osservatori: il periodo è un filtro di primo livello e da solo basta
+  a mostrare l'elenco; sopra la tabella un riepilogo leggibile dei filtri.
+- La regola vive in [shared/gamePeriod.js](shared/gamePeriod.js), condivisa tra
+  client ed export, così l'XLSX contiene sempre ciò che si stava guardando.
+
+Test: `tests/videoReport.test.js` (11 casi) e `tests/gamePeriod.test.js` (7 casi,
+puro, aggiunto a `npm run test:unit`). Suite completa: 140 test verdi.
+
 ## 2026-09-17 — Sorgenti gare: la fase FIP fa parte dei parametri
 
 **Bug.** Le sorgenti create incollando il link della pagina Risultati senza aver

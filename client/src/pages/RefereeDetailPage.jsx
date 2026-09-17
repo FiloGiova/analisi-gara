@@ -15,6 +15,7 @@ import { formatMatchNumber, formatDate } from '../lib/formatters.js';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
+import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 
 const CURRENT_SEASON = currentSportSeason();
@@ -419,6 +420,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
         <div className="metric-card">
           <span>Rapporti</span>
           <strong>{stats.reportsCount || 0}</strong>
+          {stats.videoReportsCount ? <small>di cui {stats.videoReportsCount} a video</small> : null}
         </div>
         <div className="metric-card">
           <span>Voti</span>
@@ -463,12 +465,19 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                 {reports.map((report) => (
                   <tr key={`${report.id}-${report.role}`} className="is-clickable" onClick={() => navigate(`/reports/${report.id}`)}>
                     <td>{formatDate(report.reportDate)}</td>
-                    <td style={{ fontWeight: 700 }}>{formatMatchNumber(report.matchNumber, report.id)}</td>
+                    <td style={{ fontWeight: 700 }}>
+                      {formatMatchNumber(report.matchNumber, report.id)}
+                      {report.reportType === 'video' ? <> <ReportTypeBadge type="video" /></> : null}
+                    </td>
                     <td>{report.roleLabel}</td>
                     <td>{report.teams || '-'}</td>
                     <td>{report.result || '-'}</td>
                     <td>{report.observerName || '-'}</td>
-                    <td style={{ fontWeight: 800, color: 'var(--blue)' }}>{report.vote || '-'}</td>
+                    <td style={{ fontWeight: 800, color: 'var(--blue)' }}>
+                      {report.reportType === 'video'
+                        ? <span className="status-badge status-badge-sm status-neutral">{report.judgement || 'video'}</span>
+                        : (report.vote || '-')}
+                    </td>
                     <td>{report.status === 'final' ? 'Definitivo' : 'Bozza'}</td>
                   </tr>
                 ))}

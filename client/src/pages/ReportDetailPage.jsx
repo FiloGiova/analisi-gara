@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { COMMON_MATCH_CHARACTERISTICS, getRefereeLabel, deriveSeason } from '../../../shared/reportTemplate.js';
-import { api, downloadReportPdf } from '../lib/api.js';
+import { api, downloadReportPdf, downloadReportAttachment } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
+import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
+import AttachmentCard from '../components/AttachmentCard.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { formatMatchNumber, formatRelativeDate } from '../lib/formatters.js';
 import FederationPdfImporter from '../components/FederationPdfImporter.jsx';
@@ -285,6 +287,132 @@ export default function ReportDetailPage({ id, currentUser }) {
   const isAwayWinner = hasScores && scoreAway > scoreHome;
 
   const season = report.sportSeason || deriveSeason(data.reportDate) || '—';
+
+  // Rapporto a video: stessa pagina in versione corta. Niente PDF, niente
+  // invio email, niente sezioni di valutazione: giudizi e allegato.
+  if (report.reportType === 'video') {
+    const judgements = data.judgements || {};
+    const rows = [
+      { role: 'first', label: '1° arbitro', name: data.firstRefereeName },
+      { role: 'second', label: '2° arbitro', name: data.secondRefereeName }
+    ].filter((row) => row.name || judgements[row.role]);
+
+    return (
+      <div className="page-stack">
+        {showDeleteConfirm ? (
+          <ConfirmModal
+            title="Cancella rapporto"
+            confirmLabel="Sì, cancella"
+            onConfirm={handleDelete}
+            onCancel={() => setShowDeleteConfirm(false)}
+          >
+            Cancellare il rapporto a video della gara <strong>{formatMatchNumber(data.matchNumber, report.id)}</strong>?
+            {' '}L'operazione non può essere annullata.
+          </ConfirmModal>
+        ) : null}
+
+        <section className="detail-hero">
+          <div className="detail-hero-top">
+            <div className="detail-hero-content">
+              <p className="eyebrow">
+                #{formatMatchNumber(data.matchNumber, report.id)}
+                {data.competition ? ` · ${data.competition}` : ''}
+                {data.reportDate ? ` · ${new Date(data.reportDate).toLocaleDateString('it-IT')}` : ''}
+                {' '}<ReportTypeBadge type="video" />
+              </p>
+              <div className="score-block">
+                <div className="team-block">
+                  <span className="team-name">{data.teamHome || '—'}</span>
+                </div>
+                <span className="vs-label">vs</span>
+                <div className="team-block" style={{ textAlign: 'right' }}>
+                  <span className="team-name">{data.teamAway || '—'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="detail-hero-actions">
+              {canOpenGame && (
+                <button type="button" className="ghost-button" onClick={() => navigate(`/games/${report.gameId}`)}>
+                  Vai alla gara
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="detail-hero-bottom">
+            <StatusBadge status={report.status} />
+            {canManageReport && (
+              <div className="detail-hero-bottom-actions">
+                <button type="button" className="primary-button" onClick={() => navigate(`/reports/${report.id}/edit?type=video`)}>
+                  Modifica
+                </button>
+                <button type="button" className="danger-button" onClick={() => setShowDeleteConfirm(true)}>
+                  Cancella rapporto
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <dl className="meta-strip">
+          <div className="meta-cell">
+            <dt>N° gara</dt>
+            <dd>{formatMatchNumber(data.matchNumber)}</dd>
+          </div>
+          <div className="meta-cell">
+            <dt>Osservatore</dt>
+            <dd>{data.observerName || '—'}</dd>
+          </div>
+          <div className="meta-cell">
+            <dt>Stagione</dt>
+            <dd>{season}</dd>
+          </div>
+          <div className="meta-cell">
+            <dt>Aggiornato</dt>
+            <dd>{formatRelativeDate(report.updatedAt)}</dd>
+          </div>
+        </dl>
+
+        <section className="common-card">
+          <div className="section-heading">
+            <div>
+              <h2>Giudizio</h2>
+              <p>Visionatura da video: conta come rapporto, senza voto numerico.</p>
+            </div>
+          </div>
+          <div className="page-stack">
+            {rows.map((row) => (
+              <div key={row.role} className="video-judgement-card">
+                <h3>{row.label} · {row.name || '—'}</h3>
+                <p>{judgements[row.role] ? <strong>{judgements[row.role]}</strong> : 'Giudizio non inserito'}</p>
+              </div>
+            ))}
+            {data.notes ? (
+              <div className="comment-block">
+                <h4>Note</h4>
+                <p>{data.notes}</p>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        {!isReferee ? (
+          <section className="common-card">
+            <div className="section-heading">
+              <div>
+                <h2>Allegato</h2>
+                <p>Il referto della visionatura.</p>
+              </div>
+            </div>
+            <AttachmentCard
+              attachment={report.attachment}
+              readOnly
+              onDownload={() => downloadReportAttachment(report.id)}
+            />
+          </section>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="page-stack">

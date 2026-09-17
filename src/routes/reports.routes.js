@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import {
+  assertReportEditable,
   createReport,
   deleteReport,
   getReport,
@@ -10,6 +11,12 @@ import {
   listReports,
   updateReport
 } from '../services/reportService.js';
+import {
+  MAX_ATTACHMENT_BYTES,
+  deleteReportAttachment,
+  saveReportAttachment,
+  streamReportAttachment
+} from '../services/reportAttachmentService.js';
 import { generateReportPdfs, getPdfFileInfo, generatePdfForRole, buildReportPdf } from '../services/pdfService.js';
 import { listPendingAssignmentsForUser } from '../services/gameService.js';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
@@ -47,6 +54,41 @@ function receivePdfFiles(req, _res, next) {
     }
     if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
       next(new HttpError(413, 'Puoi caricare al massimo 20 PDF per volta.'));
+      return;
+    }
+    next(error);
+  });
+}
+
+const ATTACHMENT_MIMES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+]);
+
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (!ATTACHMENT_MIMES.has(file.mimetype)) {
+      callback(new HttpError(400, 'Sono ammessi soltanto file PDF o XLSX.'));
+      return;
+    }
+    callback(null, true);
+  }
+}).single('file');
+
+function receiveAttachment(req, res, next) {
+  attachmentUpload(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      next(new HttpError(413, 'L’allegato può pesare al massimo 10 MB.'));
+      return;
+    }
+    if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
+      next(new HttpError(400, 'Carica un solo allegato per volta.'));
       return;
     }
     next(error);
@@ -199,10 +241,17 @@ reportsRouter.delete(
   })
 );
 
+function assertExportable(report) {
+  if (report.reportType === 'video') {
+    throw new HttpError(400, 'Il rapporto a video non produce PDF: scarica l’allegato dal rapporto.');
+  }
+}
+
 reportsRouter.post(
   '/:id/export',
   asyncHandler(async (req, res) => {
     const report = await getReport(Number(req.params.id), req.user);
+    assertExportable(report);
     if (req.user?.role === 'referee') {
       const role = report.firstRefereeId === req.user.refereeId ? 'first'
         : report.secondRefereeId === req.user.refereeId ? 'second'
@@ -238,6 +287,7 @@ reportsRouter.get(
     }
 
     const report = await getReport(Number(req.params.id), req.user);
+    assertExportable(report);
 
     if (req.user?.role === 'referee') {
       const myRefereeId = req.user.refereeId;
@@ -285,5 +335,40 @@ reportsRouter.post(
       confirmedRecipient: req.body?.confirmedRecipient
     });
     res.json({ ok: true, sentAt: result.sentAt, refereeEmail: result.refereeEmail });
+  })
+);
+
+// ── Allegato del rapporto a video ───────────────────────────────────────────
+// L'allegato è il documento interno della visionatura: non lo scaricano gli
+// arbitri, che del rapporto vedono solo la propria parte.
+reportsRouter.post(
+  '/:id/attachment',
+  receiveAttachment,
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    await assertReportEditable(id, req.user);
+    if (!req.file?.buffer) throw new HttpError(400, 'Seleziona un file PDF o XLSX.');
+    await saveReportAttachment(id, { buffer: req.file.buffer, originalName: req.file.originalname });
+    res.json({ report: await getReport(id, req.user) });
+  })
+);
+
+reportsRouter.delete(
+  '/:id/attachment',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    await assertReportEditable(id, req.user);
+    await deleteReportAttachment(id);
+    res.json({ report: await getReport(id, req.user) });
+  })
+);
+
+reportsRouter.get(
+  '/:id/attachment/download',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    await getReport(id, req.user);
+    if (req.user?.role === 'referee') throw new HttpError(403, 'Allegato non accessibile.');
+    await streamReportAttachment(id, res);
   })
 );

@@ -142,6 +142,19 @@ export const api = {
     body: JSON.stringify({ report, status })
   }),
   deleteReport: (id) => request(`/api/reports/${id}`, { method: 'DELETE' }),
+  uploadReportAttachment: async (id, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`/api/reports/${id}/attachment`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include'
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(data?.message || 'Caricamento non riuscito.', data?.details, response.status);
+    return data;
+  },
+  deleteReportAttachment: (id) => request(`/api/reports/${id}/attachment`, { method: 'DELETE' }),
   exportReport: (id) => request(`/api/reports/${id}/export`, { method: 'POST' }),
   getRefereeNames: () => request('/api/reports/referee-names'),
   listAccessLogs: (limit = 100, offset = 0) =>
@@ -382,7 +395,9 @@ export function downloadGamesExport({
   stateFilters = [],
   sourceNames = [],
   refereeId = '',
-  search = ''
+  search = '',
+  dateFrom = '',
+  dateTo = ''
 }) {
   const params = new URLSearchParams();
   if (season) params.set('season', season);
@@ -391,8 +406,38 @@ export function downloadGamesExport({
   sourceNames.forEach((source) => params.append('sources', source));
   if (refereeId) params.set('refereeId', refereeId);
   if (search) params.set('search', search);
+  if (dateFrom) params.set('dateFrom', dateFrom);
+  if (dateTo) params.set('dateTo', dateTo);
   const link = document.createElement('a');
   link.href = `/api/games/export?${params}`;
+  link.setAttribute('download', '');
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 200);
+}
+
+// Designazioni osservatori da passare al designatore: esporta esattamente le
+// gare filtrate nella pagina, periodo compreso.
+export function downloadDesignationsExport({
+  season = '',
+  competition = '',
+  sourceNames = [],
+  matchdays = [],
+  dateFrom = '',
+  dateTo = '',
+  onlyAssigned = false
+} = {}) {
+  const params = new URLSearchParams();
+  if (season) params.set('season', season);
+  if (competition) params.set('competition', competition);
+  sourceNames.forEach((source) => params.append('sources', source));
+  matchdays.forEach((matchday) => params.append('matchdays', String(matchday)));
+  if (dateFrom) params.set('dateFrom', dateFrom);
+  if (dateTo) params.set('dateTo', dateTo);
+  if (onlyAssigned) params.set('onlyAssigned', '1');
+  const link = document.createElement('a');
+  link.href = `/api/games/designations/export?${params}`;
   link.setAttribute('download', '');
   link.rel = 'noopener';
   document.body.appendChild(link);
@@ -428,6 +473,16 @@ export function downloadRefereeRankingExport({ season = '', competition = '' } =
   if (competition) params.set('competition', competition);
   const link = document.createElement('a');
   link.href = `/api/referees/ranking/export${params.toString() ? `?${params}` : ''}`;
+  link.setAttribute('download', '');
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 200);
+}
+
+export function downloadReportAttachment(reportId) {
+  const link = document.createElement('a');
+  link.href = `/api/reports/${reportId}/attachment/download`;
   link.setAttribute('download', '');
   link.rel = 'noopener';
   document.body.appendChild(link);

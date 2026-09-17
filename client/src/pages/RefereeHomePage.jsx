@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
+import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import { formatMatchNumber, formatDate } from '../lib/formatters.js';
@@ -82,7 +83,10 @@ export default function RefereeHomePage({ currentUser, season }) {
                 <span className="match-number">Gara {formatMatchNumber(report.matchNumber, report.id)}</span>
                 <h2>{report.teams || 'Squadre non inserite'}</h2>
               </div>
-              <StatusBadge status={report.status} />
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <StatusBadge status={report.status} />
+                <ReportTypeBadge type={report.reportType} />
+              </div>
             </div>
             <dl>
               <div>

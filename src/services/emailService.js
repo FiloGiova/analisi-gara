@@ -90,6 +90,9 @@ export async function buildEmailPlan(reportId, role, user) {
   }
 
   const report = await getReport(reportId, user);
+  if (report.reportType === 'video') {
+    throw new HttpError(400, 'Il rapporto a video non si invia per email: è una visionatura interna.');
+  }
   if (report.status !== 'final') {
     throw new HttpError(409, 'Il rapporto è in bozza: finalizzalo prima di inviarlo.');
   }

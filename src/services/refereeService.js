@@ -328,9 +328,21 @@ function rowToRefereeReport(row) {
     teams: `${row.team_home} - ${row.team_away}`.trim(),
     result: `${row.score_home} - ${row.score_away}`.trim(),
     vote: row.vote || '',
+    reportType: row.report_type === 'video' ? 'video' : 'full',
+    // Il rapporto a video non ha voto: al suo posto vale il giudizio sintetico.
+    judgement: row.report_type === 'video' ? videoJudgementFor(row) : '',
     observerName: row.observer_name,
     updatedAt: row.updated_at
   };
+}
+
+function videoJudgementFor(row) {
+  try {
+    const payload = JSON.parse(row.payload_json || '{}');
+    return String(payload.judgements?.[row.role] || '');
+  } catch (_) {
+    return '';
+  }
 }
 
 export async function listReportsForReferee(refereeId, { season = '', competition = '', competitions = [] } = {}) {
@@ -341,13 +353,13 @@ export async function listReportsForReferee(refereeId, { season = '', competitio
     ? [refereeId, sportSeason, ...cleanCompetitions, refereeId, sportSeason, ...cleanCompetitions]
     : [refereeId, sportSeason, refereeId, sportSeason];
   const rows = await dbAll(
-    `SELECT id, status, 'first' AS role, report_date, sport_season, match_number, competition,
+    `SELECT id, status, report_type, payload_json, 'first' AS role, report_date, sport_season, match_number, competition,
             team_home, team_away, score_home, score_away, first_referee_vote AS vote,
             observer_name, updated_at
      FROM reports
      WHERE first_referee_id = ? AND sport_season = ? ${competitionClause}
      UNION ALL
-    SELECT id, status, 'second' AS role, report_date, sport_season, match_number, competition,
+    SELECT id, status, report_type, payload_json, 'second' AS role, report_date, sport_season, match_number, competition,
             team_home, team_away, score_home, score_away, second_referee_vote AS vote,
             observer_name, updated_at
      FROM reports
@@ -360,10 +372,17 @@ export async function listReportsForReferee(refereeId, { season = '', competitio
 
 export async function getRefereeStats(refereeId, { season = '', competition = '', competitions = [] } = {}) {
   const reports = await listReportsForReferee(refereeId, { season, competition, competitions });
-  const votes = reports.map((report) => Number(report.vote)).filter((vote) => Number.isInteger(vote));
+  // Attenzione: Number('') vale 0, quindi un rapporto senza voto (bozza o
+  // rapporto a video) finirebbe nella media come uno zero. Si contano solo i
+  // voti davvero inseriti, come già fa la query della classifica.
+  const votes = reports
+    .filter((report) => String(report.vote || '').trim() !== '')
+    .map((report) => Number(report.vote))
+    .filter((vote) => Number.isInteger(vote) && vote > 0);
   const average = votes.length ? votes.reduce((sum, vote) => sum + vote, 0) / votes.length : null;
   return {
     reportsCount: reports.length,
+    videoReportsCount: reports.filter((report) => report.reportType === 'video').length,
     votes,
     votesCount: votes.length,
     averageVote: average === null ? null : Number(average.toFixed(1))
@@ -375,7 +394,7 @@ export async function getRefereeProgress(refereeId, { season = '', competitions 
   const cleanCompetitions = normalizeCompetitions({ competitions });
   const competitionClause = cleanCompetitions.length ? `AND ${inClause('competition', cleanCompetitions)}` : '';
   const rows = await dbAll(
-    `SELECT id, status, report_date, sport_season, match_number, competition,
+    `SELECT id, status, report_type, report_date, sport_season, match_number, competition,
             first_referee_id, second_referee_id, first_referee_vote, second_referee_vote,
             payload_json
      FROM reports
@@ -388,6 +407,7 @@ export async function getRefereeProgress(refereeId, { season = '', competitions 
   );
 
   const matches = [];
+  const videoMatches = [];
   const votes = [];
   for (const row of rows) {
     const role = row.first_referee_id === refereeId ? 'first'
@@ -396,6 +416,18 @@ export async function getRefereeProgress(refereeId, { season = '', competitions 
     if (!role) continue;
     let payload = {};
     try { payload = JSON.parse(row.payload_json) || {}; } catch (_) {}
+    // I rapporti a video non hanno valutazioni per sezione: resterebbero buchi
+    // nelle curve. Vengono elencati a parte, sotto l'intestazione.
+    if (row.report_type === 'video') {
+      videoMatches.push({
+        id: row.id,
+        date: row.report_date,
+        matchNumber: row.match_number,
+        competition: row.competition,
+        judgement: String(payload.judgements?.[role] || '')
+      });
+      continue;
+    }
     const evaluation = payload.evaluations?.[role] || {};
     const ratings = {};
     for (const section of EVALUATION_SECTIONS) {
@@ -437,6 +469,7 @@ export async function getRefereeProgress(refereeId, { season = '', competitions 
     refereeId,
     season: sportSeason,
     matches,
+    videoMatches,
     averageVote,
     trend
   };
@@ -448,8 +481,14 @@ export async function getRefereeRanking({ season = '', competition = '', competi
   const competitionClause = cleanCompetitions.length ? `AND ${inClause('competition', cleanCompetitions)}` : '';
   const seasonCategoryClause = cleanCompetitions.length ? `WHERE ${inClause('sc.category', cleanCompetitions)}` : '';
   const params = cleanCompetitions.length
-    ? [sportSeason, ...cleanCompetitions, sportSeason, ...cleanCompetitions, sportSeason, ...cleanCompetitions]
-    : [sportSeason, sportSeason, sportSeason];
+    ? [
+        sportSeason, ...cleanCompetitions,
+        sportSeason, ...cleanCompetitions,
+        sportSeason, ...cleanCompetitions,
+        sportSeason, ...cleanCompetitions,
+        sportSeason, ...cleanCompetitions
+      ]
+    : [sportSeason, sportSeason, sportSeason, sportSeason, sportSeason];
   const rows = await dbAll(
     `WITH votes AS (
        SELECT r.first_referee_id AS referee_id, r.first_referee_vote AS vote,
@@ -473,12 +512,27 @@ export async function getRefereeRanking({ season = '', competition = '', competi
          AND r.second_referee_vote IS NOT NULL
          AND r.second_referee_vote != ''
          ${competitionClause}
+     ),
+     video AS (
+       SELECT referee_id, COUNT(*) AS video_count FROM (
+         SELECT r.first_referee_id AS referee_id
+         FROM reports r
+         WHERE r.report_type = 'video' AND r.first_referee_id IS NOT NULL AND r.sport_season = ?
+           ${competitionClause}
+         UNION ALL
+         SELECT r.second_referee_id AS referee_id
+         FROM reports r
+         WHERE r.report_type = 'video' AND r.second_referee_id IS NOT NULL AND r.sport_season = ?
+           ${competitionClause}
+       ) rows_video
+       GROUP BY referee_id
      )
      SELECT r.id,
             r.first_name,
             r.last_name,
             sc.category AS season_category,
             sc.sport_season,
+            COALESCE(MAX(vid.video_count), 0) AS video_reports_count,
             COUNT(v.vote) AS votes_count,
             string_agg(v.vote, '|' ORDER BY v.report_date, v.report_id) AS votes,
             json_agg(json_build_object(
@@ -489,6 +543,7 @@ export async function getRefereeRanking({ season = '', competition = '', competi
             AVG(CAST(v.vote AS INTEGER)) AS average_vote
      FROM votes v
      JOIN referees r ON r.id = v.referee_id
+     LEFT JOIN video vid ON vid.referee_id = r.id
      LEFT JOIN referee_season_categories sc
        ON sc.referee_id = r.id AND sc.sport_season = ?
      ${seasonCategoryClause}
@@ -517,6 +572,7 @@ export async function getRefereeRanking({ season = '', competition = '', competi
       votes: voteDetails.length ? voteDetails.map((detail) => detail.vote) : (row.votes ? row.votes.split('|') : []),
       voteDetails,
       votesCount: row.votes_count,
+      videoReportsCount: Number(row.video_reports_count) || 0,
       averageVote: row.average_vote === null ? null : Number(Number(row.average_vote).toFixed(1))
     };
   });

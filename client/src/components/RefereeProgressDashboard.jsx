@@ -105,6 +105,7 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
   }, [refereeId, season]);
 
   const matches = data?.matches || [];
+  const videoMatches = data?.videoMatches || [];
 
   const trendIcon = useMemo(() => {
     if (!data) return '';
@@ -120,7 +121,12 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
     return (
       <div className="empty-state" style={{ padding: 18 }}>
         <h3>Andamento non ancora disponibile</h3>
-        <p>I grafici appaiono dopo i primi rapporti definitivi della stagione.</p>
+        <p>
+          I grafici appaiono dopo i primi rapporti completi della stagione.
+          {videoMatches.length
+            ? ` Le ${videoMatches.length} visionature a video contano come rapporti, ma non hanno valutazioni per sezione.`
+            : ''}
+        </p>
       </div>
     );
   }
@@ -141,6 +147,21 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
           </div>
         ) : null}
       </header>
+
+      {videoMatches.length ? (
+        <div className="progress-video-strip">
+          <span className="progress-video-label">A video ({videoMatches.length})</span>
+          {videoMatches.map((match) => (
+            <span
+              key={match.id}
+              className="progress-video-tick"
+              title={`${match.matchNumber ? `Gara ${formatMatchNumber(match.matchNumber)} · ` : ''}${match.date}${match.judgement ? ` · ${match.judgement}` : ''}`}
+            >
+              {match.judgement || 'visionatura'}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="progress-grid">
         {EVALUATION_SECTIONS.map((section) => (

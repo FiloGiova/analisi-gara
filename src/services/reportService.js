@@ -4,7 +4,11 @@ import {
   COMMON_REQUIRED_FIELDS,
   COMMON_MATCH_CHARACTERISTICS,
   EVALUATION_SECTIONS,
+  VIDEO_JUDGMENT_OPTIONS,
+  VIDEO_REQUIRED_FIELDS,
   createEmptyReport,
+  createEmptyVideoReport,
+  normalizeReportType,
   currentSportSeason,
   deriveSeason
 } from '../../shared/reportTemplate.js';
@@ -172,6 +176,24 @@ function stripSensitiveForReferee(report, user) {
     : null;
   if (!myRole) return report;
   const otherRole = myRole === 'first' ? 'second' : 'first';
+
+  // Rapporto a video: nessun voto e nessuna potenzialità da nascondere, ma il
+  // giudizio del collega resta riservato come nel rapporto completo.
+  if (report.reportType === 'video') {
+    const data = report.data || {};
+    const sanitizedVideo = {
+      ...report,
+      data: {
+        ...data,
+        judgements: { [myRole]: data.judgements?.[myRole] || '' },
+        [`${otherRole}RefereeId`]: null,
+        [`${otherRole}RefereeName`]: ''
+      },
+      [`${otherRole}RefereeId`]: null,
+      [`${otherRole}RefereeName`]: ''
+    };
+    return sanitizedVideo;
+  }
 
   const data = report.data || {};
   const evaluations = data.evaluations || {};
@@ -350,6 +372,57 @@ export function normalizeReportPayload(input = {}) {
   return payload;
 }
 
+// Il rapporto a video porta solo i dati identificativi della gara, un giudizio
+// per arbitro e le note: tutto ciò che non è previsto viene scartato qui.
+export function normalizeVideoReportPayload(input = {}) {
+  const empty = createEmptyVideoReport();
+  const judgement = (value) => (VIDEO_JUDGMENT_OPTIONS.includes(asText(value)) ? asText(value) : '');
+  return {
+    ...empty,
+    gameId: asNullableInteger(input.gameId),
+    observerUserId: asNullableInteger(input.observerUserId),
+    observerName: asText(input.observerName),
+    reportDate: asText(input.reportDate) || empty.reportDate,
+    matchNumber: asText(input.matchNumber),
+    competition: asText(input.competition),
+    teamHome: asText(input.teamHome),
+    teamAway: asText(input.teamAway),
+    firstRefereeId: asNullableInteger(input.firstRefereeId),
+    firstRefereeName: asText(input.firstRefereeName),
+    secondRefereeId: asNullableInteger(input.secondRefereeId),
+    secondRefereeName: asText(input.secondRefereeName),
+    judgements: {
+      first: judgement(input.judgements?.first),
+      second: judgement(input.judgements?.second)
+    },
+    notes: asText(input.notes)
+  };
+}
+
+export function normalizePayloadForType(input = {}, reportType = 'full') {
+  return reportType === 'video' ? normalizeVideoReportPayload(input) : normalizeReportPayload(input);
+}
+
+export function collectVideoFinalValidationErrors(payload) {
+  const errors = [];
+  for (const [field, label] of VIDEO_REQUIRED_FIELDS) {
+    if (!asText(payload[field])) errors.push(`${label} è obbligatorio.`);
+  }
+  for (const role of REPORT_ROLES) {
+    const label = role === 'first' ? '1° arbitro' : '2° arbitro';
+    const refereeId = role === 'first' ? payload.firstRefereeId : payload.secondRefereeId;
+    if (!refereeId) errors.push(`${label}: seleziona l'arbitro dall'anagrafica.`);
+    if (!asText(payload.judgements?.[role])) errors.push(`${label}: manca il giudizio.`);
+  }
+  return errors;
+}
+
+export function collectValidationErrorsForType(payload, reportType = 'full') {
+  return reportType === 'video'
+    ? collectVideoFinalValidationErrors(payload)
+    : collectFinalValidationErrors(payload);
+}
+
 export function collectFinalValidationErrors(payload) {
   const errors = [];
 
@@ -445,8 +518,58 @@ async function assertGameLink(payload, { existingReportId = null, allowDuplicate
   }
 }
 
+function attachmentFromRow(row) {
+  if (!row?.attachment_path) return null;
+  return {
+    name: row.attachment_name || 'allegato',
+    type: row.attachment_type || '',
+    size: Number(row.attachment_size) || 0,
+    uploadedAt: row.attachment_uploaded_at || null
+  };
+}
+
+function rowToVideoReport(row) {
+  const data = normalizeVideoReportPayload(JSON.parse(row.payload_json));
+  const dataWithDbLinks = {
+    ...data,
+    gameId: row.game_id || data.gameId || null,
+    observerUserId: row.observer_id || data.observerUserId || null,
+    firstRefereeId: row.first_referee_id || data.firstRefereeId || null,
+    secondRefereeId: row.second_referee_id || data.secondRefereeId || null
+  };
+  return {
+    id: row.id,
+    reportType: 'video',
+    status: row.status,
+    observerName: row.observer_name,
+    reportDate: row.report_date,
+    matchNumber: row.match_number,
+    competition: row.competition,
+    teamHome: row.team_home,
+    teamAway: row.team_away,
+    scoreHome: row.score_home,
+    scoreAway: row.score_away,
+    firstRefereeName: row.first_referee_name,
+    firstRefereeId: row.first_referee_id || null,
+    secondRefereeName: row.second_referee_name,
+    secondRefereeId: row.second_referee_id || null,
+    sportSeason: row.sport_season || null,
+    gameId: row.game_id || null,
+    observerId: row.observer_id || null,
+    attachment: attachmentFromRow(row),
+    data: { ...dataWithDbLinks, observerName: row.observer_name, status: row.status },
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    finalizedAt: row.finalized_at,
+    firstRefereeSentAt: null,
+    secondRefereeSentAt: null
+  };
+}
+
 function rowToReport(row) {
   if (!row) return null;
+  if (normalizeReportType(row.report_type) === 'video') return rowToVideoReport(row);
   const data = normalizeReportPayload(JSON.parse(row.payload_json));
   const dataWithDbLinks = {
     ...data,
@@ -467,6 +590,7 @@ function rowToReport(row) {
   };
   return {
     id: row.id,
+    reportType: 'full',
     status: row.status,
     observerName: row.observer_name,
     reportDate: row.report_date,
@@ -483,6 +607,7 @@ function rowToReport(row) {
     sportSeason: row.sport_season || null,
     gameId: row.game_id || null,
     observerId: row.observer_id || null,
+    attachment: attachmentFromRow(row),
     data: { ...dataWithDbLinks, observerName: row.observer_name, status: row.status },
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -534,6 +659,8 @@ export async function listReports({ search = '', status = '', season = '', obser
   const rows = await dbAll(
     `SELECT reports.id,
             reports.status,
+            reports.report_type,
+            reports.attachment_name,
             observer_name,
             report_date,
             match_number,
@@ -567,6 +694,8 @@ export async function listReports({ search = '', status = '', season = '', obser
       const base = {
         id: row.id,
         status: row.status,
+        reportType: normalizeReportType(row.report_type),
+        hasAttachment: Boolean(row.attachment_name),
         observerName: !user || isAdmin(user) || isInstructor(user) ? row.observer_name : observerNameForUser(user),
         reportDate: row.report_date,
         matchNumber: row.match_number,
@@ -633,17 +762,18 @@ async function assertValidCompetition(competition) {
   }
 }
 
-export async function createReport({ payload, status = 'draft', user, allowDuplicate = false }) {
+export async function createReport({ payload, status = 'draft', user, allowDuplicate = false, reportType = null }) {
   assertReportCreationAccess(user);
   const normalizedStatus = status === 'final' ? 'final' : 'draft';
-  const normalizedPayload = await applyUserReportRules(normalizeReportPayload(payload), user);
+  const type = normalizeReportType(reportType || payload?.reportType);
+  const normalizedPayload = await applyUserReportRules(normalizePayloadForType(payload, type), user);
   await assertValidCompetition(normalizedPayload.competition);
   assertIsoDate(normalizedPayload.reportDate, 'Data');
   await assertGameLink(normalizedPayload, { allowDuplicate });
   const observer = await resolveObserver(normalizedPayload, user);
   normalizedPayload.observerUserId = observer.id;
   normalizedPayload.observerName = observer.name;
-  const validationErrors = normalizedStatus === 'final' ? collectFinalValidationErrors(normalizedPayload) : [];
+  const validationErrors = normalizedStatus === 'final' ? collectValidationErrorsForType(normalizedPayload, type) : [];
   if (validationErrors.length) {
     throw new HttpError(422, 'Completa i campi obbligatori prima del salvataggio definitivo.', validationErrors);
   }
@@ -652,31 +782,32 @@ export async function createReport({ payload, status = 'draft', user, allowDupli
   const observerId = observer.id;
   const result = await dbRun(
     `INSERT INTO reports (
-       status, observer_name, report_date, match_number, competition,
+       status, report_type, observer_name, report_date, match_number, competition,
        team_home, team_away, score_home, score_away,
        first_referee_id, first_referee_name, second_referee_id, second_referee_name,
        first_referee_vote, second_referee_vote, payload_json, created_by, sport_season,
        game_id, observer_id, finalized_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'final' THEN ts_now() ELSE NULL END)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'final' THEN ts_now() ELSE NULL END)
      RETURNING id`,
     [
       normalizedStatus,
+      type,
       normalizedPayload.observerName,
       normalizedPayload.reportDate,
       normalizedPayload.matchNumber,
       normalizedPayload.competition,
       normalizedPayload.teamHome,
       normalizedPayload.teamAway,
-      normalizedPayload.scoreHome,
-      normalizedPayload.scoreAway,
+      normalizedPayload.scoreHome || '',
+      normalizedPayload.scoreAway || '',
       normalizedPayload.firstRefereeId,
       normalizedPayload.firstRefereeName,
       normalizedPayload.secondRefereeId,
       normalizedPayload.secondRefereeName,
-      normalizedPayload.evaluations.first.vote,
-      normalizedPayload.evaluations.second.vote,
-      JSON.stringify({ ...normalizedPayload, status: normalizedStatus }),
+      normalizedPayload.evaluations?.first?.vote || '',
+      normalizedPayload.evaluations?.second?.vote || '',
+      JSON.stringify({ ...normalizedPayload, reportType: type, status: normalizedStatus }),
       user?.id,
       sportSeason,
       normalizedPayload.gameId,
@@ -693,7 +824,10 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
   await assertReportMutationAccess(existingReport, user);
   const requestedStatus = status === 'final' ? 'final' : 'draft';
   const normalizedStatus = existingReport.status === 'final' ? 'final' : requestedStatus;
-  const normalizedPayload = await applyUserReportRules(normalizeReportPayload(payload), user);
+  // Il tipo si sceglie alla creazione e non cambia più: un rapporto a video non
+  // diventa completo (e viceversa) con un salvataggio.
+  const type = normalizeReportType(existingReport.reportType);
+  const normalizedPayload = await applyUserReportRules(normalizePayloadForType(payload, type), user);
   await assertValidCompetition(normalizedPayload.competition);
   // Il collegamento alla gara non si cambia in modifica: resta quello esistente.
   normalizedPayload.gameId = existingReport.gameId || normalizedPayload.gameId;
@@ -702,7 +836,7 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
   const observer = await resolveObserver(normalizedPayload, user);
   normalizedPayload.observerUserId = observer.id;
   normalizedPayload.observerName = observer.name;
-  const validationErrors = normalizedStatus === 'final' ? collectFinalValidationErrors(normalizedPayload) : [];
+  const validationErrors = normalizedStatus === 'final' ? collectValidationErrorsForType(normalizedPayload, type) : [];
   if (validationErrors.length) {
     throw new HttpError(422, 'Completa i campi obbligatori prima del salvataggio definitivo.', validationErrors);
   }
@@ -745,15 +879,15 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
       normalizedPayload.competition,
       normalizedPayload.teamHome,
       normalizedPayload.teamAway,
-      normalizedPayload.scoreHome,
-      normalizedPayload.scoreAway,
+      normalizedPayload.scoreHome || '',
+      normalizedPayload.scoreAway || '',
       normalizedPayload.firstRefereeId,
       normalizedPayload.firstRefereeName,
       normalizedPayload.secondRefereeId,
       normalizedPayload.secondRefereeName,
-      normalizedPayload.evaluations.first.vote,
-      normalizedPayload.evaluations.second.vote,
-      JSON.stringify({ ...normalizedPayload, status: normalizedStatus }),
+      normalizedPayload.evaluations?.first?.vote || '',
+      normalizedPayload.evaluations?.second?.vote || '',
+      JSON.stringify({ ...normalizedPayload, reportType: type, status: normalizedStatus }),
       sportSeason,
       normalizedPayload.gameId,
       observerId,
@@ -819,6 +953,14 @@ export async function listRefereeNames(user) {
     params
   );
   return rows.map((r) => r.name);
+}
+
+// Accesso in scrittura al rapporto, per le operazioni che non passano da
+// updateReport (allegato del rapporto a video).
+export async function assertReportEditable(id, user = null) {
+  const report = await getReport(id, user);
+  await assertReportMutationAccess(report, user);
+  return report;
 }
 
 export async function deleteReport(id, user = null) {

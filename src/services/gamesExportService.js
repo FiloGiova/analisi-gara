@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { listGames } from './gameService.js';
+import { isGameInPeriod, formatPeriodLabel } from '../../shared/gamePeriod.js';
 
 const STATE_LABELS = {
   calendario: 'Solo calendario',
@@ -55,11 +56,14 @@ export function filterGamesForExport(games, {
   stateFilters = [],
   sourceNames = [],
   refereeId = null,
-  search = ''
+  search = '',
+  dateFrom = '',
+  dateTo = ''
 } = {}) {
   const cleanRefereeId = Number(refereeId) || null;
   const query = String(search || '').toLowerCase();
   return games.filter((game) => {
+    if (!isGameInPeriod(game, dateFrom, dateTo)) return false;
     if (matchday && String(game.matchday) !== String(matchday)) return false;
     if (stateFilters.length) {
       const categories = gameStateCategories(game);
@@ -94,12 +98,14 @@ export async function buildGamesWorkbook({
   stateFilters = [],
   sourceNames = [],
   refereeId = null,
-  search = ''
+  search = '',
+  dateFrom = '',
+  dateTo = ''
 }) {
   const allGames = await listGames({ season, competitions });
   const games = filterGamesForExport(
     allGames,
-    { matchday, stateFilters, sourceNames, refereeId, search }
+    { matchday, stateFilters, sourceNames, refereeId, search, dateFrom, dateTo }
   );
   const cleanRefereeId = Number(refereeId) || null;
   const selectedReferee = cleanRefereeId
@@ -129,6 +135,7 @@ export async function buildGamesWorkbook({
     `Campionato: ${competitions.length ? competitions.join(', ') : 'tutti'}`,
     `Fasi: ${sourceNames.length ? sourceNames.join(', ') : 'tutte'}`,
     `Giornata: ${matchday || 'tutte'}`,
+    `Periodo: ${formatPeriodLabel(dateFrom, dateTo)}`,
     `Arbitro: ${selectedReferee ? officialLabel(selectedReferee) : cleanRefereeId ? `#${cleanRefereeId}` : 'tutti'}`,
     `Stati: ${stateLabels.length ? stateLabels.join(', ') : 'tutti'}`,
     `Ricerca: ${String(search || '').trim() || 'nessuna'}`

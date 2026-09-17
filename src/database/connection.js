@@ -37,6 +37,7 @@ export async function initializeDatabase() {
 async function runBackfills() {
   await migrateFederationPdfSources();
   await ensureRefereeStatusColumns();
+  await ensureReportTypeColumns();
   await seedCompetitions();
   await ensureDefaultSeasonCategories();
   await backfillReportSeasons();
@@ -100,6 +101,28 @@ async function ensureRefereeStatusColumns() {
     // Chi era inattivo prima dei tre stati non aveva un motivo registrato:
     // "dimissioni" è l'unica lettura coerente con l'uscita dalle liste.
     await dbRun(`UPDATE ${table} SET status = 'dimissioni' WHERE active <> 1 AND status = 'attivo'`);
+  }
+}
+
+// Il rapporto a video è arrivato dopo: i CREATE TABLE IF NOT EXISTS non
+// aggiungono colonne alle installazioni esistenti. Tutti i rapporti già
+// archiviati sono rapporti completi, che è il default della colonna.
+async function ensureReportTypeColumns() {
+  await getPool().query(
+    `ALTER TABLE reports ADD COLUMN IF NOT EXISTS report_type TEXT NOT NULL DEFAULT 'full'`
+  );
+  await getPool().query('ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_report_type_check');
+  await getPool().query(
+    `ALTER TABLE reports ADD CONSTRAINT reports_report_type_check CHECK (report_type IN ('full', 'video'))`
+  );
+  for (const [column, type] of [
+    ['attachment_path', 'TEXT'],
+    ['attachment_name', 'TEXT'],
+    ['attachment_type', 'TEXT'],
+    ['attachment_size', 'INTEGER'],
+    ['attachment_uploaded_at', 'TEXT']
+  ]) {
+    await getPool().query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS ${column} ${type}`);
   }
 }
 

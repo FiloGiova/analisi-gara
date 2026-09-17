@@ -186,6 +186,11 @@ export default function ReportFormPage({ id, currentUser, features, gameId, seas
     api.getReport(id)
       .then((data) => {
         if (!alive) return;
+        // Un rapporto a video ha un form tutto suo: l'URL diretto ci arriva.
+        if (data.report.reportType === 'video') {
+          navigate(`/reports/${id}/edit?type=video`);
+          return;
+        }
         if (!canEditReport(data.report, currentUser)) {
           setEditForbidden(true);
           return;

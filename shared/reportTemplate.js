@@ -258,6 +258,53 @@ export function createEmptyReport() {
   };
 }
 
+// ── Rapporto a video ────────────────────────────────────────────────────────
+// Visionatura fatta sul video della gara: niente sezioni di valutazione e
+// niente voto numerico, solo un giudizio sintetico per arbitro più un
+// allegato (il referto del formatore, in PDF o XLSX). Conta come visionatura
+// esattamente come un rapporto completo: per questo vive nella stessa tabella
+// `reports`, distinto solo da `reportType`.
+export const REPORT_TYPES = ['full', 'video'];
+
+export function normalizeReportType(value) {
+  return value === 'video' ? 'video' : 'full';
+}
+
+export const VIDEO_JUDGMENT_OPTIONS = ['Molto bene', 'Bene', 'Malino', 'Male'];
+
+// Campi identificativi obbligatori per rendere definitivo un rapporto a video.
+// Rispetto al rapporto completo mancano i punteggi: su una visionatura video
+// il risultato non è un dato che il formatore deve ricopiare.
+export const VIDEO_REQUIRED_FIELDS = [
+  ['observerName', 'Osservatore'],
+  ['reportDate', 'Data'],
+  ['matchNumber', 'Numero gara'],
+  ['competition', 'Campionato'],
+  ['teamHome', 'Squadra casa'],
+  ['teamAway', 'Squadra ospite'],
+  ['firstRefereeName', '1° arbitro'],
+  ['secondRefereeName', '2° arbitro']
+];
+
+export function createEmptyVideoReport() {
+  return {
+    reportType: 'video',
+    status: 'draft',
+    observerName: '',
+    reportDate: new Date().toISOString().slice(0, 10),
+    matchNumber: '',
+    competition: '',
+    teamHome: '',
+    teamAway: '',
+    firstRefereeId: null,
+    firstRefereeName: '',
+    secondRefereeId: null,
+    secondRefereeName: '',
+    judgements: { first: '', second: '' },
+    notes: ''
+  };
+}
+
 export function getRefereeLabel(role) {
   return role === 'first' ? '1° arbitro' : '2° arbitro';
 }

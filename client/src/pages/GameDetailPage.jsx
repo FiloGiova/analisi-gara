@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
+import NewReportChoice from '../components/NewReportChoice.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
 import { api, ApiError } from '../lib/api.js';
@@ -62,6 +63,7 @@ export default function GameDetailPage({ id, currentUser }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showPdfImporter, setShowPdfImporter] = useState(false);
+  const [newReportChoice, setNewReportChoice] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -289,6 +291,9 @@ export default function GameDetailPage({ id, currentUser }) {
 
   return (
     <div className="page-stack">
+      {newReportChoice ? (
+        <NewReportChoice gameId={game.id} onClose={() => setNewReportChoice(false)} />
+      ) : null}
       {showPdfImporter ? (
         <FederationPdfImporter
           gameId={game.id}
@@ -330,7 +335,7 @@ export default function GameDetailPage({ id, currentUser }) {
               Apri rapporto
             </button>
           ) : (
-            <button type="button" className="primary-button" onClick={() => navigate(`/reports/new?game=${game.id}`)}>
+            <button type="button" className="primary-button" onClick={() => setNewReportChoice(true)}>
               Compila rapporto
             </button>
           )}

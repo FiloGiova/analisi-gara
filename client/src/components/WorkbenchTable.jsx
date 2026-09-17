@@ -1,4 +1,5 @@
 import StatusBadge from './StatusBadge.jsx';
+import ReportTypeBadge from './ReportTypeBadge.jsx';
 import { formatMatchNumber, formatDate, formatRelativeDate } from '../lib/formatters.js';
 
 function surname(lastName, fullName) {
@@ -76,11 +77,14 @@ export default function WorkbenchTable({ reports, sortColumn, sortDir, onSort, o
                   {surnameSecond ? <span className="referee-surname">{surnameSecond}</span> : null}
                   {!surnameFirst && !surnameSecond ? '—' : null}
                 </td>
-                <td><StatusBadge status={report.status} /></td>
+                <td>
+                  <StatusBadge status={report.status} />
+                  {report.reportType === 'video' ? <> <ReportTypeBadge type="video" /></> : null}
+                </td>
                 <td className="updated-cell">{formatRelativeDate(report.updatedAt)}</td>
                 <td>
                   <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-                    {!isReferee && (
+                    {!isReferee && report.reportType !== 'video' && (
                       <button type="button" className="ghost-button btn-with-icon" onClick={() => onExport(report)} disabled={exporting}>
                         {exporting ? '…' : <><DownloadIcon />PDF</>}
                       </button>
