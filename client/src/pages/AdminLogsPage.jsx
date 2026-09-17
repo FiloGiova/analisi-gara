@@ -182,6 +182,89 @@ function EmailLogsTab() {
   );
 }
 
+// Etichette e tono dell'evento: il colore da solo non basta, l'etichetta c'è
+// sempre (vedi DESIGN.md).
+const REPORT_EVENT_STYLES = {
+  created: { label: 'Creato', tone: 'status-info' },
+  updated: { label: 'Modificato', tone: 'status-neutral' },
+  finalized: { label: 'Definitivo', tone: 'status-final' },
+  imported: { label: 'Importato da PDF', tone: 'status-teal' },
+  attachment_added: { label: 'Allegato caricato', tone: 'status-neutral' },
+  attachment_removed: { label: 'Allegato eliminato', tone: 'status-warning' },
+  exported: { label: 'PDF generato', tone: 'status-neutral' },
+  email_sent: { label: 'Inviato via email', tone: 'status-final' },
+  deleted: { label: 'Cancellato', tone: 'status-cancelled' }
+};
+
+function ReportEventsTab() {
+  const { logs, total, offset, loading, error, load } = usePagedLogs(api.listReportEvents);
+
+  useEffect(() => {
+    load(0);
+  }, []);
+
+  return (
+    <section className="common-card">
+      <div className="section-heading">
+        <div>
+          <h2>Azioni sui rapporti</h2>
+          <p>
+            Creazione, modifica, import, allegati, PDF, invii e cancellazioni, con l'autore di ciascuna.
+            {total > 0 ? ` ${total} azioni registrate.` : ''}
+          </p>
+        </div>
+      </div>
+
+      {error ? <div className="error-banner">{error}</div> : null}
+      {loading ? <div className="empty-state">Caricamento…</div> : null}
+      {!loading && logs.length === 0 ? (
+        <div className="empty-state">
+          Nessuna azione registrata: il log parte dalle azioni successive all'attivazione.
+        </div>
+      ) : null}
+
+      {!loading && logs.length > 0 ? (
+        <>
+          <div className="users-list">
+            {logs.map((log) => {
+              const style = REPORT_EVENT_STYLES[log.event] || { label: log.eventLabel, tone: 'status-neutral' };
+              return (
+                <article className="user-row" key={log.id}>
+                  <div>
+                    <span className="match-number">
+                      Gara {log.matchNumber || '—'}{log.competition ? ` · ${log.competition}` : ''}
+                    </span>
+                    <h3>{log.teams || 'Squadre non indicate'}</h3>
+                    <p>
+                      {formatDateTime(log.createdAt)}
+                      {log.actorName ? ` · ${log.actorName}` : ''}
+                      {log.actorRole ? ` (${log.actorRole})` : ''}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center' }}>
+                    <span className={`status-badge ${style.tone}`} style={{ alignSelf: 'flex-start' }}>
+                      {style.label}
+                    </span>
+                    {log.reportType === 'video' ? (
+                      <span className="status-badge status-badge-sm status-info" style={{ alignSelf: 'flex-start' }}>VIDEO</span>
+                    ) : null}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'center', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                    <span>{log.observerName ? `Osservatore: ${log.observerName}` : 'Osservatore non indicato'}</span>
+                    <span>{log.referees || '—'}</span>
+                    {log.details ? <span>{log.details}</span> : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <Pagination total={total} offset={offset} onPage={load} />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export default function AdminLogsPage({ currentUser }) {
   const [tab, setTab] = useState('access');
 
@@ -199,7 +282,7 @@ export default function AdminLogsPage({ currentUser }) {
         <div>
           <p className="eyebrow">Amministrazione</p>
           <h1>Log</h1>
-          <p>Accessi all'applicazione e invii email dei rapporti, con esito e dettagli.</p>
+          <p>Accessi all'applicazione, azioni sui rapporti e invii email, con autore ed esito.</p>
         </div>
       </section>
 
@@ -208,13 +291,16 @@ export default function AdminLogsPage({ currentUser }) {
           <button type="button" className={tab === 'access' ? 'is-active' : ''} onClick={() => setTab('access')}>
             Accessi
           </button>
+          <button type="button" className={tab === 'reports' ? 'is-active' : ''} onClick={() => setTab('reports')}>
+            Rapporti
+          </button>
           <button type="button" className={tab === 'email' ? 'is-active' : ''} onClick={() => setTab('email')}>
             Email
           </button>
         </div>
       </section>
 
-      {tab === 'access' ? <AccessLogsTab /> : <EmailLogsTab />}
+      {tab === 'access' ? <AccessLogsTab /> : tab === 'reports' ? <ReportEventsTab /> : <EmailLogsTab />}
     </div>
   );
 }

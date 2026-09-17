@@ -159,6 +159,8 @@ export const api = {
   getRefereeNames: () => request('/api/reports/referee-names'),
   listAccessLogs: (limit = 100, offset = 0) =>
     request(`/api/access-logs?limit=${limit}&offset=${offset}`),
+  listReportEvents: (limit = 100, offset = 0) =>
+    request(`/api/report-events?limit=${limit}&offset=${offset}`),
   listEmailLogs: (limit = 100, offset = 0) =>
     request(`/api/email-logs?limit=${limit}&offset=${offset}`),
   listCompetitions: ({ activeOnly = false } = {}) =>

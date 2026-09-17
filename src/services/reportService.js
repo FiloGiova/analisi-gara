@@ -15,6 +15,7 @@ import {
 import { config } from '../config.js';
 import { dbGet, dbAll, dbRun } from '../database/db.js';
 import { getCompetitionByValue } from './competitionService.js';
+import { logReportEvent } from './reportEventService.js';
 import { HttpError } from '../utils/httpError.js';
 import {
   instructorAssignmentsForUser,
@@ -816,7 +817,11 @@ export async function createReport({ payload, status = 'draft', user, allowDupli
     ]
   );
 
-  return getReport(result.rows[0].id, user);
+  const created = await getReport(result.rows[0].id, user);
+  await logReportEvent('created', created, user, {
+    details: normalizedStatus === 'final' ? 'Creato già definitivo' : 'Bozza'
+  });
+  return created;
 }
 
 export async function updateReport({ id, payload, status = 'draft', user }) {
@@ -897,7 +902,10 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
     ]
   );
 
-  return getReport(id, user);
+  const updated = await getReport(id, user);
+  const becameFinal = existingReport.status !== 'final' && normalizedStatus === 'final';
+  await logReportEvent(becameFinal ? 'finalized' : 'updated', updated, user);
+  return updated;
 }
 
 export async function getStats(user = null, { season = '' } = {}) {
@@ -966,6 +974,7 @@ export async function assertReportEditable(id, user = null) {
 export async function deleteReport(id, user = null) {
   const report = await getReport(id, user);
   await assertReportMutationAccess(report, user);
+  await logReportEvent('deleted', report, user);
   await dbRun('DELETE FROM reports WHERE id = ?', [id]);
   // Pulizia PDF: solo col driver locale (in cloud i PDF si rigenerano dal payload,
   // gli eventuali orfani su Storage sono innocui).

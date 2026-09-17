@@ -4,6 +4,7 @@ import { dbAll, dbGet, dbRun } from '../database/db.js';
 import { getReport } from './reportService.js';
 import { getPdfFileInfo, buildReportPdf } from './pdfService.js';
 import { logEmailAttempt } from './emailLogService.js';
+import { logReportEvent } from './reportEventService.js';
 import { getCompetitionByValue } from './competitionService.js';
 import { getSetting } from './settingsService.js';
 import { DEFAULT_EMAIL_BODY_TEMPLATE, EMAIL_TEMPLATE_KEY, renderEmailTemplate } from './emailTemplate.js';
@@ -210,6 +211,11 @@ export async function sendReportToReferee(reportId, role, user, { confirmedRecip
   }
 
   await logEmailAttempt({ ...logBase, outcome: 'success' });
+  // Nel log rapporti resta la traccia sintetica; il dettaglio (destinatario,
+  // copie, errori) continua a vivere nella tab Email.
+  await logReportEvent('email_sent', plan.report, user, {
+    details: `${role === 'first' ? '1° arbitro' : '2° arbitro'} · ${plan.recipient}`
+  });
 
   const sentAt = new Date().toISOString();
   await dbRun(`UPDATE reports SET ${sentAtColumn(role)} = ? WHERE id = ?`, [sentAt, reportId]);

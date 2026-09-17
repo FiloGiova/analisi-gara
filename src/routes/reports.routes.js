@@ -27,6 +27,7 @@ import {
   applyFederationPdfImport,
   previewFederationPdfImport
 } from '../services/federationPdfImportService.js';
+import { logReportEvent } from '../services/reportEventService.js';
 
 export const reportsRouter = express.Router();
 
@@ -268,6 +269,7 @@ reportsRouter.post(
       return;
     }
     const exports = await generateReportPdfs(report);
+    await logReportEvent('exported', report, req.user, { details: 'PDF di entrambi gli arbitri' });
     res.json({
       exports: exports.map((item) => ({
         role: item.role,
@@ -348,7 +350,7 @@ reportsRouter.post(
     const id = Number(req.params.id);
     await assertReportEditable(id, req.user);
     if (!req.file?.buffer) throw new HttpError(400, 'Seleziona un file PDF o XLSX.');
-    await saveReportAttachment(id, { buffer: req.file.buffer, originalName: req.file.originalname });
+    await saveReportAttachment(id, { buffer: req.file.buffer, originalName: req.file.originalname }, req.user);
     res.json({ report: await getReport(id, req.user) });
   })
 );
@@ -358,7 +360,7 @@ reportsRouter.delete(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     await assertReportEditable(id, req.user);
-    await deleteReportAttachment(id);
+    await deleteReportAttachment(id, req.user);
     res.json({ report: await getReport(id, req.user) });
   })
 );

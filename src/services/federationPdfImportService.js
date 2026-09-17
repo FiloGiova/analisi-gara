@@ -4,6 +4,7 @@ import { dbAll, dbGet, dbRun, dbTx } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 import { cleanExternalName, normalizedNameKey } from '../utils/personNames.js';
 import { instructorCompetitionsForSeason } from '../../shared/instructorAssignments.js';
+import { logReportEvent } from './reportEventService.js';
 import {
   resolveObserverName,
   resolveRefereeName
@@ -716,14 +717,40 @@ export async function applyFederationPdfImport({ files, decisions, contextGameId
       continue;
     }
     try {
-      results.push(await applyOneGroup({
+      const applied = await applyOneGroup({
         items,
         decision,
         user,
         syncRunId,
         contextGameId: cleanContextGameId,
         contextReportId: cleanContextReportId
-      }));
+      });
+      results.push(applied);
+      // Registrato dopo il commit: nel log finisce solo ciò che è davvero salvato.
+      const header = items[0]?.parsed?.header || {};
+      await logReportEvent(
+        'imported',
+        {
+          id: applied.reportId,
+          gameId: applied.gameId,
+          status: applied.status,
+          matchNumber: header.matchNumber,
+          competition: header.competition,
+          sportSeason: header.sportSeason,
+          observerName: header.observerName,
+          data: {
+            teamHome: header.teamHome,
+            teamAway: header.teamAway,
+            firstRefereeName: header.firstRefereeName,
+            secondRefereeName: header.secondRefereeName
+          }
+        },
+        user,
+        {
+          source: 'federation_pdf',
+          details: `${applied.action === 'updated' ? 'Rapporto aggiornato' : 'Rapporto creato'} da PDF (${applied.importedRoles.join(', ')})`
+        }
+      );
     } catch (error) {
       const item = { groupKey: decision.groupKey, message: error.message || 'Importazione non riuscita.' };
       if (error.statusCode === 409 || error.statusCode === 422) conflicts.push(item);

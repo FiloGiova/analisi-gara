@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { dbGet, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 import { putObject, getObject, objectExists, removeObject } from './storageService.js';
+import { logReportEvent } from './reportEventService.js';
 
 // Allegato del rapporto a video: il referto che il formatore ha compilato
 // altrove (PDF) o il foglio di sintesi (XLSX). Un solo file per rapporto,
@@ -49,14 +50,38 @@ function safeDisplayName(originalName, ext) {
 
 async function getReportRow(reportId) {
   const row = await dbGet(
-    'SELECT id, report_type, attachment_path, attachment_name, attachment_type FROM reports WHERE id = ?',
+    `SELECT id, report_type, status, game_id, match_number, competition, sport_season,
+            team_home, team_away, first_referee_name, second_referee_name, observer_name,
+            attachment_path, attachment_name, attachment_type
+       FROM reports WHERE id = ?`,
     [reportId]
   );
   if (!row) throw new HttpError(404, 'Rapporto non trovato.');
   return row;
 }
 
-export async function saveReportAttachment(reportId, { buffer, originalName }) {
+// Il log dei rapporti copia i dati identificativi: qui si traducono dalle
+// colonne della riga, senza ricaricare il rapporto completo.
+function eventSubject(row) {
+  return {
+    id: row.id,
+    gameId: row.game_id,
+    reportType: row.report_type,
+    status: row.status,
+    matchNumber: row.match_number,
+    competition: row.competition,
+    sportSeason: row.sport_season,
+    observerName: row.observer_name,
+    data: {
+      teamHome: row.team_home,
+      teamAway: row.team_away,
+      firstRefereeName: row.first_referee_name,
+      secondRefereeName: row.second_referee_name
+    }
+  };
+}
+
+export async function saveReportAttachment(reportId, { buffer, originalName }, user = null) {
   const row = await getReportRow(reportId);
   if (row.report_type !== 'video') {
     throw new HttpError(400, 'L’allegato è previsto solo sui rapporti a video.');
@@ -85,10 +110,11 @@ export async function saveReportAttachment(reportId, { buffer, originalName }) {
     await removeObject(row.attachment_path);
   }
 
+  await logReportEvent('attachment_added', eventSubject(row), user, { details: displayName });
   return { name: displayName, type: detected.mime, label: detected.label, size: buffer.length };
 }
 
-export async function deleteReportAttachment(reportId) {
+export async function deleteReportAttachment(reportId, user = null) {
   const row = await getReportRow(reportId);
   if (row.attachment_path && KEY_RE.test(row.attachment_path)) await removeObject(row.attachment_path);
   await dbRun(
@@ -98,6 +124,9 @@ export async function deleteReportAttachment(reportId) {
       WHERE id = ?`,
     [reportId]
   );
+  await logReportEvent('attachment_removed', eventSubject(row), user, {
+    details: row.attachment_name || ''
+  });
 }
 
 export async function streamReportAttachment(reportId, res) {

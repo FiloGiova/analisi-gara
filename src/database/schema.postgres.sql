@@ -220,6 +220,34 @@ CREATE TABLE IF NOT EXISTS report_email_log (
   created_at    TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 );
 
+-- Storico delle azioni sui rapporti (tab "Rapporti" nei log, solo admin).
+-- Nessuna FK su reports: l'evento deve sopravvivere alla cancellazione del
+-- rapporto, che e' proprio quello che si vuole poter ricostruire. I dati
+-- identificativi sono copiati come testo per lo stesso motivo.
+CREATE TABLE IF NOT EXISTS report_events (
+  id            SERIAL PRIMARY KEY,
+  report_id     INTEGER,
+  game_id       INTEGER,
+  event         TEXT NOT NULL,
+  report_type   TEXT NOT NULL DEFAULT 'full',
+  status        TEXT NOT NULL DEFAULT '',
+  match_number  TEXT NOT NULL DEFAULT '',
+  competition   TEXT NOT NULL DEFAULT '',
+  sport_season  TEXT NOT NULL DEFAULT '',
+  teams         TEXT NOT NULL DEFAULT '',
+  referees      TEXT NOT NULL DEFAULT '',
+  observer_name TEXT NOT NULL DEFAULT '',
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_name    TEXT NOT NULL DEFAULT '',
+  actor_role    TEXT NOT NULL DEFAULT '',
+  source        TEXT NOT NULL DEFAULT 'app',
+  details       TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT to_char((now() AT TIME ZONE 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS report_events_created_idx ON report_events (id DESC);
+CREATE INDEX IF NOT EXISTS report_events_report_idx ON report_events (report_id);
+
 CREATE TABLE IF NOT EXISTS competition_sources (
   id               SERIAL PRIMARY KEY,
   sport_season     TEXT NOT NULL,

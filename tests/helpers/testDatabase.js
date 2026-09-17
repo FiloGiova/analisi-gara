@@ -40,6 +40,7 @@ const { dbAll, dbGet, dbRun } = await import('../../src/database/db.js');
 const DATA_TABLES = [
   'access_logs',
   'report_email_log',
+  'report_events',
   'app_settings',
   'competitions',
   'exports',
