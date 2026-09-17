@@ -36,8 +36,9 @@ non si invia per email.
   scheda arbitro la metrica "Rapporti" mostra "di cui N a video", la colonna
   Voto porta il giudizio e le curve dell'andamento non si bucano: le
   visionature a video sono elencate come tacche sopra i grafici.
-- Classifica arbitri: nuova colonna `videoReportsCount` (le medie restano
-  costruite sui soli voti).
+- Classifica arbitri: nuova colonna "A video" (le medie restano costruite sui
+  soli voti; senza quella colonna un arbitro seguito via video sembrerebbe meno
+  visionato).
 
 **Bug corretto (preesistente).** `getRefereeStats` contava `Number('')` come
 voto 0: un rapporto senza voto (bozza o, da oggi, a video) abbassava la media

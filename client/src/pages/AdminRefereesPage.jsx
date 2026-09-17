@@ -647,6 +647,7 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                     <th>Arbitro</th>
                     <th>Cat.</th>
                     <th>Voti</th>
+                    <th>A video</th>
                     <th>Media</th>
                   </tr>
                 </thead>
@@ -677,6 +678,9 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                             ) : <span key={`${row.id}-${i}`}>{detail.vote}</span>)}
                         </div>
                       </td>
+                      {/* Le visionature a video non hanno voto: senza questa colonna
+                          un arbitro seguito via video sembrerebbe meno visionato. */}
+                      <td style={{ color: 'var(--muted)' }}>{row.videoReportsCount || '-'}</td>
                       <td style={{ fontWeight: 800, color: 'var(--blue)' }}>{row.averageVote ?? '-'}</td>
                     </tr>
                   ))}
