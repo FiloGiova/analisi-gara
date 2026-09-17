@@ -4,12 +4,13 @@ import { useCompetitions } from '../lib/competitions.jsx';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import { instructorAssignmentsForUser } from '../../../shared/instructorAssignments.js';
 import ObserverAvailabilityPanel from '../components/ObserverAvailabilityPanel.jsx';
+import { ROLE_LABELS, rolesOf } from '../../../shared/permissions.js';
 
-function roleLabel(role) {
-  if (role === 'admin') return 'Admin';
-  if (role === 'instructor') return 'Formatore';
-  if (role === 'referee') return 'Arbitro';
-  return 'Osservatore';
+// Un'utenza può avere più ruoli: si mostrano tutti, altrimenti chi è anche
+// operatore non capirebbe da dove arrivano le voci di menu in più.
+function rolesLabel(user) {
+  const roles = rolesOf(user);
+  return roles.length ? roles.map((role) => ROLE_LABELS[role] || role).join(' · ') : 'Osservatore';
 }
 
 function formatCompetitions(user, competitionLabel) {
@@ -112,7 +113,7 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
           <h1>{currentUser.displayName || currentUser.username}</h1>
           <p>Gestisci i dati della tua utenza e la password di accesso.</p>
         </div>
-        <span className="status-badge status-final">{roleLabel(currentUser.role)}</span>
+        <span className="status-badge status-final">{rolesLabel(currentUser)}</span>
       </section>
 
       {error ? <div className="error-banner">{error}</div> : null}
@@ -122,7 +123,7 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
         <dl>
           <InfoItem label="Username" value={currentUser.username} />
           <InfoItem label="Nome visualizzato" value={currentUser.displayName} />
-          <InfoItem label="Ruolo" value={roleLabel(currentUser.role)} />
+          <InfoItem label={rolesOf(currentUser).length > 1 ? 'Ruoli' : 'Ruolo'} value={rolesLabel(currentUser)} />
           {currentUser.role === 'instructor' ? (
             <InfoItem label="Storico campionati" value={formatCompetitions(currentUser, competitionLabel)} />
           ) : null}
