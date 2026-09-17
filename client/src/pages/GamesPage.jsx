@@ -16,27 +16,6 @@ import { gameDateKey, isGameInPeriod, todayIso, formatPeriodLabel } from '../../
 
 const CURRENT_SEASON = currentSportSeason();
 
-// Filtri stato "operativi": solo le tre situazioni da lavorare.
-const STATE_FILTERS = [
-  { value: 'arbitri_mancanti', label: 'Arbitri da designare' },
-  { value: 'scoperta', label: 'Scoperta' },
-  { value: 'rapporto_mancante', label: 'Rapporto mancante' }
-];
-
-// A quali categorie appartiene una gara (una gara può ricadere in più di una).
-// Rinviate/annullate non sono situazioni da lavorare: nessuna categoria.
-function gameStateCategories(game) {
-  if (game.status === 'postponed' || game.status === 'cancelled') return [];
-  const hasReferees = Boolean(game.officials.referee1) && Boolean(game.officials.referee2);
-  const hasObserver = Boolean(game.officials.observer);
-  const reportFinal = game.reportStatus === 'final';
-  const cats = [];
-  if (!hasReferees) cats.push('arbitri_mancanti');
-  if (hasReferees && !hasObserver) cats.push('scoperta');
-  if (hasObserver && !reportFinal) cats.push('rapporto_mancante');
-  return cats;
-}
-
 const EMPTY_FORM = {
   matchNumber: '',
   competition: '',
@@ -80,13 +59,13 @@ function matchdayHeaderFor(games, index) {
 }
 
 export default function GamesPage({ currentUser, season }) {
-  const { activeCompetitions } = useCompetitions();
+  const { activeCompetitions, competitionLabel } = useCompetitions();
   const assignedCompetitions = instructorCompetitionsForSeason(currentUser, season);
   const canManage = currentUser.role === 'admin' ||
     (currentUser.role === 'instructor' && assignedCompetitions.length > 0);
   const [games, setGames] = useState([]);
   const [matchday, setMatchday] = useState('');
-  const [stateFilter, setStateFilter] = useState([]); // più stati selezionabili insieme (checkbox)
+  const [competition, setCompetition] = useState('');
   const [sourceFilter, setSourceFilter] = useState([]); // fasi selezionate (menu a tendina multi)
   const [refereeFilter, setRefereeFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -122,7 +101,7 @@ export default function GamesPage({ currentUser, season }) {
 
   useEffect(() => {
     setMatchday('');
-    setStateFilter([]);
+    setCompetition('');
     setSourceFilter([]);
     setRefereeFilter('');
     setForm(EMPTY_FORM);
@@ -136,14 +115,32 @@ export default function GamesPage({ currentUser, season }) {
     } catch (_) { /* niente sessionStorage: il periodo vale solo per questa pagina */ }
   }, [period.from, period.to]);
 
+  // Il filtro campionato si mostra solo a chi ha davvero una scelta da fare:
+  // l'admin e il formatore assegnato a più di un campionato. Con un campionato
+  // solo sarebbe una tendina con una voce sola.
+  const competitionOptions = useMemo(() => {
+    if (currentUser.role === 'instructor') return assignedCompetitions;
+    const present = Array.from(new Set(games.map((game) => game.competition).filter(Boolean))).sort();
+    return present.length ? present : activeCompetitions.map((item) => item.value);
+  }, [assignedCompetitions.join('|'), currentUser.role, games, activeCompetitions]);
+
+  const showCompetitionFilter = currentUser.role === 'admin' || competitionOptions.length > 1;
+
+  // Gli altri filtri si restringono al campionato scelto: fasi, giornate e
+  // arbitri di un altro campionato non servono a nessuno.
+  const gamesInCompetition = useMemo(
+    () => (competition ? games.filter((game) => game.competition === competition) : games),
+    [games, competition]
+  );
+
   const matchdays = useMemo(
-    () => Array.from(new Set(games.map((g) => g.matchday).filter((m) => m !== null))).sort((a, b) => a - b),
-    [games]
+    () => Array.from(new Set(gamesInCompetition.map((g) => g.matchday).filter((m) => m !== null))).sort((a, b) => a - b),
+    [gamesInCompetition]
   );
 
   const refereeOptions = useMemo(() => {
     const map = new Map();
-    for (const game of games) {
+    for (const game of gamesInCompetition) {
       for (const role of ['referee1', 'referee2', 'referee3']) {
         const official = game.officials[role];
         if (official?.refereeId) {
@@ -154,25 +151,22 @@ export default function GamesPage({ currentUser, season }) {
     return [...map.entries()]
       .map(([id, label]) => ({ value: String(id), label }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [games]);
+  }, [gamesInCompetition]);
 
   const sourceOptions = useMemo(
-    () => Array.from(new Set(games.map((g) => g.sourceName).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-    [games]
+    () => Array.from(new Set(gamesInCompetition.map((g) => g.sourceName).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [gamesInCompetition]
   );
 
   const daysWithGames = useMemo(
-    () => Array.from(new Set(games.map((game) => gameDateKey(game)).filter(Boolean))),
-    [games]
+    () => Array.from(new Set(gamesInCompetition.map((game) => gameDateKey(game)).filter(Boolean))),
+    [gamesInCompetition]
   );
 
   const matchesFilters = (game, { ignorePeriod = false } = {}) => {
     if (!ignorePeriod && !isGameInPeriod(game, period.from, period.to)) return false;
+    if (competition && game.competition !== competition) return false;
     if (matchday && String(game.matchday) !== matchday) return false;
-    if (stateFilter.length) {
-      const cats = gameStateCategories(game);
-      if (!stateFilter.some((s) => cats.includes(s))) return false;
-    }
     if (sourceFilter.length && !sourceFilter.includes(game.sourceName)) return false;
     if (refereeFilter) {
       const refereeId = Number(refereeFilter);
@@ -221,7 +215,7 @@ export default function GamesPage({ currentUser, season }) {
     downloadGamesExport({
       season,
       matchday,
-      stateFilters: stateFilter,
+      competition,
       sourceNames: sourceFilter,
       refereeId: refereeFilter,
       search,
@@ -377,17 +371,17 @@ export default function GamesPage({ currentUser, season }) {
             placeholder: 'Cerca per numero gara, squadra, arbitro, osservatore…'
           }}
           activeCount={
+            (competition ? 1 : 0) +
             (sourceFilter.length ? 1 : 0) +
             (matchday ? 1 : 0) +
             (refereeFilter ? 1 : 0) +
-            (stateFilter.length ? 1 : 0) +
             (hasPeriod ? 1 : 0)
           }
           onReset={() => {
+            setCompetition('');
             setSourceFilter([]);
             setMatchday('');
             setRefereeFilter('');
-            setStateFilter([]);
             setPeriod({ from: '', to: '' });
           }}
         >
@@ -397,6 +391,18 @@ export default function GamesPage({ currentUser, season }) {
             onChange={setPeriod}
             daysWithGames={daysWithGames}
           />
+          {showCompetitionFilter ? (
+            <Select
+              value={competition}
+              onChange={(value) => { setCompetition(value); setSourceFilter([]); }}
+              placeholder="Campionato"
+              placeholderOnEmpty
+              options={[
+                { value: '', label: 'Tutti i campionati' },
+                ...competitionOptions.map((value) => ({ value, label: competitionLabel(value) }))
+              ]}
+            />
+          ) : null}
           {sourceOptions.length ? (
             <MultiSelect
               values={sourceFilter}
@@ -422,12 +428,6 @@ export default function GamesPage({ currentUser, season }) {
               searchable
             />
           ) : null}
-          <MultiSelect
-            values={stateFilter}
-            onChange={setStateFilter}
-            allLabel="Stato"
-            options={STATE_FILTERS}
-          />
         </FilterBar>
 
         {loading ? <ListSkeleton rows={6} /> : null}

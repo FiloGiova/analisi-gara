@@ -7,6 +7,18 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-17 — Filtri gare: campionato al posto dello stato
+
+- **Elenco gare**: rimosso il filtro "Stato"; al suo posto, in testa alla barra,
+  il filtro **Campionato**, visibile solo a chi ha davvero una scelta (admin o
+  formatore con più di un campionato assegnato). Fasi, giornate, arbitri e
+  giorni con gare del calendario si restringono al campionato scelto.
+- L'export XLSX delle gare riceve il campionato selezionato (prima rispettava
+  solo lo scoping del formatore) e non parla più di stati.
+- **Export designazioni**: una gara senza osservatore mostra "—" come nel resto
+  dell'app, al posto di "SCOPERTA" in rosso: una gara non visionata è normale
+  amministrazione, non un errore da segnalare al designatore.
+
 ## 2026-09-17 — Rapporto a video, export designazioni e filtro periodo
 
 **Rapporto a video.** Nuovo tipo di rapporto per le visionature da video: solo

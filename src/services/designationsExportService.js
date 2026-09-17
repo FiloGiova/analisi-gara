@@ -123,7 +123,7 @@ export async function buildDesignationsWorkbook({
       game.venue || '',
       officialLabel(game.officials.referee1),
       officialLabel(game.officials.referee2),
-      officialLabel(game.officials.observer) || 'SCOPERTA',
+      officialLabel(game.officials.observer) || '—',
       ''
     ]);
   }
@@ -154,10 +154,6 @@ export async function buildDesignationsWorkbook({
     row.eachCell((cell) => {
       cell.border = { bottom: { style: 'hair', color: { argb: 'FFD9E2E8' } } };
     });
-    // Le gare ancora scoperte restano evidenti anche stampate.
-    if (!games[rowNumber - 6].officials.observer) {
-      row.getCell(11).font = { bold: true, color: { argb: 'FFB3261E' } };
-    }
   }
 
   sheet.views = [{ state: 'frozen', ySplit: 5 }];

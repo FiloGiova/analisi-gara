@@ -13,24 +13,6 @@ const STATE_LABELS = {
   annullata: 'Annullata'
 };
 
-const OPERATIONAL_STATE_LABELS = {
-  arbitri_mancanti: 'Arbitri da designare',
-  scoperta: 'Scoperta',
-  rapporto_mancante: 'Rapporto mancante'
-};
-
-function gameStateCategories(game) {
-  if (game.status === 'postponed' || game.status === 'cancelled') return [];
-  const hasReferees = Boolean(game.officials.referee1) && Boolean(game.officials.referee2);
-  const hasObserver = Boolean(game.officials.observer);
-  const reportFinal = game.reportStatus === 'final';
-  const categories = [];
-  if (!hasReferees) categories.push('arbitri_mancanti');
-  if (hasReferees && !hasObserver) categories.push('scoperta');
-  if (hasObserver && !reportFinal) categories.push('rapporto_mancante');
-  return categories;
-}
-
 function officialLabel(official) {
   if (!official) return '—';
   return official.refereeName || official.userName || official.externalName || '—';
@@ -52,8 +34,8 @@ function formatDateTime(value) {
 }
 
 export function filterGamesForExport(games, {
+  competition = '',
   matchday = '',
-  stateFilters = [],
   sourceNames = [],
   refereeId = null,
   search = '',
@@ -64,11 +46,8 @@ export function filterGamesForExport(games, {
   const query = String(search || '').toLowerCase();
   return games.filter((game) => {
     if (!isGameInPeriod(game, dateFrom, dateTo)) return false;
+    if (competition && game.competition !== competition) return false;
     if (matchday && String(game.matchday) !== String(matchday)) return false;
-    if (stateFilters.length) {
-      const categories = gameStateCategories(game);
-      if (!stateFilters.some((state) => categories.includes(state))) return false;
-    }
     if (sourceNames.length && !sourceNames.includes(game.sourceName)) return false;
     if (cleanRefereeId) {
       const hasReferee = ['referee1', 'referee2', 'referee3'].some(
@@ -94,8 +73,8 @@ export function filterGamesForExport(games, {
 export async function buildGamesWorkbook({
   season,
   competitions = [],
+  competition = '',
   matchday = '',
-  stateFilters = [],
   sourceNames = [],
   refereeId = null,
   search = '',
@@ -105,7 +84,7 @@ export async function buildGamesWorkbook({
   const allGames = await listGames({ season, competitions });
   const games = filterGamesForExport(
     allGames,
-    { matchday, stateFilters, sourceNames, refereeId, search, dateFrom, dateTo }
+    { competition, matchday, sourceNames, refereeId, search, dateFrom, dateTo }
   );
   const cleanRefereeId = Number(refereeId) || null;
   const selectedReferee = cleanRefereeId
@@ -129,15 +108,13 @@ export async function buildGamesWorkbook({
     'Osservatore',
     'Stato'
   ];
-  const stateLabels = stateFilters.map((state) => OPERATIONAL_STATE_LABELS[state]).filter(Boolean);
   const filterDescription = [
     `Stagione: ${season}`,
-    `Campionato: ${competitions.length ? competitions.join(', ') : 'tutti'}`,
+    `Campionato: ${competition || (competitions.length ? competitions.join(', ') : 'tutti')}`,
     `Fasi: ${sourceNames.length ? sourceNames.join(', ') : 'tutte'}`,
     `Giornata: ${matchday || 'tutte'}`,
     `Periodo: ${formatPeriodLabel(dateFrom, dateTo)}`,
     `Arbitro: ${selectedReferee ? officialLabel(selectedReferee) : cleanRefereeId ? `#${cleanRefereeId}` : 'tutti'}`,
-    `Stati: ${stateLabels.length ? stateLabels.join(', ') : 'tutti'}`,
     `Ricerca: ${String(search || '').trim() || 'nessuna'}`
   ].join(' · ');
 

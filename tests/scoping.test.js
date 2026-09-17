@@ -67,7 +67,6 @@ test('l’export gare replica filtri e scoping della vista', async () => {
     season: SEASON,
     competitions: ['DR1'],
     sourceNames: ['Fase regolare'],
-    stateFilters: ['arbitri_mancanti'],
     search: 'A'
   });
   const sheet = workbook.getWorksheet('Gare');

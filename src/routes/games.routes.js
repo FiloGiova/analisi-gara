@@ -146,13 +146,11 @@ gamesRouter.get(
   requireAdminOrInstructor,
   asyncHandler(async (req, res) => {
     const season = String(req.query.season || '').trim() || (req.user?.role === 'instructor' ? currentSportSeason() : '');
-    const allowedStates = new Set(['arbitri_mancanti', 'scoperta', 'rapporto_mancante']);
-    const stateFilters = repeatedParam(req, 'states').filter((state) => allowedStates.has(state));
     const workbook = await buildGamesWorkbook({
       season,
       competitions: scopedCompetitions(req, season),
+      competition: String(req.query.competition || '').trim(),
       matchday: String(req.query.matchday || '').trim(),
-      stateFilters,
       sourceNames: repeatedParam(req, 'sources'),
       refereeId: req.query.refereeId ? Number(req.query.refereeId) : null,
       search: String(req.query.search || ''),

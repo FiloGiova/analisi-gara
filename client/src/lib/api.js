@@ -391,8 +391,8 @@ export function downloadStatsExport({
 
 export function downloadGamesExport({
   season = '',
+  competition = '',
   matchday = '',
-  stateFilters = [],
   sourceNames = [],
   refereeId = '',
   search = '',
@@ -401,8 +401,8 @@ export function downloadGamesExport({
 }) {
   const params = new URLSearchParams();
   if (season) params.set('season', season);
+  if (competition) params.set('competition', competition);
   if (matchday) params.set('matchday', matchday);
-  stateFilters.forEach((state) => params.append('states', state));
   sourceNames.forEach((source) => params.append('sources', source));
   if (refereeId) params.set('refereeId', refereeId);
   if (search) params.set('search', search);
