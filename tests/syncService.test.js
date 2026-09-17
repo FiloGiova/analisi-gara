@@ -7,7 +7,7 @@ import path from 'node:path';
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'analisigara-test-'));
 process.env.STORAGE_DIR = tempDir;
 
-const { setupTestDatabase, closeTestDatabase, insertId, dbGet } = await import('./helpers/testDatabase.js');
+const { setupTestDatabase, closeTestDatabase, insertId, dbGet, dbRun } = await import('./helpers/testDatabase.js');
 const { createSource, runFipSync } = await import('../src/services/syncService.js');
 const { getGame, listGames, setOfficial, getOfficialRow } = await import('../src/services/gameService.js');
 const { runScheduledFipSync, getScheduledFipSyncStatus } = await import('../src/services/scheduledSyncService.js');
@@ -59,7 +59,7 @@ const observerId = await insertId(
 const { sources: [source] } = await createSource({
   sportSeason: '2025/2026',
   name: 'Test girone',
-  url: 'https://fip.it/risultati/?codice_girone=999&regione_codice=PI'
+  url: 'https://fip.it/risultati/?codice_girone=999&codice_fase=1&regione_codice=PI'
 });
 
 const noGironeHtml = fs.readFileSync(new URL('./fixtures/fip-risultati-dr1-no-girone.html', import.meta.url), 'utf8');
@@ -222,4 +222,47 @@ test('il job giornaliero parte dopo l’orario e non viene eseguito due volte', 
   const status = await getScheduledFipSyncStatus();
   assert.equal(status.lastRunDate, '2026-07-13');
   assert.ok(['success', 'partial'].includes(status.status));
+});
+
+// Il sito FIP, se riceve codice_girone senza codice_fase, risponde 200 con una
+// pagina vuota: le sorgenti create prima che la fase venisse salvata sarebbero
+// mute per sempre, quindi la recuperano alla prima sincronizzazione.
+test('una sorgente senza fase la recupera e la salva al primo sync', async () => {
+  const { sources: [legacy] } = await createSource(
+    {
+      sportSeason: '2024/2025', // stagione diversa: i gironi della fixture sono già usati sopra
+      name: 'Sorgente storica',
+      url: 'https://fip.it/risultati/?group=campionati-regionali&regione_codice=PI&comitato_codice=RPI&sesso=M&codice_campionato=D&codice_girone=74971&codice_fase=1'
+    },
+    { fetchImpl }
+  );
+  // Si riporta la riga allo stato in cui la salvava la versione precedente.
+  await dbRun('UPDATE competition_sources SET params_json = ?, url = ? WHERE id = ?', [
+    JSON.stringify({ group: 'campionati-regionali', regione_codice: 'PI', comitato_codice: 'RPI', sesso: 'M', codice_campionato: 'D', codice_girone: '74971' }),
+    'https://fip.it/risultati/?group=campionati-regionali&regione_codice=PI&comitato_codice=RPI&sesso=M&codice_campionato=D&codice_girone=74971',
+    legacy.id
+  ]);
+
+  const calendario = [{ num: '000501', home: 'CASA F', away: 'OSPITE F', date: '10 Gennaio 2026', time: '18:00' }];
+  const faseFetch = (url) => {
+    const parsed = new URL(url);
+    // La sonda della fase è l'unica richiesta senza girone.
+    const html = parsed.searchParams.get('codice_girone') ? fipHtml(calendario) : noGironeHtml;
+    return Promise.resolve({ ok: true, status: 200, url, text: () => Promise.resolve(html) });
+  };
+
+  const result = await runFipSync(legacy.id, { fetchImpl: faseFetch });
+  assert.equal(result.created, 1, 'con la fase corretta le gare arrivano');
+
+  const row = await dbGet('SELECT params_json, url FROM competition_sources WHERE id = ?', [legacy.id]);
+  assert.equal(JSON.parse(row.params_json).codice_fase, '1', 'la fase resta salvata per i sync successivi');
+  assert.ok(row.url.includes('codice_fase=1'));
+});
+
+test('un girone senza calendario pubblicato non passa per sincronizzazione riuscita', async () => {
+  currentHtml = '<html><body><a href="https://fip.it/risultati/?codice_girone=999&giornata=1">1</a></body></html>';
+  const result = await runFipSync(source.id, { fetchImpl });
+
+  assert.equal(result.status, 'partial');
+  assert.ok(result.errors.some((e) => /Nessuna gara trovata/.test(e.message)), 'zero gare va detto, non nascosto');
 });

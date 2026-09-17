@@ -7,6 +7,29 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-17 — Sorgenti gare: la fase FIP fa parte dei parametri
+
+**Bug.** Le sorgenti create incollando il link della pagina Risultati senza aver
+scelto la fase salvavano `codice_girone` ma non `codice_fase`. Il sito FIP, con
+il girone e senza la fase, risponde **200 con una pagina vuota**: zero gare e
+zero giornate. La sincronizzazione finiva quindi "riuscita" con 0 gare create e
+il calendario restava vuoto senza alcun segnale.
+
+- `src/services/fip/fipAdapter.js`: nuova `parseFasiOptions()` (menu "fasi"),
+  `discoverGironi()` ora restituisce `{ gironi, codiceFase }` e nuova
+  `resolveFase()`, che individua la fase di un girone noto cercandolo tra i
+  gironi di ciascuna fase (la fase selezionata per prima: di norma una sola
+  richiesta).
+- `src/services/syncService.js`: `createSource()` salva sempre `codice_fase` nei
+  parametri e nell'URL canonico; `updateSource()` lo eredita come già faceva col
+  girone; `runFipSync()` recupera e salva la fase mancante delle sorgenti
+  esistenti alla prima sincronizzazione (nessuna sorgente da ricreare a mano) e
+  segnala come avviso una sincronizzazione che non trova nessuna gara.
+- Test: `tests/fipAdapter.test.js` (fasi, `discoverGironi`, `resolveFase`) e
+  `tests/syncService.test.js` (recupero della fase, avviso a zero gare).
+
+Nessuna migrazione al database: i parametri vivono in `competition_sources.params_json`.
+
 ## 2026-09-14 — Stagione 2026/2027: import liste arbitri e stato a tre valori
 
 **Import liste arbitri.** Nuovo `scripts/import-referees.js`, che sostituisce

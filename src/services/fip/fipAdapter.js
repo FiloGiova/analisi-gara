@@ -88,11 +88,63 @@ export function parseGironiOptions(html) {
   return gironi;
 }
 
-// Scopre i gironi di una competizione quando il link incollato non contiene
-// codice_girone: la pagina FIP li espone comunque nel menu a tendina.
+// Estrae le fasi (Qualificazione, Coppa, Playoff...) dal selettore della pagina.
+export function parseFasiOptions(html) {
+  const $ = cheerio.load(html);
+  const fasi = [];
+  $('select[name="fasi"] option').each((_, el) => {
+    const codice = cleanText($(el).attr('value'));
+    if (!/^\d+$/.test(codice)) return;
+    fasi.push({
+      codice,
+      label: cleanText($(el).text()) || `Fase ${codice}`,
+      selected: $(el).is('[selected]')
+    });
+  });
+  return fasi;
+}
+
+// Scopre gironi e fase di una competizione quando il link incollato non contiene
+// codice_girone: la pagina FIP li espone comunque nei menu a tendina.
+// ATTENZIONE: codice_fase è obbligatorio quanto il girone. Con codice_girone ma
+// senza codice_fase il sito risponde 200 con una pagina vuota (zero gare e zero
+// giornate), quindi la sorgente va salvata sempre con entrambi.
 export async function discoverGironi(params, { fetchImpl = fetch } = {}) {
   const html = await fetchGiornataHtml(params, 1, { fetchImpl });
-  return parseGironiOptions(html);
+  const fasi = parseFasiOptions(html);
+  return {
+    gironi: parseGironiOptions(html),
+    codiceFase: params.codice_fase || fasi.find((fase) => fase.selected)?.codice || ''
+  };
+}
+
+// Ricava la fase di un girone già noto: la pagina senza codice_girone elenca i
+// gironi della fase selezionata, quindi si cerca la fase che contiene il girone.
+// Serve per i link incollati senza codice_fase e per le sorgenti salvate prima
+// che il parametro venisse considerato obbligatorio.
+export async function resolveFase(params, { fetchImpl = fetch, delayMs = REQUEST_DELAY_MS } = {}) {
+  const girone = String(params.codice_girone || '');
+  if (!girone) return '';
+
+  const probe = { ...params };
+  delete probe.codice_girone;
+  delete probe.codice_fase;
+
+  const html = await fetchGiornataHtml(probe, 1, { fetchImpl });
+  const fasi = parseFasiOptions(html);
+  const selected = fasi.find((fase) => fase.selected) || null;
+  if (parseGironiOptions(html).some((item) => item.codice === girone)) {
+    return selected?.codice || '';
+  }
+
+  for (const fase of fasi) {
+    if (selected && fase.codice === selected.codice) continue;
+    await delay(delayMs);
+    const faseHtml = await fetchGiornataHtml({ ...probe, codice_fase: fase.codice }, 1, { fetchImpl });
+    if (parseGironiOptions(faseHtml).some((item) => item.codice === girone)) return fase.codice;
+  }
+
+  return '';
 }
 
 export function buildGiornataUrl(params, giornata, { codiceAr } = {}) {

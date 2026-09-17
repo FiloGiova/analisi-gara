@@ -8,6 +8,9 @@ import {
   parseResultsPage,
   parseItalianDateTime,
   parseGironiOptions,
+  parseFasiOptions,
+  discoverGironi,
+  resolveFase,
   buildGiornataUrl,
   assignContinuousMatchdays
 } from '../src/services/fip/fipAdapter.js';
@@ -113,12 +116,62 @@ test('le fasi finali (playoff Serie C) usano la stessa struttura: accoppiamento 
   assert.ok(games[0].scheduledAt.startsWith('2026-06-13T'), 'data giugno 2026 interpretata');
 });
 
+test('parseFasiOptions estrae le fasi e riconosce quella selezionata', () => {
+  const fasi = parseFasiOptions(noGironeHtml);
+  assert.equal(fasi[0].codice, '1');
+  assert.equal(fasi[0].label, 'Qualificazione');
+  assert.equal(fasi.filter((fase) => fase.selected).map((fase) => fase.codice).join(), '1');
+
+  const playoff = parseFasiOptions(playoffHtml);
+  assert.equal(playoff.find((fase) => fase.selected).codice, '6', 'nel playoff la fase selezionata non è la prima');
+});
+
+// Senza codice_fase il sito FIP risponde 200 con una pagina vuota quando è
+// presente codice_girone: la fase va sempre salvata insieme al girone.
+function fakeFetch(htmlByFase) {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url);
+    calls.push(parsed);
+    const fase = parsed.searchParams.get('codice_fase') || 'default';
+    return { ok: true, url, text: async () => htmlByFase[fase] ?? '<html></html>' };
+  };
+  return { fetchImpl, calls };
+}
+
+test('discoverGironi restituisce anche la fase selezionata dalla pagina', async () => {
+  const { fetchImpl, calls } = fakeFetch({ default: noGironeHtml });
+  const { gironi, codiceFase } = await discoverGironi({ codice_campionato: 'D' }, { fetchImpl });
+  assert.equal(codiceFase, '1');
+  assert.deepEqual(gironi.map((g) => g.codice), ['74971', '74972', '74973']);
+  assert.equal(calls.length, 1);
+});
+
+test('resolveFase individua la fase che contiene il girone', async () => {
+  const { fetchImpl, calls } = fakeFetch({ default: noGironeHtml });
+  const codiceFase = await resolveFase({ codice_campionato: 'D', codice_girone: '74972' }, { fetchImpl });
+  assert.equal(codiceFase, '1');
+  assert.equal(calls.length, 1, 'il girone è già nella fase selezionata: una sola richiesta');
+  assert.equal(calls[0].searchParams.get('codice_girone'), null, 'la sonda va fatta senza girone');
+});
+
+test('resolveFase prova le altre fasi quando il girone non è in quella selezionata', async () => {
+  const { fetchImpl, calls } = fakeFetch({ default: noGironeHtml, 6: playoffHtml });
+  const codiceFase = await resolveFase({ codice_campionato: 'C1', codice_girone: '84802' }, { fetchImpl, delayMs: 0 });
+  assert.equal(codiceFase, '6', 'il girone 84802 esiste solo nella fase playoff');
+  assert.ok(calls.length > 1);
+  assert.equal(codiceFase && calls.at(-1).searchParams.get('codice_fase'), '6');
+});
+
 test('buildGiornataUrl costruisce URL su host FIP con la giornata richiesta', () => {
   const url = new URL(buildGiornataUrl({ codice_girone: '74971', regione_codice: 'PI' }, 7));
   assert.equal(url.hostname, 'www.fip.it');
   assert.equal(url.protocol, 'https:');
   assert.equal(url.searchParams.get('giornata'), '7');
   assert.equal(url.searchParams.get('codice_girone'), '74971');
+
+  const conFase = new URL(buildGiornataUrl({ codice_girone: '74971', codice_fase: '1' }, 1));
+  assert.equal(conFase.searchParams.get('codice_fase'), '1', 'la fase deve finire in ogni richiesta');
 });
 
 test('parseItalianDateTime interpreta le date italiane', () => {

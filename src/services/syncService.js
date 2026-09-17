@@ -1,6 +1,6 @@
 import { dbGet, dbAll, dbRun } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
-import { parseFipUrl, fetchAllGiornate, discoverGironi } from './fip/fipAdapter.js';
+import { parseFipUrl, fetchAllGiornate, discoverGironi, resolveFase } from './fip/fipAdapter.js';
 import { resolveRefereeName, normalizedNameKey } from './nameMatching.js';
 import { createGame, updateGame, setOfficial, getOfficialRow } from './gameService.js';
 
@@ -69,10 +69,19 @@ export async function createSource({ sportSeason, name, url, competition = '', c
   if (baseParams.codice_girone) {
     gironi = [{ codice: baseParams.codice_girone, label: '' }];
   } else {
-    gironi = await discoverGironi(baseParams, { fetchImpl });
+    const discovered = await discoverGironi(baseParams, { fetchImpl });
+    gironi = discovered.gironi;
     if (!gironi.length) {
       throw new HttpError(400, 'Nessun girone trovato in questa pagina FIP: verificare campionato e fase selezionati.');
     }
+    if (!baseParams.codice_fase && discovered.codiceFase) baseParams.codice_fase = discovered.codiceFase;
+  }
+
+  // Senza codice_fase il sito FIP restituisce una pagina vuota quando è presente
+  // il girone: va ricavato adesso, altrimenti la sorgente nascerebbe muta.
+  if (!baseParams.codice_fase) {
+    const codiceFase = await resolveFase(baseParams, { fetchImpl });
+    if (codiceFase) baseParams.codice_fase = codiceFase;
   }
 
   const alreadyConfigured = new Set(
@@ -92,6 +101,7 @@ export async function createSource({ sportSeason, name, url, competition = '', c
     const params = { ...baseParams, codice_girone: girone.codice };
     const canonicalUrl = new URL(asText(url));
     canonicalUrl.searchParams.set('codice_girone', girone.codice);
+    if (params.codice_fase) canonicalUrl.searchParams.set('codice_fase', params.codice_fase);
     const cleanName = asText(name) ? (gironi.length > 1 ? `${asText(name)} — ${label}` : asText(name)) : label;
     const result = await dbRun(
       `INSERT INTO competition_sources (sport_season, name, source_type, url, params_json, competition)
@@ -115,6 +125,10 @@ export async function updateSource(id, { name, url, competition, active, sportSe
   // Un nuovo URL senza girone eredita quello già configurato.
   if (url !== undefined && params && !params.codice_girone && source.params?.codice_girone) {
     params.codice_girone = source.params.codice_girone;
+  }
+  // Idem per la fase: senza, il sito FIP risponde con una pagina vuota.
+  if (url !== undefined && params && !params.codice_fase && source.params?.codice_fase) {
+    params.codice_fase = source.params.codice_fase;
   }
   if (url !== undefined && !params?.codice_girone) {
     throw new HttpError(400, 'Il nuovo link non contiene il girone: incollare il link del girone specifico.');
@@ -183,6 +197,24 @@ async function manuallyTouchedFields(gameId) {
 }
 
 const REFEREE_ROLES = ['referee1', 'referee2', 'referee3'];
+
+// Salva la fase ricavata al volo, sulla sorgente e nel link mostrato in elenco,
+// così le sincronizzazioni successive partono già complete.
+async function saveSourceFase(source, codiceFase) {
+  const params = { ...source.params, codice_fase: codiceFase };
+  let url = source.url;
+  try {
+    const parsed = new URL(source.url);
+    parsed.searchParams.set('codice_fase', codiceFase);
+    url = parsed.toString();
+  } catch (_) {
+    // URL non parsabile: si aggiornano comunque i parametri.
+  }
+  await dbRun(
+    `UPDATE competition_sources SET params_json = ?, url = ?, updated_at = iso_now() WHERE id = ?`,
+    [JSON.stringify(params), url, source.id]
+  );
+}
 
 // Applica alla singola gara i dati FIP di una giornata. Idempotente: nessuna
 // modifica se i dati coincidono. Non tocca mai l'osservatore.
@@ -373,7 +405,20 @@ export async function runFipSync(sourceId, { user = null, fetchImpl = fetch } = 
   let status = 'success';
 
   try {
-    const giornate = await fetchAllGiornate(source.params, { fetchImpl });
+    // Sorgenti salvate senza codice_fase: il sito FIP risponderebbe con una
+    // pagina vuota. La fase viene ricavata una volta sola e salvata.
+    let params = source.params;
+    if (!params.codice_fase) {
+      const codiceFase = await resolveFase(params, { fetchImpl });
+      if (!codiceFase) {
+        throw new HttpError(502, 'Fase FIP non individuata: aprire la pagina Risultati, selezionare fase e girone e reincollare il link nella sorgente.');
+      }
+      params = { ...params, codice_fase: codiceFase };
+      await saveSourceFase(source, codiceFase);
+      summary.faseRecovered = codiceFase;
+    }
+
+    const giornate = await fetchAllGiornate(params, { fetchImpl });
     summary.giornate = giornate.length;
 
     for (const { giornata, leg, games } of giornate) {
@@ -385,6 +430,14 @@ export async function runFipSync(sourceId, { user = null, fetchImpl = fetch } = 
           summary.errors.push({ matchNumber: fipGame.matchNumber, giornata, message: err.message });
         }
       }
+    }
+
+    // Una pagina FIP valida ma senza gare non è un successo silenzioso: di solito
+    // il calendario del girone non è ancora pubblicato.
+    if (!giornate.some((entry) => entry.games.length)) {
+      summary.errors.push({
+        message: 'Nessuna gara trovata sulla pagina FIP: il calendario di questo girone potrebbe non essere ancora pubblicato.'
+      });
     }
 
     if (summary.errors.length || summary.conflicts.length) status = 'partial';
