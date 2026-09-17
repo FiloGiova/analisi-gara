@@ -2850,13 +2850,48 @@ dd {
 }
 
 .modal-box {
+  --modal-pad: 32px;
+  --modal-gutter: 48px; /* padding dell'overlay, sopra e sotto */
   background: var(--surface-strong);
   border-radius: var(--radius-lg);
-  padding: 32px;
+  padding: var(--modal-pad);
   max-width: 420px;
   width: 100%;
   box-shadow: var(--shadow);
   animation: slide-up 180ms ease;
+  /* Un modale alto resta dentro lo schermo e scorre: senza questo il pulsante
+     di conferma finiva fuori dalla finestra e diventava irraggiungibile. */
+  max-height: calc(100vh - var(--modal-gutter));
+  max-height: calc(100dvh - var(--modal-gutter));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Quando c'è un'area contenuti dedicata scorre solo quella, così il titolo
+   resta fermo in alto e le azioni in basso. */
+.modal-box:has(.modal-scroll) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-heading {
+  flex-shrink: 0;
+}
+
+.modal-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* esce dal padding del box per far arrivare lo scorrimento ai bordi */
+  margin: 0 calc(-1 * var(--modal-pad)) calc(-1 * var(--modal-pad));
+  padding: 0 var(--modal-pad);
+}
+
+.modal-scroll .modal-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-strong);
+  padding-block: 16px;
 }
 
 .form-modal {
@@ -2954,6 +2989,17 @@ dd {
   gap: 10px;
 }
 
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-box {
+    --modal-pad: 20px;
+    --modal-gutter: 24px;
+  }
+}
+
 /* ── Importazione rapporti PDF federali ──────────────────────── */
 
 .pdf-import-overlay {
@@ -2962,6 +3008,9 @@ dd {
 }
 
 .pdf-import-modal {
+  /* Qui scorre l'overlay, non il riquadro: resta com'era. */
+  max-height: none;
+  overflow-y: visible;
   width: min(980px, 100%);
   max-width: 980px;
   margin: 24px auto;

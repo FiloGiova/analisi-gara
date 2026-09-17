@@ -7,6 +7,16 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-17 — I modali restano dentro lo schermo
+
+Con la selezione multipla dei ruoli la finestra "Modifica utente" diventava più
+alta dello schermo e il pulsante Salva finiva fuori, irraggiungibile. Ora ogni
+modale è alto al massimo quanto la finestra: il titolo resta fermo in alto, il
+contenuto scorre e la riga delle azioni resta appoggiata in fondo, sempre
+visibile. Su schermo stretto margini e padding si riducono per guadagnare spazio.
+L'importatore di PDF federali continua a scorrere come prima (lì scorre
+l'overlay, non il riquadro).
+
 ## 2026-09-17 — Ruoli multipli, ruolo Operatore e log dei rapporti
 
 **Log delle azioni sui rapporti.** Nuova tabella `report_events` e terza tab
