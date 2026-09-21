@@ -68,6 +68,9 @@ in `src/config.js` corregge insieme l’avvio OAuth, lo scambio del codice, la
 lettura del profilo e Storage. In questo caso non occorre cambiare le chiavi
 o aggiungerle al link di accesso; la richiesta all’endpoint Auth corretto
 ha restituito un redirect 302 verso Google anche senza `apikey` nell’URL.
+Correzione pubblicata su `main` nel commit `147510a`; il successivo controllo
+online del pulsante ha raggiunto la schermata Google di scelta/accesso
+all’account. Il consenso e il ritorno con un account reale restano da provare.
 
 Con il normale `npm run dev` impostare `APP_BASE_URL=http://localhost:5173`:
 Vite inoltra `/api` e `/auth/callback` al backend sulla porta 3000. Se si usa

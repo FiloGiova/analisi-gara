@@ -39,9 +39,16 @@ La prova completa con l’account reale resta al titolare.
 dedicato `fischiolab_auth_test`, build Vite riuscita e `git diff --check` pulito.
 Nessun test automatico eseguito sul database di produzione.
 
-**Rilascio.** Correzione destinata al solo ramo `main`, secondo l’autorizzazione
-alla pubblicazione già ricevuta. La cancellazione locale preesistente di
-`NEXT_STEPS_2.md` resta esclusa.
+**Rilascio e prova online.** Commit `147510a` pubblicato sul solo ramo `main`,
+secondo l’autorizzazione già ricevuta. Dopo il deploy, `/api/auth/google/start`
+restituisce il percorso corretto `/auth/v1/authorize`; un vero clic dal browser
+Chrome anonimo sulla login online arriva a `accounts.google.com/v3/signin/identifier`.
+L’errore 401 segnalato non si ripresenta. Non inserite credenziali né completato
+il consenso: collegamento e rientro con l’account reale restano da provare.
+Il deployment GitHub `6578720476` risulta riuscito alle 21:42:03 UTC ma riporta
+ancora ref/SHA precedenti: non usato per dedurre il ramo Render o certificare
+la revisione in esecuzione. La conferma funzionale deriva dalla prova online.
+La cancellazione locale preesistente di `NEXT_STEPS_2.md` resta esclusa.
 
 ## 2026-09-21 — Google in Testing e controllo del pulsante di accesso
 
