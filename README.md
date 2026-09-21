@@ -6,6 +6,15 @@ compilare i rapporti, generare i PDF e consultare statistiche stagionali.
 
 Produzione: [https://fischiolab.onrender.com](https://fischiolab.onrender.com)
 
+La versione locale in preparazione introduce la home pubblica su `/` e sposta
+l’ingresso alla webapp su `/app`, mantenendo compatibili inviti e segnalibri
+`/#/...`. Le pagine `/privacy` e `/termini` includono i dati pubblici forniti
+dal titolare Filippo Giovagnini, contatto `filo.giova98@gmail.com`, e i testi
+versionati in `src/publicInformation.js`. Non richiedono nuove variabili per
+essere pubblicate; `PUBLIC_*` consente override facoltativi. Le modifiche
+sono ancora locali. Configurazione e verifica Google in
+[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md#branding-google-informazioni-e-pagine-pubbliche).
+
 ## Funzioni principali
 
 - import e sincronizzazione delle sorgenti pubbliche FIP;
@@ -20,7 +29,8 @@ Produzione: [https://fischiolab.onrender.com](https://fischiolab.onrender.com)
 - statistiche Copertura, Matrice incroci e Impiego arbitri, esportabili in XLSX
   con i filtri della vista corrente e collegate ai rapporti di origine;
 - template XLSX per il designatore, esportabile per una o più fasi di campionato;
-- ruoli `admin`, `instructor`, `observer` e `referee`;
+- ruoli combinabili `admin`, `operator`, `instructor`, `observer` e ruolo esclusivo `referee`;
+- inviti personali, accesso username/password senza email e Google facoltativo;
 - helper AI opzionale per il giudizio globale;
 - invio PDF via email opzionale.
 
@@ -67,7 +77,7 @@ Impostare almeno:
 ```env
 DATABASE_URL=postgres://...
 DATABASE_SSL=false
-SESSION_SECRET=una-stringa-casuale-lunga
+APP_BASE_URL=http://localhost:5173
 COOKIE_SECURE=false
 ```
 
@@ -155,9 +165,9 @@ npm run test:unit
 
 ## Deploy su Render
 
-Il file `render.yaml` descrive il Web Service:
+Il file `render.yaml` descrive il Web Service per una nuova configurazione:
 
-- branch: `cloud-migration`;
+- branch: `main`;
 - build: `npm install --include=dev && npm run build`;
 - start: `npm start`;
 - health check: `/api/health`.
@@ -171,8 +181,12 @@ committate:
 - `SESSION_SECRET`;
 - eventuali credenziali SMTP e AI.
 
-Dopo un push su `cloud-migration`, Render esegue automaticamente build e
-deploy. Verificare:
+Il servizio esistente segue invece `cloud-migration`, come verificato nei
+deployment GitHub/Render il 21 settembre 2026. Il lavoro viene mantenuto su
+`main`: per un rilascio aggiornare anche `cloud-migration` con un fast-forward,
+senza forzare la storia. Il push su quel ramo avvia build e deploy automatici.
+Il campo `branch` del blueprint non modifica da solo il servizio esistente.
+Verificare:
 
 ```bash
 curl -i https://fischiolab.onrender.com/api/health
@@ -284,9 +298,19 @@ output/<stagione>/report-<id>/<nome-file>.pdf
 
 La Service Key Supabase deve restare esclusivamente lato server.
 
+## Inviti e accesso Google
+
+L’admin crea il profilo con username e ruoli, poi genera un link da **Inviti e
+accesso**. Il destinatario sceglie la password senza obbligo di email oppure
+Google, se abilitato. Gli utenti esistenti mantengono credenziali e storico.
+
+Configurazione Render/Supabase, mapping, recupero e migrazione sono descritti in
+[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+
 ## Ruoli e sicurezza
 
 - **Admin:** accesso completo.
+- **Operatore:** gestione operativa di gare, importazioni e designazioni secondo le capability assegnate.
 - **Formatore:** gare, arbitri e statistiche dei campionati assegnati; modifica
   dei rapporti secondo la designazione.
 - **Osservatore:** vede e compila soltanto i propri rapporti/gare assegnate.
@@ -294,7 +318,7 @@ La Service Key Supabase deve restare esclusivamente lato server.
   Potenzialità.
 
 Non esiste registrazione pubblica. Le password sono hashate e le sessioni sono
-token casuali memorizzati nel database. In produzione HTTPS deve usare
+token casuali conservati nel database soltanto come hash. In produzione HTTPS deve usare
 `COOKIE_SECURE=true`.
 
 ## Roadmap e storico

@@ -301,6 +301,7 @@ export function createEmptyVideoReport() {
     secondRefereeId: null,
     secondRefereeName: '',
     judgements: { first: '', second: '' },
+    feedback: { first: '', second: '' },
     notes: ''
   };
 }

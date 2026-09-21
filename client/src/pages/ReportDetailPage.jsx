@@ -4,6 +4,7 @@ import { api, downloadReportPdf, downloadReportAttachment } from '../lib/api.js'
 import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
+import JudgementBadge from '../components/JudgementBadge.jsx';
 import AttachmentCard from '../components/AttachmentCard.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { formatMatchNumber, formatRelativeDate } from '../lib/formatters.js';
@@ -383,12 +384,13 @@ export default function ReportDetailPage({ id, currentUser }) {
             {rows.map((row) => (
               <div key={row.role} className="video-judgement-card">
                 <h3>{row.label} · {row.name || '—'}</h3>
-                <p>{judgements[row.role] ? <strong>{judgements[row.role]}</strong> : 'Giudizio non inserito'}</p>
+                <div><JudgementBadge value={judgements[row.role]} /></div>
+                {data.feedback?.[row.role] ? <div className="video-feedback"><h4>Feedback</h4><p>{data.feedback[row.role]}</p></div> : null}
               </div>
             ))}
             {data.notes ? (
               <div className="comment-block">
-                <h4>Note</h4>
+                <h4>Note generali del rapporto precedente</h4>
                 <p>{data.notes}</p>
               </div>
             ) : null}

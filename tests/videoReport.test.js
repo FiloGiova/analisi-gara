@@ -46,6 +46,7 @@ function videoPayload(overrides = {}) {
     observerUserId: observerId,
     observerName: 'Osservatore Test',
     judgements: { first: 'Molto bene', second: 'Malino' },
+    feedback: { first: 'Buona posizione.\nContinua così.', second: 'Anticipare gli spostamenti.' },
     notes: 'Visionatura del primo tempo.',
     ...overrides
   };
@@ -68,6 +69,7 @@ test('il rapporto a video si salva senza voti e conserva i giudizi', async () =>
   assert.equal(report.data.judgements.first, 'Molto bene');
   assert.equal(report.data.judgements.second, 'Malino');
   assert.equal(report.data.notes, 'Visionatura del primo tempo.');
+  assert.deepEqual(report.data.feedback, { first: 'Buona posizione.\nContinua così.', second: 'Anticipare gli spostamenti.' });
   assert.equal(report.data.evaluations, undefined, 'niente sezioni di valutazione');
 
   const row = await listReports({ user: admin });
@@ -197,7 +199,20 @@ test('l’arbitro vede il proprio giudizio ma non quello del collega', async () 
 
   assert.equal(seen.data.judgements.first, 'Molto bene');
   assert.equal(seen.data.judgements.second, undefined, 'il giudizio del collega resta riservato');
+  assert.equal(seen.data.feedback.first, 'Buona posizione.\nContinua così.');
+  assert.equal(seen.data.feedback.second, undefined, 'il feedback del collega resta riservato');
+  assert.equal(seen.data.notes, '', 'le vecchie note comuni potrebbero riguardare il collega');
   assert.equal(seen.secondRefereeName, '');
+});
+
+test('i feedback restano separati dopo una modifica, con note storiche conservate', async () => {
+  const report = await createReport({ payload: videoPayload({ matchNumber: '001260' }), status: 'draft', user: admin });
+  const updated = await updateReport({ id: report.id, payload: { ...report.data, feedback: { ...report.data.feedback, second: 'Nuovo feedback per il secondo.' } }, status: 'final', user: admin });
+  assert.equal(updated.data.feedback.first, report.data.feedback.first);
+  assert.equal(updated.data.notes, report.data.notes);
+  const second = await getReport(report.id, { id: 998, role: 'referee', refereeId: secondRefereeId });
+  assert.deepEqual(second.data.feedback, { second: 'Nuovo feedback per il secondo.' });
+  assert.deepEqual(second.data.judgements, { second: 'Malino' });
 });
 
 test('anche l’osservatore designato può compilarlo', async () => {

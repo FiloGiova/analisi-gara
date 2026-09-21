@@ -14,14 +14,9 @@ export async function getCurrentUser(req) {
   const row = await dbGet(
     `SELECT sessions.id AS session_id,
             sessions.expires_at,
-            users.id,
-            users.username,
-            users.display_name,
-            users.role,
-            users.formatter_competition,
-            users.photo_path,
-            users.referee_id,
-            users.active
+            sessions.auth_method,
+            sessions.created_at AS session_created_at,
+            users.*
        FROM sessions
        JOIN users ON users.id = sessions.user_id
       WHERE sessions.token_hash = ?`,
@@ -36,6 +31,7 @@ export async function getCurrentUser(req) {
   }
 
   await dbRun('UPDATE sessions SET last_seen_at = ts_now() WHERE id = ?', [row.session_id]);
+  req.authSession = { hash: tokenHash, method: row.auth_method, createdAt: row.session_created_at };
   return publicUserFromRow(row);
 }
 

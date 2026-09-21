@@ -5,21 +5,15 @@ import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
 import Modal from '../components/Modal.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
+import UserAccessModal from '../components/UserAccessModal.jsx';
 import { navigate } from '../lib/navigation.js';
 import { ROLE_LABELS, ROLE_DESCRIPTIONS, can, hasRole, normalizeRoles } from '../../../shared/permissions.js';
 
 const emptyNewUser = {
   username: '',
   displayName: '',
-  password: '',
   roles: ['observer'],
   instructorAssignments: []
-};
-
-const emptyPasswordForm = {
-  currentPassword: '',
-  newPassword: '',
-  confirmPassword: ''
 };
 
 const emptyEditForm = {
@@ -190,11 +184,8 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
   const { competitionLabel } = useCompetitions();
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState(emptyNewUser);
-  const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
-  const [resetPassword, setResetPassword] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [resetUser, setResetUser] = useState(null);
+  const [accessUser, setAccessUser] = useState(null);
   const [editUser, setEditUser] = useState(null);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [openActionsId, setOpenActionsId] = useState(null);
@@ -238,10 +229,6 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     }));
   }
 
-  function updatePasswordForm(field, value) {
-    setPasswordForm((previous) => ({ ...previous, [field]: value }));
-  }
-
   function updateEditForm(field, value) {
     setEditForm((previous) => ({
       ...previous,
@@ -265,32 +252,6 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     };
   }
 
-  async function handleChangePassword(event) {
-    event.preventDefault();
-    setError('');
-    setSuccess('');
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('Le due nuove password non coincidono.');
-      return;
-    }
-
-    setBusy(true);
-    try {
-      await api.changePassword({
-        currentPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword
-      });
-      setPasswordForm(emptyPasswordForm);
-      setShowPasswordModal(false);
-      setSuccess('Password aggiornata. Ti riporto al login per rientrare con quella nuova.');
-      window.setTimeout(onPasswordChanged, 900);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Cambio password non riuscito.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleCreateUser(event) {
     event.preventDefault();
     setError('');
@@ -301,13 +262,14 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     }
     setBusy(true);
     try {
-      await api.createUser({
+      const result = await api.createUser({
         ...newUser,
         instructorAssignments: newUser.roles.includes('instructor') ? newUser.instructorAssignments : []
       });
       setNewUser(emptyNewUser);
       setShowCreateModal(false);
-      setSuccess('Utente creato. Puoi comunicargli username e password iniziale.');
+      setSuccess('Profilo creato. Puoi generare un invito per abilitare l’accesso.');
+      setAccessUser(result.user);
       await loadUsers();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Creazione utente non riuscita.');
@@ -380,32 +342,6 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
     }
   }
 
-  function openResetModal(user) {
-    setResetUser(user);
-    setResetPassword('');
-    setOpenActionsId(null);
-  }
-
-  async function handleResetPassword(event) {
-    event.preventDefault();
-    if (!resetUser) return;
-
-    setError('');
-    setSuccess('');
-    setBusy(true);
-    try {
-      await api.resetUserPassword(resetUser.id, resetPassword);
-      setSuccess("Password reimpostata. Le sessioni di quell'utente sono state chiuse.");
-      setResetUser(null);
-      setResetPassword('');
-      await loadUsers();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Reset password non riuscito.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (!can(currentUser, 'users:manage')) {
     return (
       <div className="empty-state">
@@ -431,6 +367,8 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
       {showCreateModal ? (
         <Modal title="Crea nuova utenza" onClose={() => setShowCreateModal(false)}>
           <form className="modal-form" onSubmit={handleCreateUser}>
+            {error ? <div className="error-banner" role="alert">{error}</div> : null}
+            <p>Scegli username e ruoli. La persona imposterà le proprie credenziali dall’invito; puoi lasciare il profilo senza accesso.</p>
             <label className="field">
               Username
               <input
@@ -448,17 +386,6 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                 onChange={(event) => updateNewUser('displayName', event.target.value)}
                 placeholder="Mario Rossi"
                 autoComplete="off"
-              />
-            </label>
-            <label className="field">
-              Password iniziale
-              <input
-                type="password"
-                value={newUser.password}
-                onChange={(event) => updateNewUser('password', event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
               />
             </label>
             <div className="field">
@@ -484,78 +411,12 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
         </Modal>
       ) : null}
 
-      {showPasswordModal ? (
-        <Modal title="Cambia la tua password" onClose={() => setShowPasswordModal(false)}>
-          <form className="modal-form" onSubmit={handleChangePassword}>
-            <label className="field">
-              Password attuale
-              <input
-                type="password"
-                value={passwordForm.currentPassword}
-                onChange={(event) => updatePasswordForm('currentPassword', event.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </label>
-            <label className="field">
-              Nuova password
-              <input
-                type="password"
-                value={passwordForm.newPassword}
-                onChange={(event) => updatePasswordForm('newPassword', event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </label>
-            <label className="field">
-              Conferma nuova password
-              <input
-                type="password"
-                value={passwordForm.confirmPassword}
-                onChange={(event) => updatePasswordForm('confirmPassword', event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </label>
-            <div className="modal-actions">
-              <button type="button" className="ghost-button" onClick={() => setShowPasswordModal(false)}>Annulla</button>
-              <button type="submit" className="primary-button" disabled={busy}>
-                {busy ? 'Salvataggio...' : 'Aggiorna password'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      ) : null}
-
-      {resetUser ? (
-        <Modal title={`Reset password ${resetUser.username}`} onClose={() => setResetUser(null)}>
-          <form className="modal-form" onSubmit={handleResetPassword}>
-            <label className="field">
-              Nuova password temporanea
-              <input
-                type="password"
-                value={resetPassword}
-                onChange={(event) => setResetPassword(event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </label>
-            <div className="modal-actions">
-              <button type="button" className="ghost-button" onClick={() => setResetUser(null)}>Annulla</button>
-              <button type="submit" className="primary-button" disabled={busy}>
-                {busy ? 'Reset...' : 'Reset password'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      ) : null}
+      {accessUser ? <UserAccessModal user={accessUser} onClose={() => setAccessUser(null)} onChanged={loadUsers} /> : null}
 
       {editUser ? (
         <Modal title={`Modifica ${editUser.username}`} onClose={() => setEditUser(null)}>
           <form className="modal-form" onSubmit={handleEditUser}>
+            {error ? <div className="error-banner" role="alert">{error}</div> : null}
             <label className="field">
               Username
               <input value={editUser.username} disabled />
@@ -613,10 +474,10 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
         <div>
           <p className="eyebrow">Amministrazione</p>
           <h1>Utenti, password e accessi.</h1>
-          <p>Gestisci utenze locali, ruolo e campionati da formatore.</p>
+          <p>Crea i profili, assegna i ruoli e consegna i link personali di attivazione.</p>
         </div>
         <div className="hero-actions">
-          <button type="button" className="ghost-button" onClick={() => setShowPasswordModal(true)}>
+          <button type="button" className="ghost-button" onClick={() => navigate('/account')}>
             Cambia password
           </button>
           <button type="button" className="primary-button" onClick={() => setShowCreateModal(true)}>
@@ -646,6 +507,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                   <th>Nome</th>
                   <th>Ruolo</th>
                   <th>Stato</th>
+                  <th>Accesso</th>
                   <th>Storico formatore</th>
                   <th>Creato</th>
                   <th>Azioni</th>
@@ -660,6 +522,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                     <td style={{ fontWeight: 600 }}>{user.displayName || user.username}</td>
                     <td><UserRolesBadges roles={user.roles} /></td>
                     <td><UserStatusBadge active={user.active} /></td>
+                    <td><span className="status-badge status-badge-sm">{user.hasPassword || user.hasGoogle ? [user.hasPassword && 'Password', user.hasGoogle && 'Google'].filter(Boolean).join(' + ') : user.pendingInvitation ? 'Invitato' : 'Da attivare'}</span></td>
                     <td>
                       {hasRole(user, 'instructor')
                         ? formatAssignments(instructorAssignments(user), competitionLabel)
@@ -686,7 +549,7 @@ export default function AdminUsersPage({ currentUser, onPasswordChanged }) {
                               <button type="button" onClick={() => navigate(`/observers/${user.id}`)}>Indisponibilità</button>
                             ) : null}
                             <button type="button" onClick={() => openEditModal(user)}>Modifica</button>
-                            <button type="button" onClick={() => openResetModal(user)}>Reset password</button>
+                            <button type="button" onClick={() => { setAccessUser(user); setOpenActionsId(null); }}>Inviti e accesso</button>
                             <button
                               type="button"
                               onClick={() => handleToggleActive(user)}

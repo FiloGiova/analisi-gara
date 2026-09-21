@@ -38,6 +38,11 @@ const { initializeDatabase, closeDatabase } = await import('../../src/database/c
 const { dbAll, dbGet, dbRun } = await import('../../src/database/db.js');
 
 const DATA_TABLES = [
+  'auth_events',
+  'auth_rate_limits',
+  'oauth_flows',
+  'account_links',
+  'user_google_identities',
   'access_logs',
   'report_email_log',
   'report_events',

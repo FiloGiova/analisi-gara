@@ -21,6 +21,16 @@ services:
         value: production
       - key: COOKIE_SECURE
         value: "true"
+      - key: APP_BASE_URL
+        value: https://fischiolab.onrender.com
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: ENABLE_GOOGLE_AUTH
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      # I documenti pubblici usano i dati versionati in src/publicInformation.js.
+      # Eventuali override PUBLIC_* si possono aggiungere da Environment.
       - key: DATABASE_SSL
         value: "true"
       - key: STORAGE_BUCKET

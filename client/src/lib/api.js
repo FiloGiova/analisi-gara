@@ -12,6 +12,7 @@ async function request(path, options = {}) {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      'X-Requested-With': 'FischioLab',
       ...(options.headers || {})
     },
     ...options
@@ -51,6 +52,18 @@ function federationPdfForm(files, { gameId = null, reportId = null, decisions = 
 
 export const api = {
   me: () => request('/api/auth/me'),
+  accountSecurity: () => request('/api/auth/account'),
+  inspectInvitation: (token) => request('/api/auth/invitation', { method: 'POST', body: JSON.stringify({ token }) }),
+  activateAccount: (data) => request('/api/auth/activate', { method: 'POST', body: JSON.stringify(data) }),
+  verifyEmail: (token) => request('/api/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }),
+  updateEmail: (data) => request('/api/auth/email', { method: 'PUT', body: JSON.stringify(data) }),
+  resendEmailVerification: () => request('/api/auth/email/verify', { method: 'POST' }),
+  recoverAccount: (email) => request('/api/auth/recover', { method: 'POST', body: JSON.stringify({ email }) }),
+  startGoogle: (data) => request('/api/auth/google/start', { method: 'POST', body: JSON.stringify(data) }),
+  unlinkGoogle: (password) => request('/api/auth/google', { method: 'DELETE', body: JSON.stringify({ password }) }),
+  createInvitation: (id, data) => request(`/api/users/${id}/invitation`, { method: 'POST', body: JSON.stringify(data) }),
+  revokeInvitation: (id) => request(`/api/users/${id}/invitation`, { method: 'DELETE' }),
+  userAuthEvents: (id) => request(`/api/users/${id}/auth-events`),
   myReports: ({ search = '', status = '', season = '' } = {}) => {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
@@ -86,10 +99,6 @@ export const api = {
   updateUser: (id, user) => request(`/api/users/${id}`, {
     method: 'PUT',
     body: JSON.stringify(user)
-  }),
-  resetUserPassword: (id, password) => request(`/api/users/${id}/password`, {
-    method: 'POST',
-    body: JSON.stringify({ password })
   }),
   listObservers: () => request('/api/observers'),
   getObserver: (id) => request(`/api/observers/${id}`),

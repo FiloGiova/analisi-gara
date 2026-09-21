@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'node:path';
+import { publicInformation } from './publicInformation.js';
 
 dotenv.config();
 
@@ -24,6 +25,18 @@ export const config = {
   sessionCookieName: process.env.SESSION_COOKIE_NAME || 'rapporti_sid',
   sessionDays: Number(process.env.SESSION_DAYS || 14),
   cookieSecure: String(process.env.COOKIE_SECURE || 'false').toLowerCase() === 'true',
+  appBaseUrl: (process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173').replace(/\/$/, ''),
+  trustProxy: Number(process.env.TRUST_PROXY_HOPS || 0),
+  googleAuthEnabled: String(process.env.ENABLE_GOOGLE_AUTH || 'false').toLowerCase() === 'true',
+  supabaseAuthKey: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '',
+  publicInfo: {
+    operatorName: (process.env.PUBLIC_OPERATOR_NAME || publicInformation.operatorName).trim(),
+    contactEmail: (process.env.PUBLIC_CONTACT_EMAIL || publicInformation.contactEmail).trim(),
+    legalBasis: (process.env.PUBLIC_PRIVACY_LEGAL_BASIS || publicInformation.legalBasis).trim(),
+    retention: (process.env.PUBLIC_PRIVACY_RETENTION || publicInformation.retention).trim(),
+    // Token pubblico Search Console fornito dal gestore, non una credenziale.
+    googleSiteVerification: (process.env.GOOGLE_SITE_VERIFICATION || '2q3aWC9ruCDa7mf73dm9t2SW-D5yxRvlv1pL5CSBGHw').trim()
+  },
   // Postgres (Supabase). Connection string in DATABASE_URL; SSL richiesto in cloud.
   databaseUrl: process.env.DATABASE_URL || '',
   databaseSsl: String(process.env.DATABASE_SSL ?? 'true').toLowerCase() === 'true',

@@ -31,6 +31,18 @@ export async function initializeDatabase() {
   ensureStorageDirs();
   const schema = fs.readFileSync(schemaPath, 'utf8');
   await getPool().query(schema);
+  const authSchema = fs.readFileSync(path.join(__dirname, 'auth.sql'), 'utf8');
+  // L'app usa esclusivamente Express + connessione PostgreSQL proprietaria.
+  // Un JWT Supabase non deve consentire di aggirare i permessi via Data API.
+  const tables = [...`${schema}\n${authSchema}`.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((match) => match[1]);
+  const apiRoles = (await dbAll("SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated')")).map((row) => row.rolname);
+  const protection = tables.flatMap((table) => [
+    `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
+    `REVOKE ALL ON TABLE ${table} FROM PUBLIC${apiRoles.length ? `, ${apiRoles.join(', ')}` : ''};`
+  ]).join('\n');
+  // Una sola query multi-statement: migrazione auth e protezione sono atomiche
+  // e non aggiungono un round-trip di rete per ogni tabella al cold start.
+  await getPool().query(`${authSchema}\n${protection}`);
   await runBackfills();
 }
 

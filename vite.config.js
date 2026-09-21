@@ -12,7 +12,12 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:3000'
+      '^/$': 'http://localhost:3000',
+      '^/privacy/?$': 'http://localhost:3000',
+      '^/termini/?$': 'http://localhost:3000',
+      '/public-font-': 'http://localhost:3000',
+      '/api': 'http://localhost:3000',
+      '/auth/callback': 'http://localhost:3000'
     },
     fs: {
       allow: ['..']

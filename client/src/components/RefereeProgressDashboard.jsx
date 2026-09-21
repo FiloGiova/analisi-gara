@@ -154,7 +154,8 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
           {videoMatches.map((match) => (
             <span
               key={match.id}
-              className="progress-video-tick"
+              className="progress-video-tick judgement-badge"
+              data-rating={match.judgement}
               title={`${match.matchNumber ? `Gara ${formatMatchNumber(match.matchNumber)} · ` : ''}${match.date}${match.judgement ? ` · ${match.judgement}` : ''}`}
             >
               {match.judgement || 'visionatura'}

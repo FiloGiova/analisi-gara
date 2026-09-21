@@ -384,6 +384,8 @@ export default function ReportVideoFormPage({ id, currentUser, gameId, season })
                
               />
               <SegmentedChoice
+                label={`Giudizio generale · ${role === 'first' ? '1° arbitro' : '2° arbitro'}`}
+                tone="judgement"
                 options={VIDEO_JUDGMENT_OPTIONS}
                 value={report.judgements?.[role] || ''}
                 onChange={(value) => setReport((current) => ({
@@ -391,17 +393,17 @@ export default function ReportVideoFormPage({ id, currentUser, gameId, season })
                   judgements: { ...current.judgements, [role]: value }
                 }))}
               />
+              <Field label={`Feedback · ${role === 'first' ? '1° arbitro' : '2° arbitro'} (facoltativo)`}>
+                <TextArea
+                  value={report.feedback?.[role] || ''}
+                  onChange={(event) => setReport((current) => ({ ...current, feedback: { ...current.feedback, [role]: event.target.value } }))}
+                  placeholder="Punti positivi e aspetti da migliorare per questo arbitro"
+                />
+              </Field>
             </div>
           ))}
 
-          <Field label="Note (facoltative)">
-            <TextArea
-              value={report.notes}
-              onChange={(e) => setField('notes', e.target.value)}
-             
-              placeholder="Osservazioni sulla visionatura"
-            />
-          </Field>
+          {report.notes ? <details className="legacy-video-notes"><summary>Note generali del rapporto precedente</summary><p>{report.notes}</p><small>Conservate nello storico. Inserisci i nuovi feedback sotto il rispettivo arbitro.</small></details> : null}
         </div>
       </section>
 

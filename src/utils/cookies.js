@@ -9,9 +9,17 @@ export function parseCookies(header = '') {
       .map((part) => {
         const index = part.indexOf('=');
         if (index === -1) return [part, ''];
-        return [decodeURIComponent(part.slice(0, index)), decodeURIComponent(part.slice(index + 1))];
+        try {
+          return [decodeURIComponent(part.slice(0, index)), decodeURIComponent(part.slice(index + 1))];
+        } catch {
+          return ['', ''];
+        }
       })
   );
+}
+
+export function buildFlowCookie(token = '') {
+  return `${config.sessionCookieName}_oauth=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${token ? 600 : 0}${config.cookieSecure ? '; Secure' : ''}`;
 }
 
 export function getCookie(req, name) {

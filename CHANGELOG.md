@@ -2,10 +2,486 @@
 
 Registro delle modifiche al progetto, per poterle ricostruire in caso di errori.
 Ogni consegna riporta: file toccati, migrazioni al database, dipendenze e decisioni.
+Per richiesta dell'utente, aggiornare questo registro a ogni intervento, anche
+per configurazioni esterne e decisioni: distinguere quanto implementato,
+quanto riferito dall'utente e quanto ancora da verificare. Registrare gli esiti
+dei controlli e gli eventuali passi di ripristino, senza includere credenziali,
+token di invito o altri segreti.
 
 Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
+
+## 2026-09-21 — Preparazione del rilascio completo autorizzato
+
+**Autorizzazione e ambito.** L’utente ha chiesto di pubblicare tutto il lavoro:
+autenticazione con inviti/password/Google, correzioni ai rapporti, home pubblica,
+privacy e termini. Inclusi codice, migrazione auth, test e documentazione;
+la cancellazione locale preesistente di `NEXT_STEPS_2.md` resta esclusa.
+
+**Controlli prima del push.** `main` allineato a `origin/main` su `a9ce85e`.
+Suite completa **186/186** su PostgreSQL locale dedicato; build Vite e controllo
+diff superati. Produzione iniziale: home e `/api/health` rispondono 200,
+configurazione auth nuova ancora assente. Lettura preliminare del database:
+PostgreSQL 17.6, 23 tabelle pubbliche, connessione `postgres` proprietaria con
+`BYPASSRLS`; migrazione auth non ancora applicata. Nessun test eseguito sul DB
+di produzione.
+
+**Backup prima della migrazione.** Dump PostgreSQL dello schema `public`,
+struttura e dati, creato fuori dal repository nella directory privata locale
+`~/Library/Application Support/FischioLab/backups/`, file
+`pre-auth-release-2026-09-21-1789983967503.dump` (252.809 byte, permessi 0600).
+Archivio leggibile da `pg_restore --list`; il backup riguarda lo schema che
+viene modificato, non i file Storage o gli schemi interni Supabase.
+
+**Canale di pubblicazione.** GitHub/Render registra il servizio esistente su
+`cloud-migration`, ultimo deploy riuscito `4818a9b` (18 settembre), 28 commit
+dietro `main` e senza divergenze. Il rilascio aggiorna entrambi i rami senza
+forzare la storia. README e manuale distinguono questo servizio dal blueprint
+per nuove installazioni, che indica `main`. Esito del deploy da registrare
+dopo la verifica online.
+
+## 2026-09-21 — Finalizzazione locale di privacy e termini
+
+**Dati forniti e richiesta.** Il 20 settembre l’utente ha indicato Filippo
+Giovagnini come titolare e gestore personale di FischioLab e
+`filo.giova98@gmail.com` come contatto pubblico, chiedendo di finalizzare la
+privacy. Chiusura del lavoro ripresa il 21 settembre dopo l’interruzione.
+
+**Implementazione.** Dati e testi versionati in `src/publicInformation.js`,
+usati come default da `src/config.js`. Privacy e termini sono ora completi
+senza impostare nuove variabili Render; `PUBLIC_*` resta un override
+facoltativo. Eventuali vecchi override vanno controllati prima del deploy.
+Resta la protezione 503/noindex per configurazioni risultanti incomplete o
+con email non valida. Rimossi dal blueprint i quattro nuovi campi obbligatori.
+
+**Contenuto.** Indicati titolare, contatto, gestione personale, fonti dei dati
+e interessati anche senza account; distinti accesso necessario, email e Google
+facoltativi. Aggiunti basi giuridiche, criteri di conservazione per categoria,
+fornitori e riferimenti contrattuali per i trasferimenti, richieste di
+cancellazione e durata dei cookie coerente con la configurazione. Chiarito
+che disattivazione e scollegamento Google non cancellano rapporti, identità
+Supabase o tutto lo storico. I documenti riportano il 20 settembre 2026,
+data di redazione; layout e identità visiva invariati.
+
+**Decisioni e limiti.** Nome, contatto e gestione sono dichiarazioni
+dell’utente; basi giuridiche e conservazione sono una redazione per il servizio
+descritto, non una certificazione legale o un esito di verifica Google. Nessuna
+durata fissa inventata per rapporti e registri, né nuova cancellazione
+automatica: valutazione della necessità e gestione delle richieste restano
+al titolare. Assunzioni e verifiche operative su fornitori e trattamento sono
+esplicitate in `docs/AUTHENTICATION.md`.
+
+**File e controlli.** Aggiornati anche `src/views/publicPages.js`,
+`tests/publicPages.test.js`, `.env.example`, `render.yaml`, README e manuale
+auth. Test mirati **7/7**, build Vite e `git diff --check` superati. Chrome
+senza JavaScript: `/privacy` e `/termini` restituiscono 200 con i dati reali
+a 320, 390 e 1440 px, senza overflow orizzontale o richieste fallite. Verifica
+locale con database indisponibile e nessuna inizializzazione DB. Server di
+anteprima arrestato; screenshot in `/tmp/fischiolab-privacy-final`.
+Revisione indipendente Impeccable: `ship` per leggibilità e coerenza del testo
+con accesso Google facoltativo e cancellazione manuale; nessuna attestazione
+di conformità legale o approvazione Google.
+Controllo documentale Impeccable: nessuna nuova decisione di design da riportare
+in PRODUCT.md o DESIGN.md; entrambi invariati.
+
+**Stato esterno e ripristino.** Nessuna migrazione, dipendenza aggiunta,
+modifica al database remoto, commit, push o deploy. Restano pubblicazione,
+controllo delle pagine online, verifica della proprietà in Search Console e
+nuova richiesta branding Google. Per ripristinare, annullare le sole modifiche
+di questa voce e configurare i precedenti `PUBLIC_*`; nessun dato da migrare.
+
+## 2026-09-20 — Verifica della visibilità delle designazioni sul sito pubblico FIP
+
+**Richiesta.** Verificare l’affermazione riferita dallo sviluppatore federale:
+le designazioni sarebbero già presenti nei dati della pagina ma nascoste fino
+a cinque giorni prima della gara. Esaminata la pagina pubblica A2 maschile
+indicata dall’utente, senza sessioni federali autenticate.
+
+**Esito osservato.** Dieci gare con stato `designata-nonvisibile`. L’HTML
+ricevuto contiene l’avviso di pubblicazione, non i nominativi degli arbitri
+nei relativi blocchi. Per la gara 001359 del 26 settembre, pubblicazione
+indicata il 21 settembre alle 12:00; per le altre nove gare del 27 settembre,
+il 22 settembre alle 12:00. Il bundle JavaScript pubblico apre “Info” con
+`toggleClass('active')`. Nel caricamento normale e dopo il clic non sono
+state osservate richieste XHR/fetch verso domini FIP. Il parser esistente,
+eseguito soltanto sull’HTML scaricato, restituisce tre campi arbitro vuoti
+per ciascuna gara.
+
+**Conclusione e limite.** Nessuna designazione anticipata estratta. La sola
+ipotesi di nominativi nascosti nel browser non è confermata: i nomi sono già
+omessi dalla risposta HTML osservata. Questo non descrive il database federale
+né esclude un canale di integrazione distinto e autorizzato. Per valutarlo
+servono documentazione dell’interfaccia e modalità di accesso dal gestore.
+
+**Approfondimento Montecatini–Rimini.** Su richiesta successiva, ricontrollata
+la gara 001356 del 27 settembre alle 18:00 con una nuova lettura della pagina:
+nessun campo osservatore o nominativo associato, né attributi `data-*` nel
+blocco gara. Nessun riferimento a osservatori/commissari nel relativo HTML;
+l’unica occorrenza “commissari” nel bundle riguarda il template dei commissari
+tecnici della nazionale. L’avviso del 22 settembre alle 12:00 si riferisce
+agli arbitri: non dimostra quando o se venga pubblicato l’osservatore.
+
+**Ambito.** Lettura della pagina e del suo script, controllo browser anonimo
+e parser in memoria. Nessuna modifica al codice dell’app, sincronizzazione,
+importazione, query al database del progetto, commit, push o deploy. Aggiornato
+solo questo registro; `git diff --check` superato.
+Fonte: [pagina risultati FIP esaminata](https://fip.it/risultati/?group=campionati-nazionali-maschili&sesso=M&comitato_codice=&codice_campionato=A2/M).
+
+## 2026-09-19 — Home pubblica e preparazione alla verifica branding Google
+
+**Richiesta ed evidenza.** La schermata condivisa dall’utente segnala proprietà
+del sito non verificata, informativa privacy insufficiente e home protetta da
+login. L’utente ha poi fornito il tag pubblico Search Console e chiesto di
+riprendere il lavoro interrotto. Nessuna verifica esterna dichiarata superata.
+
+**Implementazione locale.** Nuove route Express `/`, `/privacy`, `/termini`
+con HTML leggibile senza JavaScript, prima del middleware di sessione e senza
+query DB. Home con presentazione, accesso su invito, uso facoltativo di Google
+e collegamenti ai documenti. Il tag di verifica fornito dall’utente è incluso
+nel sorgente HTML; può essere sostituito con `GOOGLE_SITE_VERIFICATION`.
+La webapp si apre su `/app`. Un piccolo script conserva inviti, callback e
+segnalibri `/#/...` trasferendoli a `/app#/...`, senza inviare il frammento al
+server. Il consumo dell’invito rimuove il token mantenendo il percorso corrente.
+Login e attivazione includono i link pubblici. Proxy Vite aggiornato.
+
+**Privacy da completare.** Predisposto testo coerente con i dati e i flussi
+effettivi: autenticazione, rapporti, ruoli, fornitori, cookie, registri,
+scollegamento Google e richieste di cancellazione; menzione Anthropic solo
+quando la relativa funzione è abilitata. Richiesti nome del titolare e contatto.
+Le variabili `PUBLIC_OPERATOR_NAME`, `PUBLIC_CONTACT_EMAIL`,
+`PUBLIC_PRIVACY_LEGAL_BASIS`, `PUBLIC_PRIVACY_RETENTION` devono essere completate
+con le informazioni effettive. Finché incomplete, privacy e termini mostrano
+“Documento in preparazione” con 503/noindex, senza pubblicare nominativi,
+durate o basi giuridiche inventate. Nessuna nuova cancellazione automatica.
+
+**File.** `src/routes/public.routes.js`, `src/views/publicPages.js`,
+`client/public/public-site.css`, `client/public/public-navigation.js`,
+`src/config.js`, `server.js`, `AuthLayout.jsx`, `ActivationPage.jsx`, CSS,
+`vite.config.js`, `.env.example`, `render.yaml`, README, manuale auth e registro.
+Test in `tests/publicPages.test.js`. Nessuna migrazione o nuova dipendenza.
+
+**Verifiche.** Build riuscita; suite completa **186/186** su PostgreSQL locale
+dedicato. Sette nuovi test coprono pagine pubbliche con cookie e DB indisponibile,
+documenti incompleti, contenuti HTML, escaping, metadati Google, funzionalità AI,
+compatibilità link e protezione delle API. Chrome/Playwright: home senza JS a
+320/390/1440 px, privacy desktop/mobile, termini, login mobile e flusso
+segnalibro storico → creazione profilo → invito → attivazione senza email →
+reload → logout/login, senza errori JavaScript. Documenti completi collaudati
+solo con dati dimostrativi in ambiente locale separato. Detector Impeccable:
+solo avvisi su Montserrat, mantenuto perché font del design esistente.
+Proxy Vite verificato per home, documenti e `/app`; `git diff --check` riuscito.
+Revisione indipendente Impeccable: corretta la scritta “Lab” da arancione a
+teal, come nel login; verdetto `ship` sulla correzione, non sulla pubblicazione
+o sulla validità legale dell’informativa. Controllo documentale del design:
+estensione coerente, nessuna modifica a PRODUCT.md/DESIGN.md; formati e sidecar
+preesistenti non aggiornati. Server di collaudo locale arrestato a fine verifica.
+
+**Passi esterni ancora necessari.** Completare la privacy, pubblicare le
+modifiche, premere Verifica in Search Console e richiedere la nuova verifica
+branding solo dopo il controllo delle pagine online. Nessun push, deploy,
+modifica alle console o al database di produzione eseguito in questo intervento.
+
+**Ripristino di questa estensione.** Per tornare alla precedente home di login
+rimuovere il montaggio delle route pubbliche e i relativi link, ripristinare
+il proxy Vite e ricompilare. Nessun dato migrato; l’autenticazione implementata
+nella voce precedente resta distinta da questa estensione.
+
+## 2026-09-19 — Requisiti branding Google e pagine pubbliche mancanti
+
+**Richiesta.** L’utente ha condiviso i campi logo, home, privacy e termini della
+console Google per procedere alla pubblicazione. Consultate le fonti ufficiali
+Google e verificati gli asset, la pagina iniziale e il routing locali.
+
+**Esito.** Il logo `client/public/app-logo.png` è già disponibile: PNG 512 × 512
+di 125.256 byte, sotto il limite di 1 MB. La pagina iniziale descrive brevemente
+FischioLab ma mancano i documenti privacy e termini e i relativi collegamenti.
+In `docs/AUTHENTICATION.md` registrati il mapping dei campi, i percorsi proposti
+`/privacy` e `/termini` (non ancora implementati/pubblicati), la distinzione fra
+pubblicazione OAuth e branding e il requisito di verifica dei domini.
+Chiesti all’utente nome del gestore/titolare e contatto pubblico; nessun dato
+inventato, nessuna verifica del dominio o del branding dichiarata completata.
+
+**Ambito.** Modificati soltanto questo registro e `docs/AUTHENTICATION.md`.
+Logo e codice invariati in questo intervento; nessuna dipendenza, migrazione,
+modifica alle console, push o pubblicazione. Verifica: `git diff --check`.
+
+## 2026-09-19 — Variabili Render e verifica audience Google
+
+**Configurazione riferita dall’utente.** Completato il punto 1 della checklist
+Render: `SUPABASE_PUBLISHABLE_KEY`, `ENABLE_GOOGLE_AUTH`, `APP_BASE_URL`,
+`TRUST_PROXY_HOPS`; `COOKIE_SECURE` era già presente. Presenza e valori non
+verificati direttamente nella console; resta da confermare che `COOKIE_SECURE`
+sia `true` e da collaudare il flusso dopo il deploy. Nessuna chiave registrata
+nel repository. Questa conferma aggiorna lo stato della configurazione esterna
+descritto nella voce di implementazione sottostante.
+
+**Precisazione Google.** Lo stato effettivo di Audience non è ancora stato
+riferito. Per i destinatari con account personali o di organizzazioni diverse
+è indicato External. Corretta in `docs/AUTHENTICATION.md` l’affermazione troppo
+generale sull’obbligo di test users: Google prevede un’eccezione per il solo
+accesso con nome, email e profilo, anche in Testing. Fonte:
+[Manage App Audience](https://support.google.com/cloud/answer/15549945).
+L’accesso all’app resta subordinato all’invito o al collegamento esistente.
+
+**Ambito.** Aggiornata soltanto la documentazione; nessun codice, dato,
+configurazione remota, commit, push o deploy modificato in questo intervento.
+Controllo `git diff --check` superato.
+
+## 2026-09-19 — Inviti personali, Google facoltativo e correzioni rapporti
+
+**Stato: implementato e verificato in locale. Non pubblicato.** L’utente ha
+chiesto di procedere con l’implementazione completa e tre correzioni sui
+rapporti. Lavoro iniziato il 18 settembre e concluso il 19. Nessuna modifica al
+database di produzione o alle console Google/Supabase/Render; nessun commit,
+push o deploy eseguito in questa fase. Le configurazioni esterne descritte
+nella voce precedente restano dichiarazioni dell’utente, da collaudare online.
+
+**Flusso consegnato.** L’admin crea il profilo con username, nome, ruoli e
+assegnazioni; non chiede email né sceglie la password del destinatario. Da
+“Inviti e accesso” genera/copia un link personale da consegnare manualmente.
+La landing riconosce il profilo e permette di scegliere una password senza
+email, aggiungere facoltativamente un’email o attivare direttamente con Google
+quando il provider è abilitato. Si possono mantenere profili solo anagrafici,
+inclusi gli osservatori che lavorano sulla loro piattaforma. Il normale login
+accetta username/password o Google già collegato; un’email può sostituire lo
+username solo dopo verifica. Account sconosciuti non accedono liberamente.
+
+**Account e recupero.** La pagina Account mostra i metodi di accesso, permette
+il collegamento Google con conferma della password, lo scollegamento quando
+esiste una password alternativa e la gestione del contatto email. Gli account
+solo Google possono creare una password dopo un accesso recente (10 minuti).
+Il recupero senza email usa un link amministrativo: al consumo cambia la
+password e revoca tutte le sessioni; opzionalmente rimuove anche Google.
+Inviti di attivazione 72 ore, recupero 1 ora, verifica email 24 ore. Scadenza,
+revoca, rigenerazione e stato sono visibili all’admin. Lo storico degli eventi
+auth è consultabile nello stesso pannello. Tolto il vecchio reset che faceva
+scegliere la password di un altro utente all’amministratore; gli script di
+bootstrap dell’admin continuano a funzionare.
+
+**Decisioni di sicurezza e mapping.** Restano `users.id`, ruoli multipli,
+campionati/stagioni del formatore, collegamenti arbitri, rapporti e designazioni.
+Le password restano bcrypt e le sessioni cookie dell’app rimangono la fonte
+unica di autenticazione delle API. Le identità Google sono collegate per
+invito o dopo accesso locale, mai per omonimia/email. Token di invito casuali
+conservati solo come hash, consumo atomico con lock utente e verifiche di
+scadenza/revoca. OAuth PKCE S256 con stato in PostgreSQL e cookie HttpOnly,
+monouso e legato al browser; il collegamento verifica anche la sessione locale.
+Il backend verifica sia l’utente Supabase sia il soggetto effettivo presso
+Google userinfo; nessun token OAuth è salvato nel browser o nel profilo.
+Aggiunti limiti persistenti ai tentativi e controllo origine/header per le
+scritture auth/amministrazione. Protetta anche la rimozione dell’ultimo admin
+che può effettivamente accedere: un profilo soltanto invitato non lo sostituisce.
+
+**Database.** `src/database/auth.sql`, richiamato automaticamente all’avvio,
+rende nullable `users.password_hash`, aggiunge `email`, `email_verified_at`,
+`activated_at`, `auth_version` e `sessions.auth_method`; crea
+`user_google_identities`, `account_links`, `oauth_flows`, `auth_events`,
+`auth_rate_limits`, relativi vincoli/indici. Migrazione idempotente, nessuna
+rinumerazione o cancellazione di utenti. Le tabelle applicative ricevono RLS
+e revoca dei grant `PUBLIC`, `anon`, `authenticated` per impedire accessi
+paralleli via Data API. Migrazione auth e protezioni sono eseguite in una sola
+query multi-statement atomica; Storage e schema Supabase Auth non vengono
+modificati. La connessione Express deve usare il proprietario delle tabelle o
+un ruolo con `BYPASSRLS`, come documentato.
+
+**Tre correzioni richieste.**
+
+- Modal di scelta rapporto: ripristinato lo spazio inferiore sotto “Rapporto a
+  video” (32 px desktop, 20 px mobile). Il modal condiviso gestisce focus,
+  tastiera, Escape e ritorno al controllo iniziale. Durante la verifica mobile
+  corretto anche il restringimento della griglia che lasciava le tabelle
+  allargare l’intera pagina dietro il modal.
+- Giudizio video: MOLTO BENE verde acceso, BENE verde chiaro, MALINO giallo,
+  MALE rosso, con testo leggibile e selezione riconoscibile anche senza colore.
+  Stessa scala nel form, dettaglio rapporto e storico/andamento arbitro.
+- Feedback video sotto ciascun arbitro, salvato in `feedback.first` e
+  `feedback.second`. I vecchi `notes` comuni sono conservati senza attribuzioni
+  arbitrarie e mostrati come storico agli operatori autorizzati; l’arbitro vede
+  soltanto il proprio giudizio/feedback e non le note comuni o il collega.
+  Nessuna migrazione distruttiva dei payload storici.
+
+**File principali.** Backend: `src/services/accountService.js`,
+`googleAuthService.js`, `userService.js`, `reportService.js`, route auth/utenti,
+middleware auth/authSecurity, cookie/password utilities, configurazione e
+schema/database connection, `server.js`. Frontend: `AuthLayout`, `ActivationPage`,
+`AccountSecurity`, `UserAccessModal`, `JudgementBadge`, login/account/admin,
+`App.jsx`, API e routing, modal/selettori, form/dettaglio video,
+`RefereeDetailPage`, `RefereeProgressDashboard` e CSS; payload condiviso in
+`shared/reportTemplate.js`. Configurazione/documentazione: `.env.example`,
+`render.yaml`, `vite.config.js`, `README.md`, `CLAUDE.md`,
+`docs/AUTHENTICATION.md`, questo registro. Test: `tests/accountAuth.test.js`,
+`tests/videoReport.test.js` e helper database.
+
+**Configurazione ancora necessaria sul servizio.** Documentata passo passo in
+[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md): `APP_BASE_URL`,
+`TRUST_PROXY_HOPS`, `ENABLE_GOOGLE_AUTH=true` e `SUPABASE_PUBLISHABLE_KEY` (o
+legacy anon key), oltre alle variabili DB/Storage esistenti. Nel `.env` locale
+è presente l’URL Supabase ma non una chiave publishable/anon o il flag Google;
+non sono stati stampati o copiati segreti. Per il primo accesso Google Supabase
+deve consentire la creazione delle identità tecniche (“Allow new users to sign
+up”); FischioLab continua a richiedere invito/mapping. Confermare URL callback,
+audience/test users e stato di pubblicazione Google. Il manual linking nativo
+Supabase, già attivato dall’utente, non è necessario al mapping locale.
+
+**Email e costi.** Nessun nuovo servizio a pagamento o dipendenza npm del
+progetto. Inviti manuali, password e Google non richiedono SMTP. Il contatto
+email può essere salvato anche senza invio; verifica e recupero automatici
+richiedono il trasporto SMTP già previsto dal progetto e una prova di consegna.
+Errori di invio sono registrati senza segreti e non invalidano l’account.
+SMTP non configurato né collaudato realmente in questa consegna.
+
+**Verifiche.** Suite completa `npm test`: **179/179 passati**, con database
+PostgreSQL 17 locale dedicato e separato dalla produzione. Comprende migrazioni
+ripetute, inviti concorrenti/revocati/scaduti, ID e permessi invariati, account
+Google sconosciuti/collisioni, PKCE e callback HTTP, cambio credenziali durante
+OAuth, recupero e revoca sessioni, Google-only, verifica/unicità email con
+trasporto simulato, CSRF/rate limit e privacy dei feedback. `npm run build` e
+`git diff --check` riusciti. Google/Supabase e SMTP sono simulati nei test:
+nessun login Google reale o email reale eseguiti. Verifica con Chrome/Playwright
+su secondo DB locale dedicato: creazione profilo → invito → attivazione senza
+email → logout/login, salvataggio feedback separati, modal e layout a
+320/390/768/1280 px, senza errori JavaScript. Landing mobile compattata per
+portare subito al modulo. Playwright installato solo in `/tmp`, fuori dal
+progetto; nessuna modifica a `package.json` o lockfile.
+
+**Strumenti.** Su richiesta esplicita dell’utente eseguito
+`npx --yes impeccable update`: installazione copiata in `~/.agents` aggiornata
+alla versione 4.3.1, con engine/hook; l’installazione collegata in `~/.claude`
+richiede aggiornamento del checkout sorgente come segnalato dal comando.
+L’aggiornamento vale per le sessioni successive, non cambia le istruzioni
+seguite durante questa implementazione.
+
+**Ripristino.** Prima del deploy effettuare backup e verifica del ruolo DB.
+Per sospendere solo Google usare `ENABLE_GOOGLE_AUTH=false` e riavviare,
+fornendo prima una password/link di recupero agli account solo Google. Conservare
+le nuove tabelle e gli eventi. Il vecchio codice non gestisce hash password
+nulli: un rollback completo richiede una revisione compatibile o un ripristino
+controllato del backup, non la semplice cancellazione delle colonne. La
+cancellazione preesistente di `NEXT_STEPS_2.md` è rimasta intatta.
+
+## 2026-09-18 — Preparazione accessi Google e inviti personali
+
+**Stato: analisi e configurazione esterna, implementazione non iniziata.**
+La richiesta iniziale del 17 settembre era studiare autenticazione, requisiti,
+mapping ed effort senza modificare il codice. Il 18 settembre l'utente ha
+completato la preparazione Google/Supabase e chiesto di documentare stabilmente
+attività e cambiamenti in questo file. Nella sola fase di preparazione era stato modificato
+`CHANGELOG.md`, senza migrazioni, dipendenze, codice o deploy. L’implementazione
+successiva è documentata nella voce del 19 settembre.
+
+**Situazione rilevata nel repository.** Login locale con username/password,
+bcrypt e sessioni server nella tabella `sessions`, con token casuale conservato
+come hash e cookie HttpOnly. Supabase è usato dal codice per PostgreSQL e
+Storage; non è ancora integrato come provider di autenticazione. `users` non
+ha un campo email; `referees.email` è un contatto anagrafico facoltativo e non
+costituisce un'identità di accesso verificata. Il controllo dei permessi resta
+in Express e nei servizi, con regole condivise in `shared/permissions.js`.
+
+**Requisiti espressi dall'utente, che sostituiscono l'ipotesi iniziale di
+registrazione pubblica con approvazione successiva:**
+
+- L'admin crea nell'app la persona/utenza, sceglie username, ruoli e collegamenti
+  applicativi e genera un link personale da copiare e consegnare direttamente.
+- L'admin **non deve conoscere né inserire l'email** del destinatario. L'utente
+  sceglie eventualmente la propria email o collega Google durante l'attivazione.
+- L'invito deve identificare già l'utenza predisposta. Niente riconoscimento
+  automatico basato soltanto su nome/cognome e niente nuovi duplicati di persona.
+- Conservare `users.id`, i ruoli multipli, il collegamento `referee_id`, i
+  campionati/stagioni del formatore e tutti i riferimenti di rapporti,
+  designazioni, indisponibilità, alias e storico.
+- Gli accessi previsti sono principalmente per formatori e operatori. Gli
+  osservatori usano un'altra piattaforma e possono restare censiti per il
+  lavoro applicativo senza attivare credenziali. Questo requisito non elimina
+  il ruolo observer, le anagrafiche o le assegnazioni esistenti.
+- L'utente ha confermato esplicitamente che **email e Google devono essere
+  facoltativi**: l'invito deve consentire l'attivazione con il solo username
+  scelto dall'admin e una password scelta dal destinatario.
+
+**Configurazioni esterne dichiarate completate dall'utente.** Sono confermate
+in conversazione, ma non sono state ispezionate direttamente nelle dashboard
+né verificate con un login completo:
+
+- Google Cloud: progetto predisposto e configurazione iniziale di Google Auth
+  Platform completata; raggiunta la panoramica OAuth.
+- Client OAuth web: procedura con nome suggerito `FischioLab Web`, origine
+  JavaScript `https://fischiolab.onrender.com` e URI di reindirizzamento copiato
+  dal provider Google del progetto Supabase (`https://<project-ref>.supabase.co/auth/v1/callback`).
+- Supabase: provider Google abilitato con Client ID e Client secret inseriti
+  direttamente in dashboard; nessuna credenziale acquisita o salvata nel repo.
+- Supabase Authentication / URL Configuration: Site URL
+  `https://fischiolab.onrender.com`; redirect autorizzato
+  `https://fischiolab.onrender.com/auth/callback`.
+- Supabase Authentication: `Allow manual linking` abilitato secondo la procedura.
+  La necessità di usarlo nel codice dipenderà dall'architettura scelta.
+
+Il callback Google verso Supabase e il callback Supabase verso FischioLab sono
+due URL distinti. Il gestore applicativo `/auth/callback` **è ancora da
+implementare**. Il valore effettivo di `Allow new users to sign up` non è stato
+verificato: va coordinato con gli inviti personalizzati, senza applicare
+automaticamente la precedente indicazione di disabilitarlo per gli inviti
+standard con email precompilata. Anche pubblico OAuth, scope, eventuali utenti
+di test e stato di pubblicazione Google restano da verificare.
+
+**Architettura prevista in conseguenza della scelta confermata.** Conservare
+username/password locali e le sessioni applicative; aggiungere Google via
+Supabase come identità facoltativa collegata allo stesso `users.id`. Il solo
+accesso locale non richiede un account in Supabase Auth né un'email fittizia.
+Questo sostituisce la proposta iniziale di trasferire anche tutte le password
+su Supabase Auth, che richiederebbe un identificatore email o telefono.
+Si tratta di una scelta progettuale: il codice non è ancora stato modificato.
+
+L'invito nasce nell'app ed è collegato a `users.id`: token casuale monouso,
+conservato come hash, con scadenza, revoca, rigenerazione e consumo atomico.
+L'apertura della pagina non deve consumarlo. Gli inviti standard Supabase
+richiedono già un'email e non coprono direttamente il requisito concordato.
+Entrambi i metodi di accesso devono produrre la stessa sessione FischioLab e
+gli stessi permessi; il collegamento Google è consentito da un invito valido
+o dal profilo di un utente già autenticato, mai dal solo nome o dall'email
+anagrafica. Per chi non ha email, il recupero passa dall'admin: si propone un
+link personale di reimpostazione, consegnato manualmente come l'invito.
+
+**Prossimi passi di sviluppo previsti:**
+
+1. Definire schema e modello di attivazione con email facoltativa, mantenendo
+   utilizzabili gli account esistenti e distinguendo stato dell'anagrafica,
+   abilitazione al login e stato dell'invito.
+2. Implementare gestione inviti nell'area Utenti e pagina pubblica di
+   attivazione: username assegnato, password scelta dal destinatario e/o Google.
+3. Implementare callback OAuth, verifica server dell'identità e associazione
+   univoca all'utente interno; conservare il controllo di ruoli e accesso in
+   Express. L'eventuale creazione di un'identità Supabase senza invito non deve
+   concedere accesso a FischioLab.
+4. Verificare esposizione delle tabelle tramite Supabase Data API, grants/RLS
+   e accesso Storage prima del rilascio: i controlli Express non proteggono
+   automaticamente le API dirette di Supabase. Stato remoto non ancora auditato.
+5. Gestire cambio password, collegamento/scollegamento Google, disattivazione
+   e revoca sessioni in modo coerente; tracciare inviti e modifiche degli accessi
+   senza registrare token o password. Definire il recupero per chi non ha email.
+6. Collaudare inviti scaduti/revocati/riutilizzati, callback ripetuti, identità
+   già collegate, accessi senza invito, utenti disattivati, ruoli multipli,
+   perimetri per stagione/campionato e continuità degli account esistenti.
+   Preparare prova pilota e ripristino prima del rilascio in produzione.
+
+**Email e costi.** La consegna manuale del link non richiede invio automatico.
+Conferma email e recupero autonomo, se previsti, richiedono invece un canale
+email configurato; nessun SMTP Auth è stato confermato operativo in questa
+sessione. La verifica dei listini ha rilevato Google Sign-In e Supabase Auth
+utilizzabili senza un upgrade obbligatorio, entro i limiti dei piani gratuiti.
+La precedente stima di 8–12 giornate riguardava inviti con email già nota:
+va rivalutata sul flusso senza email preventiva, mantenendo le password locali
+e integrando Google come opzione. Il primo blocco utile è l'attivazione con
+invito e password locale; il secondo è l'accesso/collegamento Google.
+
+Riferimenti ufficiali consultati:
+[Google OAuth con Supabase](https://supabase.com/docs/guides/auth/social-login/auth-google),
+[redirect](https://supabase.com/docs/guides/auth/redirect-urls),
+[inviti standard](https://supabase.com/docs/reference/javascript/auth-admin-generatelink),
+[sicurezza Data API](https://supabase.com/docs/guides/api/securing-your-api),
+[prezzi Supabase](https://supabase.com/pricing).
+
+Verifica di questa consegna: revisione del diff e `git diff --check`;
+test applicativi non eseguiti perché la modifica è solo documentale.
 
 ## 2026-09-17 — I modali restano dentro lo schermo
 

@@ -4,6 +4,8 @@ import { api } from './lib/api.js';
 import { getHashPath, parseRoute, navigate } from './lib/navigation.js';
 import Shell from './components/Shell.jsx';
 import LoginPage from './pages/LoginPage.jsx';
+import ActivationPage from './pages/ActivationPage.jsx';
+import AuthLayout from './components/AuthLayout.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ReportFormPage from './pages/ReportFormPage.jsx';
 import ReportVideoFormPage from './pages/ReportVideoFormPage.jsx';
@@ -43,6 +45,7 @@ function useRoute() {
 export default function App() {
   const route = useRoute();
   const [user, setUser] = useState(null);
+  const [authNotice, setAuthNotice] = useState('');
   const [features, setFeatures] = useState({ aiEnabled: false });
   const [season, setSeason] = useState(CURRENT_SEASON);
   const [seasons, setSeasons] = useState([CURRENT_SEASON]);
@@ -54,6 +57,7 @@ export default function App() {
         setUser(data.user);
         setFeatures(data.features || { aiEnabled: false });
       })
+      .catch(() => setAuthNotice('Connessione non riuscita. Riprova tra poco.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -74,12 +78,12 @@ export default function App() {
     return () => { ignore = true; };
   }, [user?.id]);
 
-  async function handleLogout() {
+  async function handleLogout(preserveRoute = false) {
     await api.logout();
     setUser(null);
     setSeason(CURRENT_SEASON);
     setSeasons([CURRENT_SEASON]);
-    navigate('/');
+    if (preserveRoute !== true) navigate('/');
   }
 
   if (loading) {
@@ -93,8 +97,14 @@ export default function App() {
     );
   }
 
+  if (route.name === 'activate') {
+    return <ActivationPage token={route.token} currentUser={user} features={features} onLogout={handleLogout} onLogin={(nextUser, message) => { setUser(nextUser); setAuthNotice(message); }} />;
+  }
+  if (route.name === 'authResult') {
+    return <AuthLayout><div className="auth-box"><h1>Accesso Google</h1><p className="error-banner" role="alert">{route.error || 'Operazione non completata.'}</p><p>Se stavi usando un invito, riapri il link ricevuto dall’amministratore.</p><button className="primary-button" onClick={() => navigate(user ? '/account' : '/')}>{user ? 'Torna al tuo account' : 'Torna al login'}</button></div></AuthLayout>;
+  }
   if (!user) {
-    return <LoginPage onLogin={setUser} />;
+    return <LoginPage onLogin={setUser} features={features} />;
   }
 
   const isReferee = hasRole(user, 'referee');
@@ -132,6 +142,8 @@ export default function App() {
   if (route.name === 'account') page = (
     <AccountPage
       currentUser={user}
+      features={features}
+      authNotice={authNotice || (route.auth === 'linked' ? 'Google collegato al tuo account.' : route.auth === 'activated' ? 'Account attivato con Google. Puoi aggiungere anche una password qui sotto.' : '')}
       onUserUpdated={setUser}
       onPasswordChanged={() => {
         setUser(null);

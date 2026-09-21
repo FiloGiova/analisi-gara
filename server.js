@@ -2,11 +2,12 @@ import express from 'express';
 import helmet from 'helmet';
 import path from 'node:path';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { config } from './src/config.js';
 import { initializeDatabase } from './src/database/connection.js';
 import { dbGet, dbRun } from './src/database/db.js';
 import { attachUser, requireAdmin, requireAdminOrInstructor, requireAuth, requireCapability, requireReportAuthors } from './src/middleware/auth.js';
-import { authRouter } from './src/routes/auth.routes.js';
+import { authRouter, googleCallback } from './src/routes/auth.routes.js';
 import { reportsRouter } from './src/routes/reports.routes.js';
 import { usersRouter } from './src/routes/users.routes.js';
 import { accessLogsRouter } from './src/routes/accessLogs.routes.js';
@@ -24,18 +25,23 @@ import { sourcesRouter } from './src/routes/sources.routes.js';
 import { importsRouter } from './src/routes/imports.routes.js';
 import { statsRouter } from './src/routes/stats.routes.js';
 import { startScheduledFipSync } from './src/services/scheduledSyncService.js';
+import { publicRouter } from './src/routes/public.routes.js';
 
-const app = express();
+export const app = express();
 const clientDist = path.join(config.rootDir, 'dist', 'client');
 
 app.disable('x-powered-by');
+if (config.trustProxy) app.set('trust proxy', config.trustProxy);
 app.use(
   helmet({
     contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: 'no-referrer' }
   })
 );
 app.use(express.json({ limit: '2mb' }));
+app.use(publicRouter);
+if (fs.existsSync(clientDist)) app.use(express.static(clientDist, { index: false }));
 app.use(attachUser);
 
 app.get('/api/health', async (_req, res) => {
@@ -47,6 +53,7 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+app.get('/auth/callback', googleCallback);
 app.use('/api/auth', authRouter);
 app.use('/api/reports', requireAuth, reportsRouter);
 app.use('/api/users', requireAuth, requireAdmin, usersRouter);
@@ -72,7 +79,6 @@ app.use('/api', (_req, res) => {
 });
 
 if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist, { index: false }));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
@@ -101,6 +107,8 @@ app.use((err, _req, res, _next) => {
 async function start() {
   await initializeDatabase();
   await dbRun('DELETE FROM sessions WHERE expires_at <= ?', [new Date().toISOString()]);
+  await dbRun('DELETE FROM oauth_flows WHERE expires_at <= now()');
+  await dbRun('DELETE FROM auth_rate_limits WHERE expires_at <= now()');
   app.listen(config.port, config.host, () => {
     console.log(`FischioLab in ascolto su http://${config.host}:${config.port}`);
     console.log(`Storage: ${config.storageDriver} | DB: Postgres`);
@@ -108,7 +116,9 @@ async function start() {
   });
 }
 
-start().catch((err) => {
-  console.error('Avvio fallito:', err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  start().catch((err) => {
+    console.error('Avvio fallito:', err);
+    process.exit(1);
+  });
+}

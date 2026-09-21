@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { useCompetitions } from '../lib/competitions.jsx';
 import PhotoUploader from '../components/PhotoUploader.jsx';
+import AccountSecurity from '../components/AccountSecurity.jsx';
 import { instructorAssignmentsForUser } from '../../../shared/instructorAssignments.js';
 import ObserverAvailabilityPanel from '../components/ObserverAvailabilityPanel.jsx';
 import { ROLE_LABELS, rolesOf } from '../../../shared/permissions.js';
@@ -35,7 +36,7 @@ function InfoItem({ label, value }) {
   );
 }
 
-export default function AccountPage({ currentUser, onUserUpdated, onPasswordChanged }) {
+export default function AccountPage({ currentUser, onUserUpdated, onPasswordChanged, features, authNotice }) {
   const { competitionLabel } = useCompetitions();
   const [displayName, setDisplayName] = useState(currentUser.displayName || currentUser.username || '');
   const [passwordForm, setPasswordForm] = useState({
@@ -118,6 +119,7 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
 
       {error ? <div className="error-banner">{error}</div> : null}
       {success ? <div className="success-banner">{success}</div> : null}
+      {authNotice ? <div className="success-banner" role="status">{authNotice}</div> : null}
 
       <section className="detail-meta-card account-meta-card">
         <dl>
@@ -181,15 +183,17 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
         </form>
       </section>
 
+      <AccountSecurity features={features} onSignedOut={onPasswordChanged} />
+
       <section className="common-card">
         <div className="section-heading">
           <div>
-            <h2>Reset password</h2>
-            <p>Cambia la password inserendo quella attuale. Dopo il salvataggio dovrai effettuare di nuovo il login.</p>
+            <h2>{currentUser.hasPassword ? 'Cambia password' : 'Crea una password'}</h2>
+            <p>{currentUser.hasPassword ? 'Conferma la password attuale. Dopo il salvataggio dovrai accedere di nuovo.' : 'Aggiungi l’accesso con username e password. Serve un accesso Google effettuato negli ultimi 10 minuti.'}</p>
           </div>
         </div>
         <form className="modal-form" onSubmit={handleChangePassword}>
-          <label className="field">
+          {currentUser.hasPassword ? <label className="field">
             Password attuale
             <input
               type="password"
@@ -198,7 +202,7 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
               autoComplete="current-password"
               required
             />
-          </label>
+          </label> : null}
           <label className="field">
             Nuova password
             <input
@@ -223,7 +227,7 @@ export default function AccountPage({ currentUser, onUserUpdated, onPasswordChan
           </label>
           <div className="modal-actions">
             <button type="submit" className="primary-button" disabled={busy === 'password'}>
-              {busy === 'password' ? 'Aggiornamento…' : 'Reset password'}
+              {busy === 'password' ? 'Aggiornamento…' : currentUser.hasPassword ? 'Cambia password' : 'Crea password'}
             </button>
           </div>
         </form>

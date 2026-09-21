@@ -16,6 +16,7 @@ import PhotoUploader from '../components/PhotoUploader.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
 import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
+import JudgementBadge from '../components/JudgementBadge.jsx';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import { hasRole } from '../../../shared/permissions.js';
 
@@ -476,7 +477,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                     <td>{report.observerName || '-'}</td>
                     <td style={{ fontWeight: 800, color: 'var(--blue)' }}>
                       {report.reportType === 'video'
-                        ? <span className="status-badge status-badge-sm status-neutral">{report.judgement || 'video'}</span>
+                        ? <JudgementBadge value={report.judgement} />
                         : (report.vote || '-')}
                     </td>
                     <td>{report.status === 'final' ? 'Definitivo' : 'Bozza'}</td>

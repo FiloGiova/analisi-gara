@@ -22,7 +22,7 @@ CREATE OR REPLACE FUNCTION ts_now() RETURNS text LANGUAGE sql AS
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   display_name TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'observer',
   formatter_competition TEXT,

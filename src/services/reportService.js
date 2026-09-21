@@ -189,6 +189,9 @@ function stripSensitiveForReferee(report, user) {
       data: {
         ...data,
         judgements: { [myRole]: data.judgements?.[myRole] || '' },
+        feedback: { [myRole]: data.feedback?.[myRole] || '' },
+        // Le vecchie note comuni non possono essere attribuite a un arbitro.
+        notes: '',
         [`${otherRole}RefereeId`]: null,
         [`${otherRole}RefereeName`]: ''
       },
@@ -407,6 +410,10 @@ export function normalizeVideoReportPayload(input = {}) {
     judgements: {
       first: judgement(input.judgements?.first),
       second: judgement(input.judgements?.second)
+    },
+    feedback: {
+      first: asText(input.feedback?.first),
+      second: asText(input.feedback?.second)
     },
     notes: asText(input.notes)
   };

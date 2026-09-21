@@ -1,13 +1,13 @@
 import { dbGet, dbAll, dbRun, dbTx } from '../database/db.js';
 import { currentSportSeason } from '../../shared/reportTemplate.js';
 import { allowedCompetitionValues } from './competitionService.js';
-import { hashPassword, verifyPassword } from '../utils/passwords.js';
+import { hashPassword } from '../utils/passwords.js';
 import { HttpError } from '../utils/httpError.js';
 import { normalizeRoles, primaryRole, ROLES as ROLE_LIST } from '../../shared/permissions.js';
 import { hasAnyRoleSql } from '../database/userRoles.js';
 
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
-const ROLES = new Set(['admin', 'instructor', 'observer', 'referee']);
+const ROLES = new Set(ROLE_LIST);
 
 function normalizeUsername(username) {
   return String(username || '').trim().toLowerCase();
@@ -181,10 +181,11 @@ function validateUsername(username) {
   }
 }
 
-function validatePassword(password) {
-  if (String(password || '').length < 8) {
+export function validatePassword(password) {
+  if (typeof password !== 'string' || password.length < 8) {
     throw new HttpError(400, 'La password deve avere almeno 8 caratteri.');
   }
+  if (Buffer.byteLength(password, 'utf8') > 72) throw new HttpError(400, 'La password è troppo lunga (massimo 72 byte).');
 }
 
 export async function publicUserFromRow(row, allowedValues = null) {
@@ -223,31 +224,27 @@ export async function publicUserFromRow(row, allowedValues = null) {
     formatterCompetition: instructorCompetitions[0] || '',
     formatterCompetitions: instructorCompetitions,
     active: Boolean(row.active),
+    hasPassword: Boolean(row.password_hash),
+    activatedAt: row.activated_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-async function activeAdminCount(exceptUserId = null) {
-  const adminClause = hasAnyRoleSql('u', ['admin']);
-  if (exceptUserId) {
-    return (
-      await dbGet(`SELECT COUNT(*) AS count FROM users u WHERE ${adminClause} AND u.active = 1 AND u.id <> ?`, [exceptUserId])
-    ).count;
-  }
-
-  return (await dbGet(`SELECT COUNT(*) AS count FROM users u WHERE ${adminClause} AND u.active = 1`)).count;
-}
-
-async function ensureCanChangeAdminState({ id, nextRoles, nextActive }) {
-  const current = await dbGet('SELECT id, role, active FROM users WHERE id = ?', [id]);
+async function ensureCanChangeAdminState(client, { id, nextRoles, nextActive }) {
+  // Serializza le modifiche amministrative: due richieste non possono
+  // disattivare contemporaneamente gli ultimi due amministratori.
+  await client.run('SELECT pg_advisory_xact_lock(70619001)');
+  const current = await client.get('SELECT id, role, active FROM users WHERE id = ?', [id]);
   if (!current) throw new HttpError(404, 'Utente non trovato.');
-
-  const currentRoles = await loadUserRoles(id);
+  const currentRoles = (await client.all('SELECT role FROM user_roles WHERE user_id = ?', [id])).map((row) => row.role);
   const wasActiveAdmin = (currentRoles.length ? currentRoles : [current.role]).includes('admin') && Boolean(current.active);
   const remainsActiveAdmin = nextRoles.includes('admin') && Boolean(nextActive);
-  if (wasActiveAdmin && !remainsActiveAdmin && (await activeAdminCount(id)) === 0) {
-    throw new HttpError(400, "Non puoi rimuovere l'ultimo amministratore attivo.");
+  if (wasActiveAdmin && !remainsActiveAdmin) {
+    const row = await client.get(`SELECT COUNT(*) AS count FROM users u
+      WHERE ${hasAnyRoleSql('u', ['admin'])} AND u.active = 1 AND u.id <> ?
+        AND (u.password_hash IS NOT NULL OR EXISTS (SELECT 1 FROM user_google_identities g WHERE g.user_id = u.id))`, [id]);
+    if (row.count === 0) throw new HttpError(400, "Non puoi rimuovere l'ultimo amministratore attivo.");
   }
 }
 
@@ -288,8 +285,8 @@ export async function upsertUser({
   const passwordHash = hashPassword(password);
 
   if (existing) {
-    await ensureCanChangeAdminState({ id: existing.id, nextRoles: cleanRoles, nextActive: true });
     await dbTx(async (client) => {
+      await ensureCanChangeAdminState(client, { id: existing.id, nextRoles: cleanRoles, nextActive: true });
       await client.run(
         `UPDATE users
           SET password_hash = ?,
@@ -298,10 +295,14 @@ export async function upsertUser({
               formatter_competition = ?,
               referee_id = ?,
               active = 1,
+              activated_at = COALESCE(activated_at, now()),
+              auth_version = auth_version + 1,
               updated_at = ts_now()
         WHERE id = ?`,
         [passwordHash, String(displayName || cleanUsername).trim(), cleanRole, cleanInstructorCompetition, cleanRefereeId, existing.id]
       );
+      await client.run('DELETE FROM sessions WHERE user_id = ?', [existing.id]);
+      await client.run('UPDATE account_links SET revoked_at = now() WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL', [existing.id]);
       await replaceInstructorAssignments(client, existing.id, assignments);
       await replaceUserRoles(client, existing.id, cleanRoles);
     });
@@ -316,18 +317,23 @@ export async function upsertUser({
     );
     await replaceInstructorAssignments(client, result.rows[0].id, assignments);
     await replaceUserRoles(client, result.rows[0].id, cleanRoles);
+    if (password) await client.run('UPDATE users SET activated_at = now() WHERE id = ?', [result.rows[0].id]);
     return result.rows[0].id;
   });
 }
 
 export async function listUsers() {
   const rows = await dbAll(
-    `SELECT id, username, display_name, role, formatter_competition, photo_path, referee_id, active, created_at, updated_at
+    `SELECT *
        FROM users
       ORDER BY active DESC, role ASC, LOWER(display_name) ASC`
   );
   const allowed = await allowedCompetitionValues();
-  return Promise.all(rows.map((row) => publicUserFromRow(row, allowed)));
+  return Promise.all(rows.map(async (row) => ({
+    ...await publicUserFromRow(row, allowed),
+    hasGoogle: Boolean(await dbGet('SELECT 1 FROM user_google_identities WHERE user_id = ?', [row.id])),
+    pendingInvitation: await dbGet("SELECT id, kind, expires_at FROM account_links WHERE user_id = ? AND kind IN ('activation', 'recovery') AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now() ORDER BY id DESC LIMIT 1", [row.id])
+  })));
 }
 
 export async function createUser({
@@ -343,7 +349,7 @@ export async function createUser({
 }) {
   const cleanUsername = normalizeUsername(username);
   validateUsername(cleanUsername);
-  validatePassword(password);
+  if (password) validatePassword(password);
 
   const existing = await dbGet('SELECT id FROM users WHERE username = ?', [cleanUsername]);
   if (existing) throw new HttpError(409, 'Username già presente.');
@@ -364,7 +370,7 @@ export async function createUser({
        VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
       [
         cleanUsername,
-        hashPassword(password),
+        password ? hashPassword(password) : null,
         String(displayName || cleanUsername).trim(),
         cleanRole,
         instructorCompetitions.length ? JSON.stringify(instructorCompetitions) : null,
@@ -373,6 +379,7 @@ export async function createUser({
     );
     await replaceInstructorAssignments(client, result.rows[0].id, assignments);
     await replaceUserRoles(client, result.rows[0].id, cleanRoles);
+    if (password) await client.run('UPDATE users SET activated_at = now() WHERE id = ?', [result.rows[0].id]);
     return result.rows[0].id;
   });
 
@@ -381,7 +388,7 @@ export async function createUser({
 
 export async function getUser(id) {
   const row = await dbGet(
-    'SELECT id, username, display_name, role, formatter_competition, photo_path, referee_id, active, created_at, updated_at FROM users WHERE id = ?',
+    'SELECT * FROM users WHERE id = ?',
     [id]
   );
   if (!row) throw new HttpError(404, 'Utente non trovato.');
@@ -415,9 +422,8 @@ export async function updateUser({ id, displayName, role, roles, active, instruc
     refereeId: refereeId === undefined ? current.referee_id : refereeId,
     exceptUserId: id
   });
-  await ensureCanChangeAdminState({ id, nextRoles, nextActive });
-
   await dbTx(async (client) => {
+    await ensureCanChangeAdminState(client, { id, nextRoles, nextActive });
     await client.run(
       `UPDATE users
         SET display_name = ?,
@@ -433,34 +439,13 @@ export async function updateUser({ id, displayName, role, roles, active, instruc
     await replaceUserRoles(client, id, nextRoles);
     if (!nextActive) {
       await client.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+      await client.run('UPDATE users SET auth_version = auth_version + 1 WHERE id = ?', [id]);
+      await client.run('UPDATE account_links SET revoked_at = now() WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL', [id]);
+      await client.run('DELETE FROM oauth_flows WHERE user_id = ?', [id]);
     }
   });
 
   return getUser(id);
-}
-
-export async function resetUserPassword({ id, password }) {
-  validatePassword(password);
-  const existing = await dbGet('SELECT id FROM users WHERE id = ?', [id]);
-  if (!existing) throw new HttpError(404, 'Utente non trovato.');
-
-  await dbRun('UPDATE users SET password_hash = ?, updated_at = ts_now() WHERE id = ?', [hashPassword(password), id]);
-
-  await dbRun('DELETE FROM sessions WHERE user_id = ?', [id]);
-  return getUser(id);
-}
-
-export async function changeOwnPassword({ userId, currentPassword, newPassword }) {
-  validatePassword(newPassword);
-  const user = await dbGet('SELECT id, password_hash FROM users WHERE id = ? AND active = 1', [userId]);
-  if (!user) throw new HttpError(404, 'Utente non trovato.');
-  if (!verifyPassword(String(currentPassword || ''), user.password_hash)) {
-    throw new HttpError(400, 'Password attuale non corretta.');
-  }
-
-  await dbRun('UPDATE users SET password_hash = ?, updated_at = ts_now() WHERE id = ?', [hashPassword(newPassword), userId]);
-
-  await dbRun('DELETE FROM sessions WHERE user_id = ?', [userId]);
 }
 
 export async function updateOwnProfile({ userId, displayName }) {

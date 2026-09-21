@@ -8,7 +8,7 @@ export function hashPassword(password) {
 }
 
 export function verifyPassword(password, hash) {
-  return bcrypt.compareSync(password, hash);
+  return Boolean(hash) && bcrypt.compareSync(password, hash);
 }
 
 export function createSessionToken() {

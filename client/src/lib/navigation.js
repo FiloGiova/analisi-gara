@@ -13,7 +13,9 @@ export function parseRoute(path) {
   const query = Object.fromEntries(new URLSearchParams(queryString));
 
   if (!segments.length) return { name: 'home' };
-  if (segments[0] === 'account') return { name: 'account' };
+  if (segments[0] === 'activate') return { name: 'activate', token: query.token || '' };
+  if (segments[0] === 'auth-result') return { name: 'authResult', error: query.error || '' };
+  if (segments[0] === 'account') return { name: 'account', auth: query.auth || '' };
   if (segments[0] === 'me') return { name: 'refereeHome' };
   if (segments[0] === 'observers' && segments[1]) return { name: 'observerDetail', id: Number(segments[1]) };
   if (segments[0] === 'observers') return { name: 'observers' };
