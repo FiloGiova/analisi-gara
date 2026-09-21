@@ -12,6 +12,39 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-21 — Pubblicazione su Render e controlli in produzione
+
+**Rilascio.** Commit applicativo `514a7a5af9c4c6e5efd3e27a33e9e64a5717c911`,
+push atomico su `main` e `cloud-migration`, entrambi aggiornati senza forzare
+la storia. Render ha completato il deployment `dep-daofqrflk1mc7384fm0g`,
+registrato da GitHub come `6565766973`, con stato `success` alle 09:49:21 UTC.
+[Dettaglio del deploy](https://dashboard.render.com/web/srv-d9a9r3ecjfls739g5md0/deploys/dep-daofqrflk1mc7384fm0g).
+
+**Verifica online.** Home, `/privacy`, `/termini` e `/app` rispondono 200 sul
+dominio `https://fischiolab.onrender.com`. Titolare, email e tag Search Console
+corrispondono ai dati forniti. `/api/health` restituisce `{"ok":true}`;
+`/api/auth/me` espone Google abilitato e trasporto email configurato. `/api/users`
+e `/api/reports` senza sessione restano protetti con 401. Presenza della
+configurazione SMTP non equivale a consegna verificata delle email.
+Chrome sul dominio pubblico: login a 390 e 1440 px con username/password e
+bottone Google visibili, senza errori JavaScript o richieste fallite; home e
+documenti leggibili senza JavaScript. Segnalibro `/#/account` trasferito a
+`/app#/account`. Screenshot locali in `/tmp/fischiolab-release-online`.
+
+**Database.** La migrazione è stata applicata dall’avvio di Render. Controllo
+successivo esclusivamente in lettura: presenti le cinque nuove tabelle auth,
+password facoltativa, tutte le 28 tabelle pubbliche con RLS; nessun privilegio
+di tabella per i ruoli Data API `anon` e `authenticated`. Nessuna operazione
+manuale su utenti, password, inviti o rapporti. Backup precedente descritto
+nella voce di preparazione qui sotto.
+
+**Documentazione e passi del titolare.** README e manuale auth aggiornati allo
+stato pubblicato. Restano la conferma della proprietà in Search Console e la
+richiesta branding Google, oltre alla prova completa di accesso con un account
+Google reale. Non sono state modificate le console Google/Supabase né inviate
+email a utenti. La cancellazione locale preesistente di `NEXT_STEPS_2.md` non
+è stata inclusa nel rilascio.
+
 ## 2026-09-21 — Preparazione del rilascio completo autorizzato
 
 **Autorizzazione e ambito.** L’utente ha chiesto di pubblicare tutto il lavoro:
@@ -22,7 +55,7 @@ la cancellazione locale preesistente di `NEXT_STEPS_2.md` resta esclusa.
 **Controlli prima del push.** `main` allineato a `origin/main` su `a9ce85e`.
 Suite completa **186/186** su PostgreSQL locale dedicato; build Vite e controllo
 diff superati. Produzione iniziale: home e `/api/health` rispondono 200,
-configurazione auth nuova ancora assente. Lettura preliminare del database:
+`/api/auth/me` espone ancora soltanto la precedente funzione AI. Lettura preliminare del database:
 PostgreSQL 17.6, 23 tabelle pubbliche, connessione `postgres` proprietaria con
 `BYPASSRLS`; migrazione auth non ancora applicata. Nessun test eseguito sul DB
 di produzione.

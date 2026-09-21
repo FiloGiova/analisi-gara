@@ -6,13 +6,13 @@ compilare i rapporti, generare i PDF e consultare statistiche stagionali.
 
 Produzione: [https://fischiolab.onrender.com](https://fischiolab.onrender.com)
 
-La versione locale in preparazione introduce la home pubblica su `/` e sposta
-l’ingresso alla webapp su `/app`, mantenendo compatibili inviti e segnalibri
+La versione pubblicata il 21 settembre 2026 presenta la home pubblica su `/`
+e l’ingresso alla webapp su `/app`, mantenendo compatibili inviti e segnalibri
 `/#/...`. Le pagine `/privacy` e `/termini` includono i dati pubblici forniti
 dal titolare Filippo Giovagnini, contatto `filo.giova98@gmail.com`, e i testi
 versionati in `src/publicInformation.js`. Non richiedono nuove variabili per
-essere pubblicate; `PUBLIC_*` consente override facoltativi. Le modifiche
-sono ancora locali. Configurazione e verifica Google in
+essere pubblicate; `PUBLIC_*` consente override facoltativi. Configurazione e
+verifica Google in
 [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md#branding-google-informazioni-e-pagine-pubbliche).
 
 ## Funzioni principali

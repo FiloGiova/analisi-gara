@@ -1,8 +1,10 @@
 # Inviti personali, password e Google
 
-Implementazione del 18–20 settembre 2026. Configurazione Google/Supabase riferita
-come completata dall’utente il 18 settembre; console remote e login reale non
-verificati da questa implementazione. Nessun deploy o modifica al DB remoto.
+Implementazione del 18–20 settembre 2026, pubblicata su Render il 21 settembre
+con commit `514a7a5`. Migrazione auth applicata all’avvio e controllata in sola
+lettura dopo il backup. Google risulta abilitato nell’app di produzione; la
+configurazione delle console è stata riferita dall’utente. Il ciclo completo
+con un vero account Google e la consegna delle email restano da provare.
 
 ## Flusso operativo
 
@@ -67,9 +69,9 @@ nome e logo nella schermata Google. Il solo login usa scope non sensibili.
 | Nome applicazione | `FischioLab` |
 | Descrizione | FischioLab è una piattaforma ad accesso su invito per gestire gare, designazioni, rapporti arbitrali e attività di formazione. Google è un metodo facoltativo per accedere al proprio profilo. |
 | Logo | `client/public/app-logo.png`: PNG quadrato 512 × 512, 125.256 byte, entro il limite di 1 MB. Google consiglia 120 × 120. Il file esistente non è stato modificato. |
-| Home page | `https://fischiolab.onrender.com/`: home HTML pubblica implementata in locale, con presentazione, uso dei dati Google e collegamenti ai documenti. Da pubblicare. |
-| Privacy | `https://fischiolab.onrender.com/privacy`: testo completato in locale il 20 settembre 2026. Da pubblicare. |
-| Termini di servizio | `https://fischiolab.onrender.com/termini`: condizioni di accesso e uso con i dati del gestore. Da pubblicare. |
+| Home page | `https://fischiolab.onrender.com/`: home pubblica online, con presentazione, uso dei dati Google e collegamenti ai documenti. Verificata il 21 settembre 2026. |
+| Privacy | `https://fischiolab.onrender.com/privacy`: testo del 20 settembre, pubblicato e verificato il 21 settembre 2026. |
+| Termini di servizio | `https://fischiolab.onrender.com/termini`: condizioni di accesso e uso con i dati del gestore, online dal 21 settembre 2026. |
 | Titolare e gestione | Filippo Giovagnini; gestione personale, come dichiarato dall’utente il 20 settembre 2026. |
 | Assistenza e contatti privacy | `filo.giova98@gmail.com`, fornita dall’utente per la pubblicazione. |
 
@@ -132,20 +134,21 @@ Il tag `google-site-verification` fornito dall’utente è incluso nella home.
 Un eventuale `GOOGLE_SITE_VERIFICATION` può sostituirlo: inserire solo il
 valore dell’attributo `content`, non l’intero tag HTML.
 
-1. Pubblicare le modifiche insieme all’autenticazione seguendo la checklist
-   di deploy; verificare che eventuali override `PUBLIC_*` non sostituiscano
-   i nuovi testi con valori obsoleti o dimostrativi.
-2. Controllare da una finestra anonima `/`, `/privacy` e `/termini`: devono
+La pubblicazione è stata completata il 21 settembre: pagine HTTP 200 con i dati
+reali e tag HTML presente. Per concludere la verifica Google:
+
+1. Controllare da una finestra anonima `/`, `/privacy` e `/termini`: devono
    mostrare i contenuti corretti con risposta HTTP 200 e senza login.
-3. In Search Console, con l’account associato al progetto Google, aprire la
+2. In Search Console, con l’account associato al progetto Google, aprire la
    proprietà **Prefisso URL** `https://fischiolab.onrender.com/`, metodo
    **Tag HTML**, e premere **Verifica**. Il tag deve restare nella home.
-4. Solo dopo la conferma della proprietà e il controllo delle pagine, tornare
+3. Solo dopo la conferma della proprietà e il controllo delle pagine, tornare
    a Google Auth Platform → Branding, scegliere **Ho risolto i problemi** e
    richiedere una nuova verifica. Non selezionare questa voce in anticipo.
 
-Nessuno di questi passaggi esterni è stato eseguito dall’assistente; l’esito
-della verifica resta da confermare nella console Google dopo il deploy.
+Il deploy e i controlli delle pagine sono stati eseguiti dall’assistente.
+La conferma della proprietà e la nuova richiesta branding restano da eseguire
+con l’account del titolare nelle console Google.
 
 Fonti: [Branding Google](https://support.google.com/cloud/answer/15549049),
 [verifica del brand](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification),
