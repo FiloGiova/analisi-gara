@@ -12,6 +12,26 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-21 — Correzione del ramo di pubblicazione: main
+
+**Conferma dell’utente.** Render è configurato per pubblicare da `main`, non
+da `cloud-migration`. L’assistente aveva dedotto erroneamente il ramo corrente
+dal campo `ref` e dall’ambiente dei deployment GitHub, senza leggere la
+configurazione attuale della dashboard Render. `render.yaml` indicava già
+correttamente `main` e non è stato modificato.
+
+**Correzione.** README e manuale auth ora indicano il solo push su `main` per
+i rilasci. Annotata la deduzione errata nella voce di preparazione, mantenendo
+il registro delle operazioni effettivamente eseguite. Il rilascio applicativo
+e l’aggiornamento documentale precedenti erano già stati pubblicati anche su
+`main` (`514a7a5`, `1842587`); l’aggiornamento aggiuntivo di `cloud-migration`
+non era necessario. Nessun ripristino o riscrittura della storia di quel ramo.
+
+**Ambito e controlli.** Modifica esclusivamente documentale, verificata con
+`git diff --check`; pubblicazione di questa correzione solo su `main`.
+Nessuna modifica al codice applicativo, al database o alla configurazione
+Render. Resta esclusa la cancellazione locale preesistente di `NEXT_STEPS_2.md`.
+
 ## 2026-09-21 — Pubblicazione su Render e controlli in produzione
 
 **Rilascio.** Commit applicativo `514a7a5af9c4c6e5efd3e27a33e9e64a5717c911`,
@@ -67,12 +87,12 @@ struttura e dati, creato fuori dal repository nella directory privata locale
 Archivio leggibile da `pg_restore --list`; il backup riguarda lo schema che
 viene modificato, non i file Storage o gli schemi interni Supabase.
 
-**Canale di pubblicazione.** GitHub/Render registra il servizio esistente su
-`cloud-migration`, ultimo deploy riuscito `4818a9b` (18 settembre), 28 commit
-dietro `main` e senza divergenze. Il rilascio aggiorna entrambi i rami senza
-forzare la storia. README e manuale distinguono questo servizio dal blueprint
-per nuove installazioni, che indica `main`. Esito del deploy da registrare
-dopo la verifica online.
+**Canale di pubblicazione — deduzione successivamente corretta.** I metadati
+GitHub del deployment `4818a9b` del 18 settembre riportavano `cloud-migration`,
+28 commit dietro `main` e senza divergenze. Da questo l’assistente ha dedotto
+erroneamente che occorresse aggiornare entrambi i rami: il push è stato eseguito
+senza forzare la storia. L’utente ha poi confermato che Render è configurato su
+`main`; README e manuale sono stati corretti, come riportato nella voce sopra.
 
 ## 2026-09-21 — Finalizzazione locale di privacy e termini
 

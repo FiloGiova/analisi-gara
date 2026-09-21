@@ -181,11 +181,11 @@ committate:
 - `SESSION_SECRET`;
 - eventuali credenziali SMTP e AI.
 
-Il servizio esistente segue invece `cloud-migration`, come verificato nei
-deployment GitHub/Render il 21 settembre 2026. Il lavoro viene mantenuto su
-`main`: per un rilascio aggiornare anche `cloud-migration` con un fast-forward,
-senza forzare la storia. Il push su quel ramo avvia build e deploy automatici.
-Il campo `branch` del blueprint non modifica da solo il servizio esistente.
+Il servizio Render è configurato per pubblicare da `main`, come confermato
+dall’utente il 21 settembre 2026, coerentemente con il blueprint. Per un
+rilascio eseguire il push su `main`; non occorre aggiornare `cloud-migration`.
+Le etichette o i riferimenti nei deployment storici di GitHub non vanno usati
+come prova dell’impostazione corrente del ramo nella dashboard Render.
 Verificare:
 
 ```bash

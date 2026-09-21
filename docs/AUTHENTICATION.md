@@ -259,10 +259,11 @@ consegna.
 
 ## Migrazione, rilascio e ripristino
 
-Il servizio Render attuale pubblica dal ramo `cloud-migration` (verificato il
-21 settembre 2026), mentre lo sviluppo è su `main`. Il rilascio richiede il
-push di `main` e l’aggiornamento fast-forward di `cloud-migration`; non basta
-aggiornare `main`. Il blueprint per nuove installazioni indica `main`.
+Il servizio Render pubblica dal ramo `main`, come confermato dall’utente il
+21 settembre 2026 e indicato dal blueprint. Per rilasciare eseguire il push
+su `main`. Non serve aggiornare `cloud-migration`: la precedente indicazione
+era una deduzione errata dai metadati dei deployment GitHub, non una verifica
+della configurazione corrente nella dashboard Render.
 
 `initializeDatabase()` esegue lo schema corrente, `src/database/auth.sql`,
 la protezione Data API e i backfill preesistenti. Le aggiunte sono idempotenti;
