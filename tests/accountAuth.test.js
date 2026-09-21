@@ -171,6 +171,7 @@ test('Google: collegamento richiede password e stessa sessione del browser', asy
   await assert.rejects(() => google.finishGoogleFlow({ flowToken: badFlow.flowToken, code: 'code', currentUserId: admin.id, sessionHash, exchange: async () => identity() }), /sessione è cambiata/);
   const flow = await google.beginGoogleFlow({ purpose: 'link', userId: user.id, sessionHash, password });
   const url = new URL(flow.url);
+  assert.equal(url.pathname, '/auth/v1/authorize');
   assert.equal(url.searchParams.get('provider'), 'google'); assert.equal(url.searchParams.get('code_challenge_method'), 's256');
   const stored = await dbGet('SELECT * FROM oauth_flows WHERE token_hash = ?', [hashSessionToken(flow.flowToken)]);
   assert.equal(url.searchParams.get('code_challenge'), crypto.createHash('sha256').update(stored.code_verifier).digest('base64url'));
@@ -324,6 +325,8 @@ test('scambio PKCE verifica sia Supabase sia il soggetto Google effettivo', asyn
     return new Response(JSON.stringify(body), { status: 200 });
   });
   assert.deepEqual(await google.exchangeGoogleCode('code', 'verifier'), id);
+  assert.equal(new URL(calls[0].url).pathname, '/auth/v1/token');
+  assert.equal(new URL(calls[1].url).pathname, '/auth/v1/user');
   assert.deepEqual(JSON.parse(calls[0].options.body), { auth_code: 'code', code_verifier: 'verifier' });
   assert.equal(calls[1].options.headers.Authorization, 'Bearer supabase-token');
   assert.equal(calls[2].options.headers.Authorization, 'Bearer google-token');

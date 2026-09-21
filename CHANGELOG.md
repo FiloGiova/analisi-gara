@@ -12,6 +12,131 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-21 — Correzione dell’URL Supabase nel login Google
+
+**Errore riprodotto.** Il pulsante Google generava in produzione il percorso
+`/rest/v1/auth/v1/authorize`, che rispondeva 401 con `No API key found in
+request`. L’URL Supabase utilizzato dall’app conteneva il suffisso della Data
+API `/rest/v1`. La prima ipotesi della chiave pubblica mancante nel redirect
+non era la causa: ripetendo la richiesta sul percorso `/auth/v1/authorize`,
+senza aggiungere chiavi, Supabase ha risposto 302 verso `accounts.google.com`.
+La modalità Testing di Google non causa questo errore.
+
+**Correzione.** `src/config.js` normalizza `SUPABASE_URL`: rimuove gli spazi,
+gli slash finali e l’eventuale suffisso `/rest/v1`. Auth e Storage condividono
+così la radice corretta del progetto. Il manuale documenta il valore canonico
+e la diagnosi. Nessuna nuova dipendenza, migrazione o modifica alle chiavi;
+nessuna impostazione delle console cambiata dall’assistente.
+
+**Regressione.** Aggiunti sei casi in `tests/supabaseConfig.test.js`, compreso
+l’URL REST copiato dalla dashboard; prima della correzione fallivano quattro
+casi. Rafforzati i controlli sui percorsi authorize/token/user nei test auth.
+I controlli live hanno avviato soltanto flussi anonimi temporanei, che scadono
+dopo dieci minuti; nessun consenso Google, nuovo utente o collegamento creato.
+La prova completa con l’account reale resta al titolare.
+
+**Verifiche locali.** Suite completa **192/192** superata su PostgreSQL locale
+dedicato `fischiolab_auth_test`, build Vite riuscita e `git diff --check` pulito.
+Nessun test automatico eseguito sul database di produzione.
+
+**Rilascio.** Correzione destinata al solo ramo `main`, secondo l’autorizzazione
+alla pubblicazione già ricevuta. La cancellazione locale preesistente di
+`NEXT_STEPS_2.md` resta esclusa.
+
+## 2026-09-21 — Google in Testing e controllo del pulsante di accesso
+
+**Decisione riferita dall’utente.** Il progetto OAuth è stato riportato in
+Testing; la verifica branding resta sospesa. Stato della console non letto
+dall’assistente. Segnalata l’assenza del pulsante Google sulla home e sulla login.
+
+**Controlli effettuati.** In produzione `/api/auth/me` risponde 200, senza
+sessione, con `features.googleAuth: true` e `Cache-Control: no-store`.
+Chrome anonimo sulla pagina `/app`, a 1440 e 390 px: “Continua con Google”
+presente e visibile sotto “Entra”, senza errori JavaScript. Screenshot in
+`/tmp/fischiolab-google-testing`. La home pubblica rimanda alla login con
+“Accedi a FischioLab”; non contiene un pulsante Google diretto. Non riprodotta
+l’assenza segnalata: richiesto quale URL/versione stia usando l’utente, senza
+attribuire la causa alla cache. Nessun flusso OAuth avviato durante il controllo.
+
+**Testing e prossima prova.** Il codice richiede soltanto `openid email profile`.
+La [guida Google Audience](https://support.google.com/cloud/answer/15549945?hl=en)
+prevede per questi scope l’eccezione alla lista obbligatoria dei test users e
+alla scadenza delle autorizzazioni dopo sette giorni; non trattare quindi i
+100 test users come limite generale degli utenti FischioLab. Ulteriori scope
+escludono l’eccezione. Resta la prova con un account reale: accesso iniziale
+con username/password → Account → Metodi di accesso → Collega Google, quindi
+uscita e rientro dalla login con Google. I nuovi utenti partono dal proprio
+invito. La visibilità del pulsante non certifica la configurazione completa
+del provider Supabase e dei redirect.
+
+**Ambito.** Aggiornati soltanto questo registro e il manuale autenticazione;
+nessuna modifica a codice, database o console. Controllo `git diff --check`.
+
+## 2026-09-21 — Controllo dell’avviso Google sulla proprietà della home
+
+**Segnalazione.** L’utente vede ancora, tra i problemi del precedente tentativo
+di verifica branding, che la home non risulta registrata a suo nome.
+
+**Verifica pubblica.** Nuove letture anonime di `https://fischiolab.onrender.com/`:
+risposta 200, URL invariato, home informativa e tag `google-site-verification`
+nell’`head`, identico a quello fornito dall’utente. Risultato uguale cambiando
+l’User-Agent nella richiesta locale; questo non equivale a una richiesta
+proveniente da Google né a una verifica di proprietà riuscita.
+
+**Passaggio da confermare.** Il tag pubblicato consente la verifica, ma non
+dimostra che l’account abbia completato il pulsante Verifica in Search Console.
+Richiesto se la proprietà Prefisso URL esatta risulti verificata con l’account
+che gestisce il progetto Cloud. Google richiede che il proprietario verificato
+sia associato al progetto OAuth come Owner o Editor. Dopo l’esito positivo,
+richiedere la nuova verifica branding; il messaggio condiviso si riferisce
+esplicitamente al tentativo precedente. Stato delle console non letto.
+
+**Risposta dell’utente.** Ha confermato di non avere ancora completato la
+verifica in Search Console. Il prossimo passo è aprire la proprietà Prefisso
+URL `https://fischiolab.onrender.com/`, scegliere Tag HTML e premere Verifica
+con l’account del progetto. Solo dopo la conferma di proprietà, ripresentare
+la verifica branding. Nessun nuovo tag richiesto salvo differenza rispetto
+a quello associato all’account usato nella procedura.
+
+**Aggiornamento successivo.** L’utente riferisce di avere completato i passaggi,
+ma l’avviso persiste, e segnala due account/email usati nella configurazione.
+Ricontrollata la home: 200 e tag invariato. Distinto il contatto pubblico
+dall’account proprietario verificato in Search Console, che deve risultare
+Owner o Editor del progetto OAuth. Richiesta la corrispondenza fra i due
+account nelle console; la sola differenza dell’email di contatto non conferma
+la causa. Nessuna attribuzione del token pubblicato a uno specifico account,
+né modifica dei permessi o del tag senza conoscere la configurazione effettiva.
+
+**Account e metodo di verifica.** L’utente ha precisato che Search Console e
+Google Cloud usano lo stesso account (`ref57198`); il contatto pubblico diverso
+non identifica quindi il blocco. Richiesti URL/stato della proprietà e domini
+autorizzati esatti. La guida specifica
+[Domain Verification](https://support.google.com/cloud/answer/13804266?hl=en)
+indica proprietà Dominio con verifica DNS, non soltanto Prefisso URL. Corretta
+la precedente indicazione che trattava la verifica HTML come sufficiente per
+concludere la verifica OAuth. La guida generale sul branding e quella sulla
+home rimandano anche alla verifica generica di Search Console: non è ancora
+accertato quale requisito stia causando il rifiuto di questo progetto.
+Nessun cambio di email, dominio, DNS o configurazione OAuth eseguito.
+
+**Evidenze dagli screenshot.** La proprietà selezionata in Search Console è
+`https://fischiolab.onrender.com/` e mostra “Sei un proprietario verificato”.
+Nel branding sono presenti `fischiolab.onrender.com` e
+`tiqhpteppvdnhatzjjdj.supabase.co`; il secondo coincide con l’host Supabase
+configurato localmente. Queste evidenze confermano la verifica Prefisso URL
+e la corrispondenza dei nomi, non l’accettazione della verifica DNS per OAuth
+né il ruolo IAM dell’account. Nessuna correzione ai domini o all’email indicata.
+Prossimo controllo: ruolo Project Owner nel progetto effettivo; se confermato,
+richiedere revisione manuale Google allegando gli screenshot e specificando
+che la verifica effettuata è Prefisso URL tramite HTML, chiedendo se occorra
+verifica DNS sul sottodominio ospitato. Revisione prevista dalla guida Google
+in caso di esito automatico negativo; nessuna richiesta inviata dall’assistente.
+
+**Ambito.** Nessuna modifica all’app, al tag o ai dati; aggiornato questo
+registro. Riferimenti: [home OAuth](https://support.google.com/cloud/answer/13807376?hl=en),
+[verifica in Search Console](https://support.google.com/webmasters/answer/9008080?hl=it),
+[account e progetto OAuth](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification).
+
 ## 2026-09-21 — Correzione del ramo di pubblicazione: main
 
 **Conferma dell’utente.** Render è configurato per pubblicare da `main`, non

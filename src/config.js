@@ -43,7 +43,9 @@ export const config = {
   pgPoolMax: Number(process.env.PG_POOL_MAX || 5),
   // Supabase Storage per PDF e foto. Se non configurato, si usa il filesystem locale.
   supabase: {
-    url: process.env.SUPABASE_URL || '',
+    // Accetta anche l'URL della Data API copiato dalla dashboard: Auth e Storage
+    // aggiungono i propri percorsi alla radice del progetto, non a /rest/v1.
+    url: (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '').replace(/\/rest\/v1$/, ''),
     serviceKey: process.env.SUPABASE_SERVICE_KEY || '',
     bucket: process.env.STORAGE_BUCKET || 'rapporti'
   },

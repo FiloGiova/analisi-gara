@@ -6,6 +6,15 @@ lettura dopo il backup. Google risulta abilitato nell’app di produzione; la
 configurazione delle console è stata riferita dall’utente. Il ciclo completo
 con un vero account Google e la consegna delle email restano da provare.
 
+Il 21 settembre l’utente ha riferito di avere riportato il progetto OAuth in
+**Testing**, sospendendo per ora la verifica branding. Ricontrollata la login
+pubblica `https://fischiolab.onrender.com/app`: “Continua con Google” visibile
+su desktop e mobile, con funzionalità abilitata dal server. La home `/` rimanda
+alla login tramite “Accedi a FischioLab”. Per un account già attivo, il primo
+collegamento avviene da **Account → Metodi di accesso → Collega Google** dopo
+l’accesso con username/password; successivamente si può entrare con Google.
+Per i limiti ed eccezioni di Testing vedere “Google Cloud e Supabase” più sotto.
+
 ## Flusso operativo
 
 1. **Admin → Utenti → Crea utente**: scegli username, nome, ruoli e gli eventuali
@@ -42,7 +51,7 @@ generazione; non è ricostruibile dal database. Consegna ogni link solo al titol
 | `COOKIE_SECURE` | `true` con HTTPS in produzione. `false` solo nello sviluppo HTTP locale. |
 | `TRUST_PROXY_HOPS` | `1` su Render, `0` in locale senza reverse proxy. Serve per l’IP corretto nei limiti dei tentativi. |
 | `ENABLE_GOOGLE_AUTH` | `true` per mostrare e attivare Google; assente/`false` mantiene inviti e password funzionanti. |
-| `SUPABASE_URL` | URL del progetto Supabase già usato per Storage. |
+| `SUPABASE_URL` | Radice del progetto: `https://tiqhpteppvdnhatzjjdj.supabase.co`, senza `/rest/v1`. Usata sia da Auth sia da Storage. L’app rimuove anche il suffisso REST se è stato copiato dalla dashboard. |
 | `SUPABASE_PUBLISHABLE_KEY` | Chiave publishable della dashboard Supabase; è ammesso anche il fallback legacy `SUPABASE_ANON_KEY`. Non usare la service key. |
 | `DATABASE_URL` | Connessione PostgreSQL proprietaria dell’app, non il ruolo `anon`/`authenticated`. Deve poter gestire lo schema e superare RLS come proprietario o con `BYPASSRLS`. |
 
@@ -50,6 +59,15 @@ Le chiavi Google Client ID/Client Secret rimangono nel provider Google della
 dashboard Supabase. Non servono nel browser o nei file di FischioLab.
 `SUPABASE_SERVICE_KEY` continua a servire soltanto allo Storage. Il codice
 non riutilizza il client amministrativo Storage per autenticare gli utenti.
+
+Se il pulsante Google mostra `No API key found in request`, controllare prima
+il percorso di destinazione: deve essere `/auth/v1/authorize`, mai
+`/rest/v1/auth/v1/authorize`. Il secondo è stato riprodotto online il 21
+settembre: l’URL base conteneva il percorso della Data API. La normalizzazione
+in `src/config.js` corregge insieme l’avvio OAuth, lo scambio del codice, la
+lettura del profilo e Storage. In questo caso non occorre cambiare le chiavi
+o aggiungerle al link di accesso; la richiesta all’endpoint Auth corretto
+ha restituito un redirect 302 verso Google anche senza `apikey` nell’URL.
 
 Con il normale `npm run dev` impostare `APP_BASE_URL=http://localhost:5173`:
 Vite inoltra `/api` e `/auth/callback` al backend sulla porta 3000. Se si usa
@@ -135,20 +153,47 @@ Un eventuale `GOOGLE_SITE_VERIFICATION` può sostituirlo: inserire solo il
 valore dell’attributo `content`, non l’intero tag HTML.
 
 La pubblicazione è stata completata il 21 settembre: pagine HTTP 200 con i dati
-reali e tag HTML presente. Per concludere la verifica Google:
+reali e tag HTML presente. La sola presenza del tag non attesta l’approvazione
+del dominio per OAuth. Per la verifica Google:
 
 1. Controllare da una finestra anonima `/`, `/privacy` e `/termini`: devono
    mostrare i contenuti corretti con risposta HTTP 200 e senza login.
-2. In Search Console, con l’account associato al progetto Google, aprire la
-   proprietà **Prefisso URL** `https://fischiolab.onrender.com/`, metodo
-   **Tag HTML**, e premere **Verifica**. Il tag deve restare nella home.
-3. Solo dopo la conferma della proprietà e il controllo delle pagine, tornare
+2. Controllare la proprietà e il metodo di verifica in Search Console con
+   l’account del progetto Cloud. Il tag pubblicato permette la verifica
+   **Prefisso URL** `https://fischiolab.onrender.com/`, ma la guida specifica
+   [Domain Verification](https://support.google.com/cloud/answer/13804266?hl=en)
+   richiede una proprietà **Dominio**, verificata tramite record DNS, per i
+   blocchi sui domini OAuth. Non considerare automaticamente sufficiente il
+   solo esito positivo della proprietà Prefisso URL. Il tag va mantenuto.
+3. In caso di rifiuto persistente, confrontare URL/stato della proprietà,
+   account e ruolo IAM e domini autorizzati nel progetto OAuth effettivo.
+   La verifica DNS richiede il controllo della relativa zona DNS; un tag HTML
+   nel sito non consente di aggiungere record DNS al sottodominio Render.
+   Valutare un dominio con DNS gestibili o un chiarimento nella revisione
+   Google solo dopo aver identificato il requisito che blocca il progetto.
+4. Solo dopo la conferma della proprietà richiesta e il controllo delle pagine, tornare
    a Google Auth Platform → Branding, scegliere **Ho risolto i problemi** e
    richiedere una nuova verifica. Non selezionare questa voce in anticipo.
 
 Il deploy e i controlli delle pagine sono stati eseguiti dall’assistente.
-La conferma della proprietà e la nuova richiesta branding restano da eseguire
-con l’account del titolare nelle console Google.
+Lo screenshot successivo fornito dall’utente conferma “Sei un proprietario
+verificato” per la proprietà Prefisso URL `https://fischiolab.onrender.com/`.
+Il rifiuto branding è però ancora segnalato: l’approvazione OAuth rimane da
+ottenere. I domini autorizzati mostrati sono `fischiolab.onrender.com` e
+`tiqhpteppvdnhatzjjdj.supabase.co`, coerenti con home e progetto Supabase.
+
+Se Search Console conferma la proprietà ma il branding continua a segnalarla
+come non verificata, controllare l’account proprietario del sito e la sua
+presenza in Google Cloud → IAM con ruolo Owner o Editor nel progetto OAuth
+corretto: la guida generale ammette entrambi, mentre la guida specifica sul
+rifiuto dei domini indica Project Owner. L’email di contatto pubblica non dimostra né sostituisce questo
+collegamento. Il tag è associato a un account: per verificare con un altro
+account può servire aggiungere il suo tag, conservando quelli ancora in uso.
+Se account e ruolo sono corretti e il controllo automatico continua a fallire,
+usare la richiesta di revisione manuale prevista dalla schermata branding.
+Allegare le evidenze e specificare il tipo di proprietà realmente verificato,
+chiedendo se sia richiesta la verifica DNS per il sottodominio ospitato.
+La revisione non garantisce che la verifica Prefisso URL venga accettata.
 
 Fonti: [Branding Google](https://support.google.com/cloud/answer/15549049),
 [verifica del brand](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification),
