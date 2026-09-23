@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { currentSportSeason } from '../../shared/reportTemplate.js';
+import { currentSportSeason, formatVote } from '../../shared/reportTemplate.js';
 import { isRefereeStatus, refereeStatusLabel } from '../../shared/refereeStatus.js';
 import { getRefereeRanking, listBandMembers, listReferees } from './refereeService.js';
 
@@ -169,7 +169,7 @@ export async function buildRefereeRankingWorkbook({ season, competitions = [] })
       referee.lastName,
       referee.firstName,
       referee.category || '',
-      referee.votes.join(', '),
+      referee.votes.map((vote) => formatVote(vote)).join(', '),
       referee.votesCount,
       referee.averageVote
     ]);

@@ -349,15 +349,15 @@ export const api = {
   deleteSource: (id) => request(`/api/sources/${id}`, { method: 'DELETE' }),
   syncSource: (id) => request(`/api/sources/${id}/sync`, { method: 'POST' }),
   listSourceRuns: (id) => request(`/api/sources/${id}/runs`),
-  generateJudgment: (reportData) =>
+  generateJudgment: (reportData, target = 'global') =>
     request('/api/ai/generate-judgment', {
       method: 'POST',
-      body: JSON.stringify({ reportData })
+      body: JSON.stringify({ reportData, target })
     }),
-  reviseJudgment: ({ currentJudgment, observerFeedback }) =>
+  reviseJudgment: ({ currentJudgment, observerFeedback, target = 'global' }) =>
     request('/api/ai/revise-judgment', {
       method: 'POST',
-      body: JSON.stringify({ currentJudgment, observerFeedback })
+      body: JSON.stringify({ currentJudgment, observerFeedback, target })
     })
 };
 

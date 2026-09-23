@@ -12,6 +12,72 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-23 — Rapporto completo secondo le linee guida 2026/2027
+
+**Cosa cambia.** Il rapporto completo adotta il modello federale 2026/2027:
+scala a cinque livelli (Migliorabile, Sotto lo standard, Standard, Sopra lo
+standard, Di qualità, più `N.V.` su 4.3 e 4.4), cinque sezioni al posto di otto
+e quattordici valutazioni al posto di venti. La chiusura della scheda passa dal
+giudizio globale unico a *Punti di forza da mantenere*, *Aree di miglioramento*
+e *Eventuali note aggiuntive*, seguiti da errori tecnici, **fascia**, **voto** e
+potenzialità. Le caratteristiche della gara hanno quattro livelli (Facile, Di
+normale difficoltà, Impegnativa, Difficile). Il rapporto a video non cambia.
+
+**Fascia e voto.** Nuova griglia federale da 7,2 a 8,8 (`VOTE_BANDS` in
+[shared/reportTemplate.js](shared/reportTemplate.js)): il voto è il dato
+portante e la fascia si deriva da lui (`bandForVote`), ma la fascia resta
+selezionabile da sola finché il voto manca. In form c'è un solo controllo,
+`BandVoteSelect`, con lo stile dei Select esistenti: una riga per fascia e una
+card per voto, a tendina su desktop e a tutta larghezza su mobile. Il voto non
+è obbligatorio per rendere definitivo un rapporto. In archivio il voto è TEXT
+con il punto decimale ("8.0") e si mostra con la virgola (`formatVote`).
+
+**Struttura versionata.** `payload_json` porta `templateVersion`; i rapporti
+scritti prima restano v1 e si continuano a leggere, modificare ed esportare con
+la loro struttura (`EVALUATION_SECTIONS_V1`). La versione di un rapporto non
+cambia più dopo la creazione: in modifica arriva dalla riga salvata, non dal
+client. I payload senza il campo sono riconosciuti come v1 dalle sezioni che
+solo quella struttura aveva. Nessuna migrazione del database: le colonne
+restano quelle.
+
+**Privacy.** Dalla v2 l'arbitro vede nel proprio rapporto **fascia e voto**;
+sui rapporti v1 il voto resta riservato, perché allora non era un dato
+destinato a lui. La potenzialità non è mai visibile all'arbitro e non compare
+in nessun PDF.
+
+**Grafica.** Il colore dice quanto: tinta piena agli estremi (ambra per
+Migliorabile, verde per Di qualità), la stessa tinta smorzata sui due gradini
+intermedi, neutro chiaro sullo standard; la difficoltà della gara usa una rampa
+monocromatica ardesia dal chiaro allo scuro. Il PDF resta quello di FischioLab
+(carta avorio, intestazione blu/teal, note su fondo crema) con i chip
+dimensionati sull'etichetta più lunga e un blocco finale FASCIA + VOTO.
+
+**File toccati.** `shared/reportTemplate.js` (struttura v1/v2, griglia voti,
+helper di versione), `src/services/reportService.js` (normalizzazione e
+validazione per versione, voto sulla griglia, sanitizzazione arbitro),
+`src/services/pdfService.js` (scala colori, chip, chiusura),
+`src/services/refereeService.js` (medie e classifica con voti decimali,
+`AVG(CAST(... AS NUMERIC))`, versione nel progresso),
+`src/services/refereesExportService.js`, `src/services/judgmentPromptBuilder.js`
++ `anthropicService.js` + `src/routes/ai.routes.js` (helper AI per bersaglio:
+punti di forza o aree di miglioramento), `src/services/federationPdfParser.js` e
+`federationPdfImportService.js` (l'import dal PDF federale resta sul modello
+v1 e si ferma se il rapporto esistente è v2), client: `EvaluationEditor.jsx`,
+nuovo `BandVoteSelect.jsx`, `JudgmentAIHelper.jsx`, `ReportFormPage.jsx`,
+`ReportDetailPage.jsx`, `RefereeProgressDashboard.jsx`, `Sparkline.jsx`
+(asse 0-4), `formatters.js`, `styles.css`.
+
+**Verifiche.** Suite completa **204/204** su PostgreSQL locale dedicato (dodici
+casi nuovi in `tests/reportTemplate.test.js` e `tests/reportStructure.test.js`),
+`npm run test:unit` 46/46, build Vite riuscita. PDF di prova rigenerato per
+entrambe le strutture: la potenzialità non compare, la chiusura v2 mostra
+fascia e voto. Nessun test eseguito sul database di produzione.
+
+**Da decidere più avanti.** Il parser del PDF federale legge ancora solo il
+modello fino al 2025/2026: per leggere quello nuovo serve un PDF compilato di
+esempio. Il voto resta fuori dagli elenchi mostrati all'arbitro (lo vede nel
+dettaglio del rapporto e nel PDF).
+
 ## 2026-09-21 — Correzione dell’URL Supabase nel login Google
 
 **Errore riprodotto.** Il pulsante Google generava in produzione il percorso

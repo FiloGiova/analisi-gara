@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { createEmptyReport, deriveSeason } from '../../shared/reportTemplate.js';
+import { createEmptyReport, deriveSeason, templateVersionOf } from '../../shared/reportTemplate.js';
 import { dbAll, dbGet, dbRun, dbTx } from '../database/db.js';
 import { HttpError } from '../utils/httpError.js';
 import { cleanExternalName, normalizedNameKey } from '../utils/personNames.js';
@@ -567,7 +567,17 @@ async function applyOneGroup({ items, decision, user, syncRunId, contextGameId =
       }
     }
 
-    const base = reportRow ? payloadFromReportRow(reportRow) : createEmptyReport();
+    // Il PDF federale che sappiamo leggere è quello della struttura v1: su un
+    // rapporto già scritto con la struttura 2026/2027 l'import cancellerebbe
+    // le sezioni nuove, quindi si ferma prima.
+    if (reportRow && templateVersionOf(JSON.parse(reportRow.payload_json || '{}')) !== 1) {
+      throw new HttpError(
+        409,
+        'Il rapporto esistente usa la struttura 2026/2027: l\'import dal PDF federale vale solo per i rapporti della struttura precedente.'
+      );
+    }
+
+    const base = reportRow ? payloadFromReportRow(reportRow) : createEmptyReport(1);
     const importedRoles = items.map((item) => item.parsed.role);
     const firstName = `${firstReferee.last_name} ${firstReferee.first_name}`.trim();
     const secondName = `${secondReferee.last_name} ${secondReferee.first_name}`.trim();

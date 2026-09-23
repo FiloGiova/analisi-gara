@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { COMMON_MATCH_CHARACTERISTICS, EVALUATION_SECTIONS, createEmptyReport, getRefereeLabel, deriveSeason, currentSportSeason } from '../../../shared/reportTemplate.js';
+import { createEmptyReport, getRefereeLabel, deriveSeason, currentSportSeason, matchCharacteristicsForPayload, sectionsForPayload, templateVersionOf } from '../../../shared/reportTemplate.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import { api, ApiError } from '../lib/api.js';
 import { useCompetitions } from '../lib/competitions.jsx';
@@ -29,16 +29,23 @@ function createInitialReport(currentUser, season) {
   return report;
 }
 
-function computeCompletion(evaluation) {
+function computeCompletion(evaluation, report) {
+  const sections = sectionsForPayload(report);
+  const isLegacy = templateVersionOf(report) === 1;
+  // L'ultimo passo è la chiusura: il giudizio globale nella v1, punti di forza
+  // e aree di miglioramento nella v2.
   let completed = 0;
-  const total = EVALUATION_SECTIONS.length + 1;
-  for (const section of EVALUATION_SECTIONS) {
+  const total = sections.length + 1;
+  for (const section of sections) {
     const sectionData = evaluation.sections[section.id];
     const ratingsOk = section.groups.every((g) => Boolean(sectionData?.ratings?.[g.id]));
     const commentOk = !section.requiredCommentForFinal || Boolean(sectionData?.comment?.trim());
     if (ratingsOk && commentOk) completed++;
   }
-  if (evaluation.globalJudgement?.trim()) completed++;
+  const closingOk = isLegacy
+    ? Boolean(evaluation.globalJudgement?.trim())
+    : Boolean(evaluation.strengths?.trim()) && Boolean(evaluation.improvements?.trim());
+  if (closingOk) completed++;
   return { completed, total };
 }
 
@@ -49,8 +56,8 @@ function computeSectionProgress(report) {
   const commonFilled = Boolean(report.matchCharacteristics?.ratings?.difficulty) ? 1 : 0;
   const commonTotal = 1;
 
-  const first = computeCompletion(report.evaluations.first);
-  const second = computeCompletion(report.evaluations.second);
+  const first = computeCompletion(report.evaluations.first, report);
+  const second = computeCompletion(report.evaluations.second, report);
 
   const votesFilled = [report.evaluations.first.vote, report.evaluations.second.vote].filter(Boolean).length;
 
@@ -384,8 +391,13 @@ export default function ReportFormPage({ id, currentUser, features, gameId, seas
 
   useEffect(() => { saveRef.current = save; });
 
-  const completionFirst = computeCompletion(report.evaluations.first);
-  const completionSecond = computeCompletion(report.evaluations.second);
+  // Un rapporto conserva la struttura con cui è nato: quelli in archivio si
+  // continuano a compilare con il modello della loro stagione.
+  const templateVersion = templateVersionOf(report);
+  const matchTemplate = matchCharacteristicsForPayload(report);
+
+  const completionFirst = computeCompletion(report.evaluations.first, report);
+  const completionSecond = computeCompletion(report.evaluations.second, report);
   const completionFor = { first: completionFirst, second: completionSecond };
   const progress = computeSectionProgress(report);
   const isFullyComplete = progress.overall.completed === progress.overall.total;
@@ -598,13 +610,13 @@ export default function ReportFormPage({ id, currentUser, features, gameId, seas
             <div className="common-match-card">
               <div className="section-heading">
                 <div>
-                  <h3>{COMMON_MATCH_CHARACTERISTICS.title}</h3>
-                  <p>{COMMON_MATCH_CHARACTERISTICS.description}</p>
+                  <h3>{matchTemplate.title}</h3>
+                  <p>{matchTemplate.description}</p>
                 </div>
                 <span className="shared-pill">Comune ai due arbitri</span>
               </div>
               <div className="rating-grid">
-                {COMMON_MATCH_CHARACTERISTICS.groups.map((group) => (
+                {matchTemplate.groups.map((group) => (
                   <SegmentedChoice
                     key={group.id}
                     label={group.label}
@@ -614,7 +626,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId, seas
                   />
                 ))}
               </div>
-              <Field label={COMMON_MATCH_CHARACTERISTICS.commentLabel}>
+              <Field label={matchTemplate.commentLabel}>
                 <TextArea
                   value={report.matchCharacteristics.comment}
                   onChange={(e) => setMatchComment(e.target.value)}
@@ -637,6 +649,7 @@ export default function ReportFormPage({ id, currentUser, features, gameId, seas
             onCopyFromOther={() => setEvaluation(activeRole, report.evaluations[otherRole])}
             report={report}
             aiEnabled={Boolean(features?.aiEnabled)}
+            templateVersion={templateVersion}
           />
 
           {/* Ancora per sezione voti */}

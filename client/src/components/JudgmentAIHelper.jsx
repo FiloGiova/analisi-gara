@@ -19,7 +19,20 @@ function hasMinimumData(reportData) {
   return hasAnyEvaluationContent(reportData.evaluation);
 }
 
-export default function JudgmentAIHelper({ reportData, value, onChange }) {
+const GENERATE_LABELS = {
+  global: 'Genera giudizio globale',
+  strengths: 'Genera punti di forza',
+  improvements: 'Genera aree di miglioramento'
+};
+
+export default function JudgmentAIHelper({
+  reportData,
+  value,
+  onChange,
+  target = 'global',
+  label = 'Giudizio globale',
+  placeholder = 'Punti di forza, aree di miglioramento, sintesi finale...'
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -45,7 +58,7 @@ export default function JudgmentAIHelper({ reportData, value, onChange }) {
     setLoading(true);
     setError('');
     try {
-      const data = await api.generateJudgment(reportData);
+      const data = await api.generateJudgment(reportData, target);
       if (!mountedRef.current) return;
       onChange(data.judgment || '');
       setHasGenerated(true);
@@ -64,7 +77,8 @@ export default function JudgmentAIHelper({ reportData, value, onChange }) {
     try {
       const data = await api.reviseJudgment({
         currentJudgment: value || '',
-        observerFeedback: feedback
+        observerFeedback: feedback,
+        target
       });
       if (!mountedRef.current) return;
       onChange(data.judgment || '');
@@ -84,12 +98,12 @@ export default function JudgmentAIHelper({ reportData, value, onChange }) {
 
   return (
     <div className="judgment-ai-helper" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Field label="Giudizio globale">
+      <Field label={label}>
         <TextArea
-          rows={5}
+          rows={target === 'global' ? 5 : 4}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="Punti di forza, aree di miglioramento, sintesi finale..."
+          placeholder={placeholder}
         />
       </Field>
 
@@ -101,7 +115,7 @@ export default function JudgmentAIHelper({ reportData, value, onChange }) {
           disabled={generateDisabled}
           title={generateTitle}
         >
-          {loading && !feedback ? 'Generazione in corso…' : '✦ Genera giudizio globale'}
+          {loading && !feedback ? 'Generazione in corso…' : `✦ ${GENERATE_LABELS[target] || GENERATE_LABELS.global}`}
         </button>
       </div>
 

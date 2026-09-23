@@ -2123,17 +2123,35 @@ dd {
   box-shadow: 0 10px 22px rgba(16, 37, 45, 0.18);
 }
 
-.segmented-choice button.is-selected[data-rating="Migliorabile"],
-.segmented-choice button.is-selected[data-rating="Difficile"] {
+/* Scala a cinque livelli: colore pieno agli estremi (migliorabile, di qualità),
+   la stessa tinta smorzata sui due gradini intermedi, neutro chiaro sullo
+   standard. Il colore dice quanto, non solo cosa. */
+.segmented-choice button.is-selected[data-rating="Migliorabile"] {
   background: var(--warning);
   color: #3f2b09;
-  box-shadow: 0 10px 22px rgba(240, 184, 79, 0.22);
+  box-shadow: 0 10px 22px rgba(240, 184, 79, 0.26);
+}
+
+.segmented-choice button.is-selected[data-rating="Sotto lo standard"] {
+  background: #fbe9c8;
+  color: #74501d;
+  border-color: #ead7ad;
+  box-shadow: 0 6px 14px rgba(116, 80, 29, 0.10);
 }
 
 .segmented-choice button.is-selected[data-rating="Standard"],
 .segmented-choice button.is-selected[data-rating="Normale"] {
-  background: var(--standard);
-  box-shadow: 0 10px 22px rgba(111, 124, 133, 0.2);
+  background: #e3eaec;
+  color: #2a3e47;
+  border-color: #c0ccd1;
+  box-shadow: 0 6px 14px rgba(42, 62, 71, 0.10);
+}
+
+.segmented-choice button.is-selected[data-rating="Sopra lo standard"] {
+  background: #d3ebdb;
+  color: #186b47;
+  border-color: #a8d5bc;
+  box-shadow: 0 6px 14px rgba(24, 107, 71, 0.12);
 }
 
 .segmented-choice button.is-selected[data-rating="Di qualità"],
@@ -2142,12 +2160,36 @@ dd {
   box-shadow: 0 10px 22px rgba(21, 116, 91, 0.22);
 }
 
-.segmented-choice button.is-selected[data-rating="Impegnativa"] {
-  background: var(--standard);
-  box-shadow: 0 10px 22px rgba(111, 124, 133, 0.2);
+/* Difficoltà della gara: una sola tinta, dal più chiaro al più saturo. */
+.segmented-choice button.is-selected[data-rating="Facile"] {
+  background: #f1f4f5;
+  color: #45555c;
+  border-color: #d8dfe2;
+  box-shadow: 0 6px 14px rgba(69, 85, 92, 0.08);
 }
 
-.segmented-choice button.is-selected[data-rating="N/V"] {
+.segmented-choice button.is-selected[data-rating="Di normale difficoltà"] {
+  background: #d6dee1;
+  color: #33434a;
+  border-color: #c0ccd1;
+  box-shadow: 0 6px 14px rgba(51, 67, 74, 0.10);
+}
+
+.segmented-choice button.is-selected[data-rating="Impegnativa"] {
+  background: #a9b6bc;
+  color: #17262c;
+  border-color: #93a3ab;
+  box-shadow: 0 8px 18px rgba(23, 38, 44, 0.14);
+}
+
+.segmented-choice button.is-selected[data-rating="Difficile"] {
+  background: #55636b;
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(85, 99, 107, 0.24);
+}
+
+.segmented-choice button.is-selected[data-rating="N/V"],
+.segmented-choice button.is-selected[data-rating="N.V."] {
   background: #ffffff;
   color: var(--muted);
   border: 2px solid #b0bec5;
@@ -2160,22 +2202,24 @@ dd {
   font-size: 0.82rem;
 }
 
-.common-match-card .segmented-choice button.is-selected {
-  background: #eef4f2;
-  color: #33434a;
-  border-color: #cbd8d2;
-  box-shadow: 0 8px 18px rgba(16, 37, 45, 0.08);
-}
-
 .technique-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
+.technique-grid-pairs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .technique-stack {
   display: grid;
   gap: 12px;
+}
+
+.technique-stack:empty,
+.technique-stack[hidden] {
+  display: none;
 }
 
 .technique-subcard {
@@ -5761,4 +5805,171 @@ dd {
   .auth-layout .login-art::before, .auth-layout .login-art::after,
   .auth-layout .login-court-scene { display: none; }
   .auth-layout .login-panel { align-content: start; }
+}
+
+/* ── Fascia e voto (struttura 2026/2027) ───────────────────────────────────
+   Ogni fascia porta con sé le sue quattro tinte: chi la usa (pillola, chip del
+   menu, card del voto) legge le custom property, così il colore è definito una
+   volta sola. */
+[data-band="Migliorabile"] { --band-fill: #f0b84f; --band-ink: #3f2b09; --band-line: #e2a93f; --band-soft: #fdf1d9; }
+[data-band="Sotto lo standard"] { --band-fill: #fbe9c8; --band-ink: #74501d; --band-line: #ead7ad; --band-soft: #fffbf2; }
+[data-band="Standard"] { --band-fill: #dce4e7; --band-ink: #2a3e47; --band-line: #c0ccd1; --band-soft: #f4f7f8; }
+[data-band="Sopra lo standard"] { --band-fill: #d3ebdb; --band-ink: #186b47; --band-line: #a8d5bc; --band-soft: #f4fbf7; }
+[data-band="Di qualità"] { --band-fill: #15745b; --band-ink: #ffffff; --band-line: #15745b; --band-soft: #eaf5f1; }
+
+.band-vote-trigger { gap: 10px; }
+.band-vote-trigger[data-band] { background: var(--band-soft); border-color: var(--band-line); }
+
+.band-vote-dot {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-2);
+}
+
+.band-vote-dot[data-band] { background: var(--band-fill); border-color: var(--band-line); }
+
+.band-vote-number {
+  font-size: 1.15rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.band-vote-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(14, 31, 38, 0.16);
+  animation: select-pop 140ms ease both;
+}
+
+.band-vote-hint {
+  margin: 0 0 2px;
+  color: var(--teal);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.band-vote-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px;
+  border-radius: var(--radius-md);
+}
+
+.band-vote-row.is-active { background: var(--band-soft); }
+
+.band-vote-chip {
+  flex: 0 0 148px;
+  padding: 9px 10px;
+  border: 1px solid var(--band-line);
+  border-radius: var(--radius-sm);
+  background: var(--band-fill);
+  color: var(--band-ink);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+}
+
+.band-vote-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.band-vote-card {
+  min-width: 54px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.band-vote-card:hover {
+  border-color: var(--band-line);
+  background: var(--band-soft);
+}
+
+.band-vote-card[aria-pressed="true"] {
+  border-color: var(--band-line);
+  background: var(--band-fill);
+  color: var(--band-ink);
+  box-shadow: 0 6px 14px rgba(14, 31, 38, 0.14);
+}
+
+.band-vote-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.vote-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.band-pill {
+  padding: 6px 12px;
+  border: 1px solid var(--band-line, var(--line));
+  border-radius: 999px;
+  background: var(--band-fill, var(--paper-2));
+  color: var(--band-ink, var(--ink));
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.judgement-label-second { margin-top: 14px; }
+
+@media (max-width: 640px) {
+  .band-vote-menu {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .band-vote-row {
+    display: grid;
+    gap: 8px;
+  }
+
+  .band-vote-chip {
+    flex: none;
+    width: fit-content;
+  }
+
+  .band-vote-card { flex: 1 1 0; }
 }

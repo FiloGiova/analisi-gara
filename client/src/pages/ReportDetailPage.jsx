@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { COMMON_MATCH_CHARACTERISTICS, getRefereeLabel, deriveSeason } from '../../../shared/reportTemplate.js';
+import {
+  bandForVote,
+  formatVote,
+  getRefereeLabel,
+  deriveSeason,
+  matchCharacteristicsForPayload,
+  templateVersionOf
+} from '../../../shared/reportTemplate.js';
 import { api, downloadReportPdf, downloadReportAttachment } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -32,6 +39,8 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, e
   const refereeId = role === 'first' ? data.firstRefereeId : data.secondRefereeId;
   const isFinal = report.status === 'final';
   const potential = evaluation.potential || {};
+  const isLegacy = templateVersionOf(data) === 1;
+  const band = evaluation.band || bandForVote(evaluation.vote);
 
   async function handleDownload() {
     setExporting(true);
@@ -100,10 +109,13 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, e
             ) : (refereeName || '—')}
           </p>
         </div>
-        {evaluation.vote
-          ? <div className="vote-box"><span className="vote-num">{evaluation.vote}</span><span className="vote-lbl">VOTO</span></div>
-          : <div className="vote-box empty">—</div>
-        }
+        <div className="vote-stack">
+          {band ? <span className="band-pill" data-band={band}>{band}</span> : null}
+          {evaluation.vote
+            ? <div className="vote-box"><span className="vote-num">{formatVote(evaluation.vote)}</span><span className="vote-lbl">VOTO</span></div>
+            : <div className="vote-box empty">—</div>
+          }
+        </div>
       </div>
 
       <div className="ref-card-body">
@@ -114,11 +126,25 @@ function RefereeSummary({ role, report, onError, emailEnabled, sentAt, onSent, e
           tabIndex={isFinal ? 0 : undefined}
           onKeyDown={isFinal ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleOpenPdf(); } : undefined}
         >
-          <p className="judgement-label">
-            Giudizio globale
-            {isFinal && <span className="judgement-pdf-hint"> · apri PDF</span>}
-          </p>
-          <p className="judgement-text">{evaluation.globalJudgement || '—'}</p>
+          {isLegacy ? (
+            <>
+              <p className="judgement-label">
+                Giudizio globale
+                {isFinal && <span className="judgement-pdf-hint"> · apri PDF</span>}
+              </p>
+              <p className="judgement-text">{evaluation.globalJudgement || '—'}</p>
+            </>
+          ) : (
+            <>
+              <p className="judgement-label">
+                Punti di forza da mantenere
+                {isFinal && <span className="judgement-pdf-hint"> · apri PDF</span>}
+              </p>
+              <p className="judgement-text">{evaluation.strengths || '—'}</p>
+              <p className="judgement-label judgement-label-second">Aree di miglioramento</p>
+              <p className="judgement-text">{evaluation.improvements || '—'}</p>
+            </>
+          )}
         </div>
 
         {!isReferee ? (
@@ -517,7 +543,7 @@ export default function ReportDetailPage({ id, currentUser }) {
         <div className="section-heading">
           <div>
             <span className="match-number">Comune</span>
-            <h2>{COMMON_MATCH_CHARACTERISTICS.title}</h2>
+            <h2>{matchCharacteristicsForPayload(data).title}</h2>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {data.matchCharacteristics?.ratings?.difficulty ? (
@@ -530,7 +556,7 @@ export default function ReportDetailPage({ id, currentUser }) {
         </div>
         {data.matchCharacteristics?.comment ? (
           <div className="comment-block">
-            <h4>{COMMON_MATCH_CHARACTERISTICS.commentLabel}</h4>
+            <h4>{matchCharacteristicsForPayload(data).commentLabel}</h4>
             <p>{data.matchCharacteristics.comment}</p>
           </div>
         ) : null}

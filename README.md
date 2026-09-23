@@ -22,7 +22,9 @@ verifica Google in
 - designazione osservatori singola o in blocco;
 - indisponibilità degli osservatori su singoli giorni o periodi, con storico
   personale e blocco automatico nelle designazioni;
-- rapporti in bozza/definitivi e PDF separato per ciascun arbitro;
+- rapporti in bozza/definitivi e PDF separato per ciascun arbitro, con la
+  struttura federale 2026/2027 (scala a cinque livelli, fascia e voto da 7,2 a
+  8,8) e i rapporti delle stagioni precedenti conservati come sono stati scritti;
 - import deterministico dei rapporti PDF federali, con abbinamento da numero
   gara e campo `ARBITRO` interno al documento;
 - anagrafica e classifica arbitri per stagione e campionato, esportabili in XLSX;
@@ -31,12 +33,13 @@ verifica Google in
 - template XLSX per il designatore, esportabile per una o più fasi di campionato;
 - ruoli combinabili `admin`, `operator`, `instructor`, `observer` e ruolo esclusivo `referee`;
 - inviti personali, accesso username/password senza email e Google facoltativo;
-- helper AI opzionale per il giudizio globale;
+- helper AI opzionale per punti di forza e aree di miglioramento;
 - invio PDF via email opzionale.
 
 La sezione “Potenzialità” resta una nota interna: compare nel riepilogo web del
 rapporto per i ruoli autorizzati, non viene esportata nei PDF e non viene
-mostrata agli utenti arbitro.
+mostrata agli utenti arbitro. Fascia e voto, invece, dalla struttura 2026/2027
+sono visibili all'arbitro nel proprio rapporto.
 
 ## Architettura
 

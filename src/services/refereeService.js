@@ -1,4 +1,11 @@
-import { currentSportSeason, EVALUATION_SECTIONS, ratingToNumber } from '../../shared/reportTemplate.js';
+import {
+  RATING_SCALE_MAX,
+  REPORT_TEMPLATE_VERSION,
+  currentSportSeason,
+  ratingToNumber,
+  sectionsForPayload,
+  templateVersionOf
+} from '../../shared/reportTemplate.js';
 import {
   DEFAULT_REFEREE_STATUS,
   isActiveStatus,
@@ -378,7 +385,9 @@ export async function getRefereeStats(refereeId, { season = '', competition = ''
   const votes = reports
     .filter((report) => String(report.vote || '').trim() !== '')
     .map((report) => Number(report.vote))
-    .filter((vote) => Number.isInteger(vote) && vote > 0);
+    // Dalla stagione 2026/2027 il voto è decimale (7,2-8,8): filtrare sugli
+    // interi lo butterebbe via.
+    .filter((vote) => Number.isFinite(vote) && vote > 0);
   const average = votes.length ? votes.reduce((sum, vote) => sum + vote, 0) / votes.length : null;
   return {
     reportsCount: reports.length,
@@ -409,6 +418,7 @@ export async function getRefereeProgress(refereeId, { season = '', competitions 
   const matches = [];
   const videoMatches = [];
   const votes = [];
+  const templateVersions = new Set();
   for (const row of rows) {
     const role = row.first_referee_id === refereeId ? 'first'
       : row.second_referee_id === refereeId ? 'second'
@@ -429,8 +439,9 @@ export async function getRefereeProgress(refereeId, { season = '', competitions 
       continue;
     }
     const evaluation = payload.evaluations?.[role] || {};
+    templateVersions.add(templateVersionOf(payload));
     const ratings = {};
-    for (const section of EVALUATION_SECTIONS) {
+    for (const section of sectionsForPayload(payload)) {
       const sectionData = evaluation.sections?.[section.id];
       if (!sectionData) continue;
       for (const group of section.groups) {
@@ -465,13 +476,19 @@ export async function getRefereeProgress(refereeId, { season = '', competitions 
     ? Number((votes.reduce((a, b) => a + b, 0) / votes.length).toFixed(1))
     : null;
 
+  // Le curve si disegnano con il template dei rapporti della stagione; se in
+  // una stagione convivono due strutture vince la più recente.
+  const templateVersion = templateVersions.size ? Math.max(...templateVersions) : REPORT_TEMPLATE_VERSION;
+
   return {
     refereeId,
     season: sportSeason,
     matches,
     videoMatches,
     averageVote,
-    trend
+    trend,
+    templateVersion,
+    ratingScaleMax: RATING_SCALE_MAX
   };
 }
 
@@ -540,7 +557,7 @@ export async function getRefereeRanking({ season = '', competition = '', competi
               'reportId', v.report_id,
               'observerName', v.observer_label
             ) ORDER BY v.report_date, v.report_id) AS vote_details,
-            AVG(CAST(v.vote AS INTEGER)) AS average_vote
+            AVG(CAST(v.vote AS NUMERIC)) AS average_vote
      FROM votes v
      JOIN referees r ON r.id = v.referee_id
      LEFT JOIN video vid ON vid.referee_id = r.id

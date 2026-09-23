@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { EVALUATION_SECTIONS } from '../../../shared/reportTemplate.js';
+import { RATING_SCALE_MAX, REPORT_TEMPLATE_VERSION, sectionsForVersion } from '../../../shared/reportTemplate.js';
 import { api } from '../lib/api.js';
 import Sparkline from './Sparkline.jsx';
-import { formatMatchNumber } from '../lib/formatters.js';
+import { formatMatchNumber, formatVote } from '../lib/formatters.js';
 
 const GROUP_COLORS = ['#123c69', '#1d6f78', '#e27d36', '#6f7c85', '#a04ea0', '#15745b'];
 
@@ -37,7 +37,7 @@ function buildSeriesForGroups(groups, matches, sectionId) {
   });
 }
 
-function ProgressCard({ section, matches }) {
+function ProgressCard({ section, matches, yMax }) {
   const isMulti = section.groups.length > 1;
   const isTechnique = section.id === 'technique';
   const categories = isTechnique ? groupBySectionCategory(section) : null;
@@ -73,7 +73,7 @@ function ProgressCard({ section, matches }) {
         </div>
       ) : null}
 
-      <Sparkline series={series} height={isMulti ? 96 : 72} />
+      <Sparkline series={series} height={isMulti ? 96 : 72} yMax={yMax} />
 
       {isMulti ? (
         <div className="progress-legend">
@@ -106,6 +106,10 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
 
   const matches = data?.matches || [];
   const videoMatches = data?.videoMatches || [];
+  // Le curve seguono la struttura con cui i rapporti della stagione sono stati
+  // scritti, altrimenti una stagione in archivio resterebbe vuota.
+  const sections = sectionsForVersion(data?.templateVersion || REPORT_TEMPLATE_VERSION);
+  const scaleMax = data?.ratingScaleMax || RATING_SCALE_MAX;
 
   const trendIcon = useMemo(() => {
     if (!data) return '';
@@ -142,7 +146,7 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
         {data.averageVote != null ? (
           <div className="progress-vote-pill">
             <span className="progress-vote-trend">{trendIcon}</span>
-            <strong>{data.averageVote}</strong>
+            <strong>{formatVote(data.averageVote)}</strong>
             <small>media voto</small>
           </div>
         ) : null}
@@ -165,8 +169,8 @@ export default function RefereeProgressDashboard({ refereeId, season }) {
       ) : null}
 
       <div className="progress-grid">
-        {EVALUATION_SECTIONS.map((section) => (
-          <ProgressCard key={section.id} section={section} matches={matches} />
+        {sections.map((section) => (
+          <ProgressCard key={section.id} section={section} matches={matches} yMax={scaleMax} />
         ))}
       </div>
     </section>

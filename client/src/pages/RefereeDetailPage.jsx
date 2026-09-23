@@ -11,7 +11,7 @@ import MultiSelect from '../components/MultiSelect.jsx';
 import DateInput from '../components/DateInput.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber, formatDate } from '../lib/formatters.js';
+import { formatMatchNumber, formatDate, formatVote } from '../lib/formatters.js';
 import PhotoUploader from '../components/PhotoUploader.jsx';
 import RefereeProgressDashboard from '../components/RefereeProgressDashboard.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
@@ -430,7 +430,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
         </div>
         <div className="metric-card">
           <span>Media</span>
-          <strong>{stats.averageVote ?? '-'}</strong>
+          <strong>{formatVote(stats.averageVote, '-')}</strong>
         </div>
       </section>
 
@@ -478,7 +478,7 @@ export default function RefereeDetailPage({ id, currentUser, season: selectedSea
                     <td style={{ fontWeight: 800, color: 'var(--blue)' }}>
                       {report.reportType === 'video'
                         ? <JudgementBadge value={report.judgement} />
-                        : (report.vote || '-')}
+                        : formatVote(report.vote, '-')}
                     </td>
                     <td>{report.status === 'final' ? 'Definitivo' : 'Bozza'}</td>
                   </tr>

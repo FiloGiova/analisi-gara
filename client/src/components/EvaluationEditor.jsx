@@ -1,6 +1,13 @@
 import { useState } from 'react';
-import { EVALUATION_SECTIONS, POTENTIAL_OPTIONS, getRefereeLabel } from '../../../shared/reportTemplate.js';
+import {
+  CLOSING_FIELDS,
+  POTENTIAL_OPTIONS,
+  REPORT_TEMPLATE_VERSION,
+  getRefereeLabel,
+  sectionsForVersion
+} from '../../../shared/reportTemplate.js';
 import SegmentedChoice from './SegmentedChoice.jsx';
+import BandVoteSelect from './BandVoteSelect.jsx';
 import { Field, TextArea, TextInput } from './Field.jsx';
 import ConfirmModal from './ConfirmModal.jsx';
 import JudgmentAIHelper from './JudgmentAIHelper.jsx';
@@ -40,7 +47,7 @@ function TechniqueCard({ category, groups, sectionData, onRatingChange, compact 
 }
 
 function RatingCard({ group, value, onChange }) {
-  const match = group.label.match(/^(\d+\.\d+)\s+([\s\S]*)/);
+  const match = group.label.match(/^(\d+(?:\.\d+)+)\s+([\s\S]*)/);
   const number = match ? match[1] : null;
   const text = match ? match[2] : group.label;
   return (
@@ -71,8 +78,20 @@ function CopyConfirmModal({ fromRole, onConfirm, onCancel }) {
   );
 }
 
-export default function EvaluationEditor({ role, refereeName, value, onChange, otherRole, onCopyFromOther, report, aiEnabled = false }) {
+export default function EvaluationEditor({
+  role,
+  refereeName,
+  value,
+  onChange,
+  otherRole,
+  onCopyFromOther,
+  report,
+  aiEnabled = false,
+  templateVersion = REPORT_TEMPLATE_VERSION
+}) {
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
+  const sections = sectionsForVersion(templateVersion);
+  const isLegacy = templateVersion === 1;
 
   function updateSection(sectionId, updater) {
     const current = value.sections[sectionId];
@@ -96,9 +115,29 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
     updateSection(sectionId, (section) => ({ ...section, comment }));
   }
 
-  function setVote(rawValue) {
+  function setLegacyVote(rawValue) {
     const vote = rawValue.replace(/\D/g, '').slice(0, 2);
     onChange({ ...value, vote });
+  }
+
+  function setClosingField(fieldId, text) {
+    onChange({ ...value, [fieldId]: text });
+  }
+
+  function aiReportData(target) {
+    return {
+      competition: report?.competition || '',
+      teamHome: report?.teamHome || '',
+      teamAway: report?.teamAway || '',
+      scoreHome: report?.scoreHome || '',
+      scoreAway: report?.scoreAway || '',
+      templateVersion,
+      matchCharacteristics: report?.matchCharacteristics,
+      refereeName: refereeName || '',
+      refereePosition: role === 'first' ? '1°' : '2°',
+      target,
+      evaluation: value
+    };
   }
 
   return (
@@ -123,13 +162,15 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
         )}
       </div>
 
-      {EVALUATION_SECTIONS.map((section) => {
+      {sections.map((section) => {
         const sectionData = value.sections[section.id];
         const isTechnique = section.id === 'technique';
         const isMultiGroup = !isTechnique && section.groups.length > 1;
         const techniqueCategories = isTechnique ? [...groupTechniqueItems(section.groups)] : [];
-        const mainTechniqueCategories = techniqueCategories.slice(0, 3);
-        const compactTechniqueCategories = techniqueCategories.slice(3);
+        // La v1 aveva cinque blocchi di tecnica (tre larghi più due compatti);
+        // la v2 ne ha quattro da due voci: stanno su due colonne uguali.
+        const mainTechniqueCategories = isLegacy ? techniqueCategories.slice(0, 3) : techniqueCategories;
+        const compactTechniqueCategories = isLegacy ? techniqueCategories.slice(3) : [];
         const complete = isSectionComplete(section, sectionData);
 
         return (
@@ -143,7 +184,7 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
             </div>
 
             {isTechnique ? (
-              <div className="technique-grid">
+              <div className={`technique-grid ${isLegacy ? '' : 'technique-grid-pairs'}`}>
                 {mainTechniqueCategories.map(([category, groups]) => (
                   <TechniqueCard
                     key={category}
@@ -153,7 +194,7 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
                     onRatingChange={(groupId, rating) => setRating(section.id, groupId, rating)}
                   />
                 ))}
-                <div className="technique-stack">
+                <div className="technique-stack" hidden={!compactTechniqueCategories.length}>
                   {compactTechniqueCategories.map(([category, groups]) => (
                     <TechniqueCard
                       key={category}
@@ -205,51 +246,81 @@ export default function EvaluationEditor({ role, refereeName, value, onChange, o
       })}
 
       <section className="evaluation-card closing-card">
-        {aiEnabled ? (
-          <JudgmentAIHelper
-            reportData={{
-              competition: report?.competition || '',
-              teamHome: report?.teamHome || '',
-              teamAway: report?.teamAway || '',
-              scoreHome: report?.scoreHome || '',
-              scoreAway: report?.scoreAway || '',
-              matchCharacteristics: report?.matchCharacteristics,
-              refereeName: refereeName || '',
-              refereePosition: role === 'first' ? '1°' : '2°',
-              evaluation: value
-            }}
-            value={value.globalJudgement || ''}
-            onChange={(text) => onChange({ ...value, globalJudgement: text })}
-          />
+        {isLegacy ? (
+          <>
+            {aiEnabled ? (
+              <JudgmentAIHelper
+                reportData={aiReportData('global')}
+                value={value.globalJudgement || ''}
+                onChange={(text) => onChange({ ...value, globalJudgement: text })}
+              />
+            ) : (
+              <Field label="Giudizio globale">
+                <TextArea
+                  rows={5}
+                  value={value.globalJudgement || ''}
+                  onChange={(event) => onChange({ ...value, globalJudgement: event.target.value })}
+                  placeholder="Punti di forza, aree di miglioramento, sintesi finale..."
+                />
+              </Field>
+            )}
+
+            <Field label="Eventuali errori tecnici">
+              <TextArea
+                value={value.technicalErrors}
+                onChange={(event) => onChange({ ...value, technicalErrors: event.target.value })}
+                placeholder="Indicare tipo di errore e riferimento tempo di gioco. Se assenti: NO"
+              />
+            </Field>
+
+            <Field label="Voto">
+              <TextInput
+                className="vote-input"
+                inputMode="numeric"
+                maxLength={2}
+                value={value.vote || ''}
+                onChange={(event) => setLegacyVote(event.target.value)}
+                placeholder="00"
+              />
+            </Field>
+          </>
         ) : (
-          <Field label="Giudizio globale">
-            <TextArea
-              rows={5}
-              value={value.globalJudgement}
-              onChange={(event) => onChange({ ...value, globalJudgement: event.target.value })}
-              placeholder="Punti di forza, aree di miglioramento, sintesi finale..."
-            />
-          </Field>
+          <>
+            {CLOSING_FIELDS.map((field) => (
+              aiEnabled && (field.id === 'strengths' || field.id === 'improvements') ? (
+                <JudgmentAIHelper
+                  key={field.id}
+                  label={field.label}
+                  placeholder={field.placeholder}
+                  target={field.id}
+                  reportData={aiReportData(field.id)}
+                  value={value[field.id] || ''}
+                  onChange={(text) => setClosingField(field.id, text)}
+                />
+              ) : (
+                <Field key={field.id} label={field.label}>
+                  <TextArea
+                    rows={field.id === 'technicalErrors' ? 2 : 4}
+                    value={value[field.id] || ''}
+                    onChange={(event) => setClosingField(field.id, event.target.value)}
+                    placeholder={field.placeholder}
+                  />
+                </Field>
+              )
+            ))}
+
+            <div className="field band-vote-field">
+              <label htmlFor={`band-vote-${role}`}>Fascia e voto</label>
+              <BandVoteSelect
+                id={`band-vote-${role}`}
+                vote={value.vote || ''}
+                band={value.band || ''}
+                onChange={({ vote, band }) => onChange({ ...value, vote, band })}
+              />
+              <small>Il voto determina la fascia. Senza voto la fascia resta selezionabile da sola.</small>
+            </div>
+          </>
         )}
-
-        <Field label="Eventuali errori tecnici">
-          <TextArea
-            value={value.technicalErrors}
-            onChange={(event) => onChange({ ...value, technicalErrors: event.target.value })}
-            placeholder="Indicare tipo di errore e riferimento tempo di gioco. Se assenti: NO"
-          />
-        </Field>
-
-        <Field label="Voto">
-          <TextInput
-            className="vote-input"
-            inputMode="numeric"
-            maxLength={2}
-            value={value.vote || ''}
-            onChange={(event) => setVote(event.target.value)}
-            placeholder="00"
-          />
-        </Field>
       </section>
 
       <section className="evaluation-card private-card">

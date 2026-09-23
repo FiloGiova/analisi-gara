@@ -5,7 +5,7 @@ import Select from '../components/Select.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import { api, ApiError, downloadStatsExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
-import { formatMatchNumber, formatDate } from '../lib/formatters.js';
+import { formatMatchNumber, formatDate, formatVote } from '../lib/formatters.js';
 import { instructorCompetitionsForSeason } from '../../../shared/instructorAssignments.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
 import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
@@ -366,7 +366,7 @@ export default function CoveragePage({ currentUser, season }) {
                                         ? 'Rapporto a video · apri il rapporto'
                                         : entry.type === 'draft'
                                           ? 'Rapporto in bozza · apri il rapporto'
-                                          : `Voto: ${entry.vote || 'non indicato'} · apri il rapporto`}
+                                          : `Voto: ${formatVote(entry.vote, 'non indicato')} · apri il rapporto`}
                                   >
                                     {entry.type === 'scheduled' ? '○' : entry.type === 'draft' ? '◐' : '✓'} {entry.observerLabel}
                                   </button>

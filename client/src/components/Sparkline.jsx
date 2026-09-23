@@ -1,4 +1,6 @@
-// Mini line-chart SVG: una o più curve con punti, asse Y fisso (default 0..2).
+// Mini line-chart SVG: una o più curve con punti, asse Y fisso (default 0..4,
+// la scala a cinque livelli; i tre livelli della struttura precedente cadono
+// sui gradini 0, 2 e 4).
 // `series` = [{ label, color, points: [{ x: number, y: number|null, title?: string }] }]
 
 const PADDING_X = 16;
@@ -20,10 +22,9 @@ function buildPath(points, scaleX, scaleY) {
 export default function Sparkline({
   series = [],
   yMin = 0,
-  yMax = 2,
+  yMax = 4,
   width = 220,
-  height = 80,
-  yLabels = ['Migliorabile', 'Standard', 'Qualità']
+  height = 80
 }) {
   const innerW = width - PADDING_X * 2;
   const innerH = height - PADDING_TOP - PADDING_BOTTOM;
@@ -111,16 +112,16 @@ export default function Sparkline({
         );
       })}
 
-      {yLabels.map((lab, i) => (
+      {[yMin, yMax].map((value, i) => (
         <text
-          key={lab}
+          key={value}
           x={PADDING_X - 4}
-          y={scaleY(yMin + i) + 3}
+          y={scaleY(value) + 3}
           textAnchor="end"
           fill="var(--muted)"
           fontSize="8"
         >
-          {i === 0 ? '–' : i === yLabels.length - 1 ? '+' : ''}
+          {i === 0 ? '–' : '+'}
         </text>
       ))}
     </svg>

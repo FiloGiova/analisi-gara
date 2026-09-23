@@ -1,10 +1,15 @@
 import { PDFParse } from 'pdf-parse';
 import {
-  COMMON_MATCH_CHARACTERISTICS,
-  EVALUATION_SECTIONS,
+  COMMON_MATCH_CHARACTERISTICS_V1,
+  EVALUATION_SECTIONS_V1,
   createEmptyReport,
   deriveSeason
 } from '../../shared/reportTemplate.js';
+
+// Questo parser legge il modello federale in uso fino alla stagione
+// 2025/2026: produce quindi rapporti con la struttura v1. Il modello
+// 2026/2027 ha sezioni e scala diverse e non è ancora supportato qui.
+const PARSED_TEMPLATE_VERSION = 1;
 
 const COMPETITION_MAP = new Map([
   ['D', 'DR1'],
@@ -211,66 +216,66 @@ function parseStructuredHeader(lines, text) {
 }
 
 function parseStructuredEvaluation(lines) {
-  const empty = createEmptyReport();
+  const empty = createEmptyReport(PARSED_TEMPLATE_VERSION);
   const evaluation = empty.evaluations.first;
   const matchCharacteristics = empty.matchCharacteristics;
 
   matchCharacteristics.ratings.difficulty = ratingAfter(
     lines,
     /^1\s+CARATTERISTICHE/i,
-    COMMON_MATCH_CHARACTERISTICS.groups[0].options
+    COMMON_MATCH_CHARACTERISTICS_V1.groups[0].options
   );
   matchCharacteristics.comment = noteBetween(lines, /^1\s+CARATTERISTICHE/i, /^2\s+STATO/i);
 
   evaluation.sections.fitness.ratings.level = ratingAfter(
     lines,
     /^2\s+STATO/i,
-    EVALUATION_SECTIONS[0].groups[0].options
+    EVALUATION_SECTIONS_V1[0].groups[0].options
   );
   evaluation.sections.fitness.comment = noteBetween(lines, /^2\s+STATO/i, /^3\s+CONDUZIONE/i);
 
   const management = evaluation.sections.management.ratings;
-  management.leadership = ratingAfter(lines, /^3\.1\b/, EVALUATION_SECTIONS[1].groups[0].options);
-  management.teamwork = ratingAfter(lines, /^3\.2\b/, EVALUATION_SECTIONS[1].groups[1].options);
-  management.consistency = ratingAfter(lines, /^3\.3\b/, EVALUATION_SECTIONS[1].groups[2].options);
+  management.leadership = ratingAfter(lines, /^3\.1\b/, EVALUATION_SECTIONS_V1[1].groups[0].options);
+  management.teamwork = ratingAfter(lines, /^3\.2\b/, EVALUATION_SECTIONS_V1[1].groups[1].options);
+  management.consistency = ratingAfter(lines, /^3\.3\b/, EVALUATION_SECTIONS_V1[1].groups[2].options);
   evaluation.sections.management.comment = noteBetween(lines, /^3\s+CONDUZIONE/i, /^4\s+DISCIPLINA/i);
 
   const discipline = evaluation.sections.discipline.ratings;
-  discipline.conflictManagement = ratingAfter(lines, /^4\.1\b/, EVALUATION_SECTIONS[2].groups[0].options);
-  discipline.measures = ratingAfter(lines, /^4\.2\b/, EVALUATION_SECTIONS[2].groups[1].options);
+  discipline.conflictManagement = ratingAfter(lines, /^4\.1\b/, EVALUATION_SECTIONS_V1[2].groups[0].options);
+  discipline.measures = ratingAfter(lines, /^4\.2\b/, EVALUATION_SECTIONS_V1[2].groups[1].options);
   evaluation.sections.discipline.comment = noteBetween(lines, /^4\s+DISCIPLINA/i, /^5\s+TECNICA/i);
 
   const technique = evaluation.sections.technique.ratings;
-  technique.travel = ratingAfter(lines, /^5\.1\.1\b/, EVALUATION_SECTIONS[3].groups[0].options);
-  technique.timingRules = ratingAfter(lines, /^5\.1\.2\b/, EVALUATION_SECTIONS[3].groups[1].options);
-  technique.otherViolations = ratingAfter(lines, /^5\.1\.3\b/, EVALUATION_SECTIONS[3].groups[2].options);
-  technique.shootingFouls = ratingAfter(lines, /^5\.2\.1\b/, EVALUATION_SECTIONS[3].groups[3].options);
-  technique.contactResponsibility = ratingAfter(lines, /^5\.2\.2\b/, EVALUATION_SECTIONS[3].groups[4].options);
-  technique.rebound = ratingAfter(lines, /^5\.3\.1\b/, EVALUATION_SECTIONS[3].groups[5].options);
-  technique.screensCuts = ratingAfter(lines, /^5\.3\.2\b/, EVALUATION_SECTIONS[3].groups[6].options);
-  technique.unsportsmanlike = ratingAfter(lines, /^5\.4\b/, EVALUATION_SECTIONS[3].groups[7].options);
-  technique.simulations = ratingAfter(lines, /^5\.5\b/, EVALUATION_SECTIONS[3].groups[8].options);
+  technique.travel = ratingAfter(lines, /^5\.1\.1\b/, EVALUATION_SECTIONS_V1[3].groups[0].options);
+  technique.timingRules = ratingAfter(lines, /^5\.1\.2\b/, EVALUATION_SECTIONS_V1[3].groups[1].options);
+  technique.otherViolations = ratingAfter(lines, /^5\.1\.3\b/, EVALUATION_SECTIONS_V1[3].groups[2].options);
+  technique.shootingFouls = ratingAfter(lines, /^5\.2\.1\b/, EVALUATION_SECTIONS_V1[3].groups[3].options);
+  technique.contactResponsibility = ratingAfter(lines, /^5\.2\.2\b/, EVALUATION_SECTIONS_V1[3].groups[4].options);
+  technique.rebound = ratingAfter(lines, /^5\.3\.1\b/, EVALUATION_SECTIONS_V1[3].groups[5].options);
+  technique.screensCuts = ratingAfter(lines, /^5\.3\.2\b/, EVALUATION_SECTIONS_V1[3].groups[6].options);
+  technique.unsportsmanlike = ratingAfter(lines, /^5\.4\b/, EVALUATION_SECTIONS_V1[3].groups[7].options);
+  technique.simulations = ratingAfter(lines, /^5\.5\b/, EVALUATION_SECTIONS_V1[3].groups[8].options);
   evaluation.sections.technique.comment = noteBetween(lines, /^5\s+TECNICA/i, /^6\s+AMMINISTRAZIONE/i);
 
   evaluation.sections.administration.ratings.level = ratingAfter(
     lines,
     /^6\s+AMMINISTRAZIONE/i,
-    EVALUATION_SECTIONS[4].groups[0].options
+    EVALUATION_SECTIONS_V1[4].groups[0].options
   );
   evaluation.sections.communication.ratings.level = ratingAfter(
     lines,
     /^7\s+COMUNICAZIONE/i,
-    EVALUATION_SECTIONS[5].groups[0].options
+    EVALUATION_SECTIONS_V1[5].groups[0].options
   );
   evaluation.sections.mechanics.ratings.gameReading = ratingAfter(
     lines,
     /^8\.1\b/,
-    EVALUATION_SECTIONS[6].groups[0].options
+    EVALUATION_SECTIONS_V1[6].groups[0].options
   );
   evaluation.sections.mechanics.ratings.responsibilities = ratingAfter(
     lines,
     /^8\.2\b/,
-    EVALUATION_SECTIONS[6].groups[1].options
+    EVALUATION_SECTIONS_V1[6].groups[1].options
   );
   evaluation.sections.mechanics.comment = noteBetween(lines, /^8\s+MECCANICA/i, /^9\s+CONCLUSIONI/i);
 

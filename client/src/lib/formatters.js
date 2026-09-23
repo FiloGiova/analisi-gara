@@ -1,3 +1,11 @@
+import { formatVote as formatVoteValue } from '../../../shared/reportTemplate.js';
+
+// Il voto si mostra sempre con la virgola (8,0) e mai con il punto.
+export function formatVote(value, fallback = '—') {
+  const text = formatVoteValue(value);
+  return text || fallback;
+}
+
 export function formatMatchNumber(value, fallback = '—') {
   const text = String(value ?? '').trim();
   if (!text) return fallback;

@@ -131,9 +131,15 @@ pagina amministrativa con cui vengono creati e gestiti gli account.
 
 ### 5. Evoluzione dei rapporti
 
+- [x] ~~Struttura 2026/2027 del rapporto completo~~ (23/09/2026): scala a
+  cinque livelli, cinque sezioni, chiusura con punti di forza e aree di
+  miglioramento, fascia e voto dalla griglia federale, struttura versionata per
+  non toccare l'archivio (v. CHANGELOG 23/09).
+- lettura del **nuovo PDF federale**: il parser dell'import legge ancora solo il
+  modello fino al 2025/2026; serve un PDF compilato di esempio per mappare le
+  nuove sezioni;
 - helper AI fase 2 con 2-3 esempi few-shot scelti e approvati;
-- ulteriore rifinitura visiva della coda rapporti per ruolo;
-- rapporto da video con modello dati, validazione e PDF separati.
+- ulteriore rifinitura visiva della coda rapporti per ruolo.
 
 Queste attività richiedono prima decisioni funzionali o contenuti di esempio.
 

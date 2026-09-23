@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatDate } from '../lib/formatters.js';
+import { formatDate, formatVote } from '../lib/formatters.js';
 import { currentSportSeason } from '../../../shared/reportTemplate.js';
 import {
   REFEREE_STATUS_OPTIONS,
@@ -668,21 +668,21 @@ export default function AdminRefereesPage({ currentUser, season: selectedSeason 
                                 key={`${row.id}-${detail.reportId}-${i}`}
                                 type="button"
                                 title={`Osservatore: ${detail.observerName || 'non indicato'} · apri il rapporto`}
-                                aria-label={`Voto ${detail.vote}, osservatore ${detail.observerName || 'non indicato'}`}
+                                aria-label={`Voto ${formatVote(detail.vote)}, osservatore ${detail.observerName || 'non indicato'}`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   navigate(`/reports/${detail.reportId}`);
                                 }}
                               >
-                                {detail.vote}
+                                {formatVote(detail.vote)}
                               </button>
-                            ) : <span key={`${row.id}-${i}`}>{detail.vote}</span>)}
+                            ) : <span key={`${row.id}-${i}`}>{formatVote(detail.vote)}</span>)}
                         </div>
                       </td>
                       {/* Le visionature a video non hanno voto: senza questa colonna
                           un arbitro seguito via video sembrerebbe meno visionato. */}
                       <td style={{ color: 'var(--muted)' }}>{row.videoReportsCount || '-'}</td>
-                      <td style={{ fontWeight: 800, color: 'var(--blue)' }}>{row.averageVote ?? '-'}</td>
+                      <td style={{ fontWeight: 800, color: 'var(--blue)' }}>{formatVote(row.averageVote, '-')}</td>
                     </tr>
                   ))}
                 </tbody>

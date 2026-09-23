@@ -1,14 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  VOTE_BAND_LABELS,
+  CLOSING_FIELDS,
   COMMON_REQUIRED_FIELDS,
-  COMMON_MATCH_CHARACTERISTICS,
-  EVALUATION_SECTIONS,
+  POTENTIAL_OPTIONS,
+  REPORT_TEMPLATE_VERSION,
   VIDEO_JUDGMENT_OPTIONS,
   VIDEO_REQUIRED_FIELDS,
+  bandForVote,
   createEmptyReport,
+  createEmptySection,
   createEmptyVideoReport,
+  matchCharacteristicsForVersion,
   normalizeReportType,
+  normalizeVoteValue,
+  sectionsForVersion,
+  templateVersionOf,
   currentSportSeason,
   deriveSeason
 } from '../../shared/reportTemplate.js';
@@ -59,13 +67,23 @@ function asNullableInteger(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-function normalizeVote(value) {
+// Il voto della v2 vive sulla griglia federale (da 7,2 a 8,8): accettiamo solo
+// quei valori, normalizzati con il punto decimale. I rapporti v1 conservano il
+// voto intero con cui sono stati scritti.
+function normalizeVote(value, version = REPORT_TEMPLATE_VERSION) {
   const clean = asText(value);
   if (!clean) return '';
-  if (!/^\d{1,2}$/.test(clean)) {
-    throw new HttpError(400, 'Il voto deve essere un numero intero di massimo 2 cifre.');
+  if (version === 1) {
+    if (!/^\d{1,2}$/.test(clean)) {
+      throw new HttpError(400, 'Il voto deve essere un numero intero di massimo 2 cifre.');
+    }
+    return clean;
   }
-  return clean;
+  const normalized = normalizeVoteValue(clean);
+  if (!normalized) {
+    throw new HttpError(400, 'Il voto deve essere uno dei valori della griglia, da 7,2 a 8,8.');
+  }
+  return normalized;
 }
 
 function observerNameForUser(user) {
@@ -205,9 +223,14 @@ function stripSensitiveForReferee(report, user) {
   const evaluations = data.evaluations || {};
   const myEvaluation = evaluations[myRole] || {};
 
+  // Dalla struttura 2026/2027 l'arbitro vede fascia e voto del proprio
+  // rapporto; sui rapporti scritti con la struttura precedente il voto resta
+  // riservato, perché allora non era un dato destinato a lui. La potenzialità
+  // non è mai visibile.
+  const hidesVote = templateVersionOf(data) === 1;
   const sanitizedEvaluation = {
     ...myEvaluation,
-    vote: '',
+    ...(hidesVote ? { vote: '', band: '' } : {}),
     potential: { level: '', comment: '' }
   };
 
@@ -216,6 +239,8 @@ function stripSensitiveForReferee(report, user) {
     evaluations: { [myRole]: sanitizedEvaluation }
   };
 
+  // Il voto dell'arbitro arriva dentro la sua valutazione: le colonne di
+  // riepilogo restano fuori, così negli elenchi non compare mai.
   const sanitizedReport = { ...report };
   delete sanitizedReport.firstRefereeVote;
   delete sanitizedReport.secondRefereeVote;
@@ -329,41 +354,59 @@ function normalizeSection(sectionTemplate, input = {}) {
   return normalized;
 }
 
-export function normalizeEvaluation(input = {}) {
+export function normalizeEvaluation(input = {}, version = REPORT_TEMPLATE_VERSION) {
+  const sections = {};
+  for (const section of sectionsForVersion(version)) {
+    sections[section.id] = normalizeSection(section, input.sections?.[section.id]);
+  }
+
+  const potentialLevel = asText(input.potential?.level);
   const normalized = {
-    sections: {},
-    globalJudgement: asText(input.globalJudgement),
+    sections,
     technicalErrors: asText(input.technicalErrors) || 'NO',
-    vote: normalizeVote(input.vote),
+    vote: normalizeVote(input.vote, version),
     potential: {
-      level: '',
+      level: POTENTIAL_OPTIONS.includes(potentialLevel) ? potentialLevel : '',
       comment: asText(input.potential?.comment)
     }
   };
 
-  for (const section of EVALUATION_SECTIONS) {
-    normalized.sections[section.id] = normalizeSection(section, input.sections?.[section.id]);
+  if (version === 1) {
+    normalized.globalJudgement = asText(input.globalJudgement);
+    return normalized;
   }
 
-  const potentialLevel = asText(input.potential?.level);
-  normalized.potential.level = ['Nessuna', 'Bassa', 'Media', 'Alta'].includes(potentialLevel) ? potentialLevel : '';
+  for (const field of CLOSING_FIELDS) {
+    if (field.id === 'technicalErrors') continue;
+    normalized[field.id] = asText(input[field.id]);
+  }
+
+  // La fascia segue il voto quando c'è; senza voto resta quella scelta a mano.
+  const declaredBand = asText(input.band);
+  normalized.band = normalized.vote
+    ? bandForVote(normalized.vote)
+    : (VOTE_BAND_LABELS.includes(declaredBand) ? declaredBand : '');
 
   return normalized;
 }
 
-function normalizeMatchCharacteristics(input = {}) {
-  return normalizeSection(COMMON_MATCH_CHARACTERISTICS, input);
+function normalizeMatchCharacteristics(input, version) {
+  return normalizeSection(matchCharacteristicsForVersion(version), input || {});
 }
 
-export function normalizeReportPayload(input = {}) {
+export function normalizeReportPayload(input = {}, { templateVersion = null } = {}) {
+  // Un rapporto conserva per sempre la struttura con cui è nato: in modifica la
+  // versione arriva dalla riga salvata, non dal client.
+  const version = templateVersion === 1 || templateVersion === 2 ? templateVersion : templateVersionOf(input);
   const empty = createEmptyReport();
   const legacyMatchCharacteristics =
     input.matchCharacteristics ||
     input.evaluations?.first?.sections?.matchCharacteristics ||
     input.evaluations?.second?.sections?.matchCharacteristics ||
-    empty.matchCharacteristics;
+    createEmptySection(matchCharacteristicsForVersion(version));
   const payload = {
     ...empty,
+    templateVersion: version,
     gameId: asNullableInteger(input.gameId),
     observerUserId: asNullableInteger(input.observerUserId),
     observerName: asText(input.observerName),
@@ -378,10 +421,10 @@ export function normalizeReportPayload(input = {}) {
     firstRefereeName: asText(input.firstRefereeName),
     secondRefereeId: asNullableInteger(input.secondRefereeId),
     secondRefereeName: asText(input.secondRefereeName),
-    matchCharacteristics: normalizeMatchCharacteristics(legacyMatchCharacteristics),
+    matchCharacteristics: normalizeMatchCharacteristics(legacyMatchCharacteristics, version),
     evaluations: {
-      first: normalizeEvaluation(input.evaluations?.first),
-      second: normalizeEvaluation(input.evaluations?.second)
+      first: normalizeEvaluation(input.evaluations?.first, version),
+      second: normalizeEvaluation(input.evaluations?.second, version)
     }
   };
 
@@ -419,8 +462,8 @@ export function normalizeVideoReportPayload(input = {}) {
   };
 }
 
-export function normalizePayloadForType(input = {}, reportType = 'full') {
-  return reportType === 'video' ? normalizeVideoReportPayload(input) : normalizeReportPayload(input);
+export function normalizePayloadForType(input = {}, reportType = 'full', options = {}) {
+  return reportType === 'video' ? normalizeVideoReportPayload(input) : normalizeReportPayload(input, options);
 }
 
 export function collectVideoFinalValidationErrors(payload) {
@@ -443,21 +486,29 @@ export function collectValidationErrorsForType(payload, reportType = 'full') {
     : collectFinalValidationErrors(payload);
 }
 
+function missingCommentError(version, label, section) {
+  return version === 1
+    ? `${label}: manca il commento "${section.commentLabel}".`
+    : `${label}: mancano le note di "${section.title}".`;
+}
+
 export function collectFinalValidationErrors(payload) {
   const errors = [];
+  const version = templateVersionOf(payload);
+  const matchTemplate = matchCharacteristicsForVersion(version);
 
   for (const [field, label] of COMMON_REQUIRED_FIELDS) {
     if (!asText(payload[field])) errors.push(`${label} è obbligatorio.`);
   }
 
   const matchData = payload.matchCharacteristics;
-  for (const group of COMMON_MATCH_CHARACTERISTICS.groups) {
+  for (const group of matchTemplate.groups) {
     if (!asText(matchData?.ratings?.[group.id])) {
       errors.push(`Caratteristiche della gara: manca la valutazione "${group.label}".`);
     }
   }
-  if (COMMON_MATCH_CHARACTERISTICS.requiredCommentForFinal && !asText(matchData?.comment)) {
-    errors.push(`Caratteristiche della gara: manca il commento "${COMMON_MATCH_CHARACTERISTICS.commentLabel}".`);
+  if (matchTemplate.requiredCommentForFinal && !asText(matchData?.comment)) {
+    errors.push(missingCommentError(version, 'Caratteristiche della gara', matchTemplate));
   }
 
   for (const role of REPORT_ROLES) {
@@ -469,7 +520,7 @@ export function collectFinalValidationErrors(payload) {
       errors.push(`${label}: seleziona l'arbitro dall'anagrafica.`);
     }
 
-    for (const section of EVALUATION_SECTIONS) {
+    for (const section of sectionsForVersion(version)) {
       const sectionData = evaluation?.sections?.[section.id];
       for (const group of section.groups) {
         if (!asText(sectionData?.ratings?.[group.id])) {
@@ -477,12 +528,22 @@ export function collectFinalValidationErrors(payload) {
         }
       }
       if (section.requiredCommentForFinal && !asText(sectionData?.comment)) {
-        errors.push(`${label}: manca il commento "${section.commentLabel}".`);
+        errors.push(missingCommentError(version, label, section));
       }
     }
 
-    if (!asText(evaluation?.globalJudgement)) {
-      errors.push(`${label}: manca il giudizio globale.`);
+    // Il voto non è obbligatorio: un rapporto può diventare definitivo anche
+    // senza, come prima.
+    if (version === 1) {
+      if (!asText(evaluation?.globalJudgement)) {
+        errors.push(`${label}: manca il giudizio globale.`);
+      }
+    } else {
+      for (const field of CLOSING_FIELDS) {
+        if (field.requiredForFinal && !asText(evaluation?.[field.id])) {
+          errors.push(`${label}: manca "${field.label}".`);
+        }
+      }
     }
   }
 
@@ -851,7 +912,10 @@ export async function updateReport({ id, payload, status = 'draft', user }) {
   // Il tipo si sceglie alla creazione e non cambia più: un rapporto a video non
   // diventa completo (e viceversa) con un salvataggio.
   const type = normalizeReportType(existingReport.reportType);
-  const normalizedPayload = await applyUserReportRules(normalizePayloadForType(payload, type), user);
+  const normalizedPayload = await applyUserReportRules(
+    normalizePayloadForType(payload, type, { templateVersion: templateVersionOf(existingReport.data) }),
+    user
+  );
   await assertValidCompetition(normalizedPayload.competition);
   // Il collegamento alla gara non si cambia in modifica: resta quello esistente.
   normalizedPayload.gameId = existingReport.gameId || normalizedPayload.gameId;

@@ -1,6 +1,7 @@
 import express from 'express';
 import { asyncHandler, HttpError } from '../utils/httpError.js';
 import { generateJudgment, reviseJudgment } from '../services/anthropicService.js';
+import { resolveTarget } from '../services/judgmentPromptBuilder.js';
 
 export const aiRouter = express.Router();
 
@@ -19,7 +20,10 @@ aiRouter.post(
       throw new HttpError(413, 'reportData troppo grande.');
     }
 
-    const judgment = await generateJudgment(reportData, { userId: req.user?.id });
+    const judgment = await generateJudgment(reportData, {
+      userId: req.user?.id,
+      target: resolveTarget(req.body?.target)
+    });
     res.json({ judgment });
   })
 );
@@ -42,7 +46,10 @@ aiRouter.post(
       throw new HttpError(413, 'Feedback troppo lungo.');
     }
 
-    const judgment = await reviseJudgment(currentJudgment, observerFeedback, { userId: req.user?.id });
+    const judgment = await reviseJudgment(currentJudgment, observerFeedback, {
+      userId: req.user?.id,
+      target: resolveTarget(req.body?.target)
+    });
     res.json({ judgment });
   })
 );

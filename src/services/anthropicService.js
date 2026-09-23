@@ -69,12 +69,12 @@ async function callAnthropic({ system, messages, temperature, userId }) {
   return text;
 }
 
-export async function generateJudgment(reportData, { userId } = {}) {
-  const { system, messages } = buildGenerationMessages(reportData);
+export async function generateJudgment(reportData, { userId, target = 'global' } = {}) {
+  const { system, messages } = buildGenerationMessages(reportData, target);
   return callAnthropic({ system, messages, temperature: 0.4, userId });
 }
 
-export async function reviseJudgment(currentJudgment, observerFeedback, { userId } = {}) {
-  const { system, messages } = buildRevisionMessages(currentJudgment, observerFeedback);
+export async function reviseJudgment(currentJudgment, observerFeedback, { userId, target = 'global' } = {}) {
+  const { system, messages } = buildRevisionMessages(currentJudgment, observerFeedback, target);
   return callAnthropic({ system, messages, temperature: 0.3, userId });
 }

@@ -5,11 +5,15 @@ import { config } from '../config.js';
 import { dbGet, dbRun } from '../database/db.js';
 import { putObject } from './storageService.js';
 import {
-  COMMON_MATCH_CHARACTERISTICS,
-  EVALUATION_SECTIONS,
+  CLOSING_FIELDS,
+  bandForVote,
   deriveSeason,
+  formatVote,
   getRefereeLabel,
-  getRefereeNumber
+  getRefereeNumber,
+  matchCharacteristicsForPayload,
+  sectionsForPayload,
+  templateVersionOf
 } from '../../shared/reportTemplate.js';
 
 function safeSeasonSegment(season) {
@@ -39,6 +43,25 @@ const COLORS = {
   standard: '#6f7c85',
   quality: '#15745b',
   neutral: '#eef4f2'
+};
+
+// Scala a cinque livelli: gli estremi portano il colore pieno, i due gradini
+// intermedi la stessa tinta smorzata, lo standard resta neutro. La difficoltà
+// della gara usa una rampa monocromatica, dal più chiaro al più scuro.
+const RATING_STYLES = {
+  'Migliorabile': { fill: '#f0b84f', text: '#3f2b09' },
+  'Sotto lo standard': { fill: '#fbe9c8', text: '#74501d', stroke: '#ead7ad' },
+  'Standard': { fill: '#dce4e7', text: '#2a3e47', stroke: '#c0ccd1' },
+  'Sopra lo standard': { fill: '#d3ebdb', text: '#186b47', stroke: '#a8d5bc' },
+  'Di qualità': { fill: '#15745b', text: '#ffffff' },
+  'Eccellente': { fill: '#15745b', text: '#ffffff' },
+  'Facile': { fill: '#f1f4f5', text: '#45555c', stroke: '#d8dfe2' },
+  'Di normale difficoltà': { fill: '#d6dee1', text: '#33434a', stroke: '#c0ccd1' },
+  'Normale': { fill: '#d6dee1', text: '#33434a', stroke: '#c0ccd1' },
+  'Impegnativa': { fill: '#a9b6bc', text: '#17262c', stroke: '#93a3ab' },
+  'Difficile': { fill: '#55636b', text: '#ffffff' },
+  'N.V.': { fill: '#ffffff', text: COLORS.standard, stroke: COLORS.standard },
+  'N/V': { fill: '#ffffff', text: COLORS.standard, stroke: COLORS.standard }
 };
 
 const FONT_FILES = {
@@ -153,31 +176,33 @@ function ensureSpace(doc, height = 90) {
   }
 }
 
-function ratingStyle(value, { neutral = false } = {}) {
-  if (neutral) return { fill: COLORS.neutral, text: '#33434a', stroke: '#cbd8d2' };
-
-  const styles = {
-    Migliorabile: { fill: COLORS.warning, text: '#3f2b09' },
-    Difficile: { fill: COLORS.warning, text: '#3f2b09' },
-    Standard: { fill: COLORS.standard, text: '#ffffff' },
-    Normale: { fill: COLORS.standard, text: '#ffffff' },
-    Impegnativa: { fill: COLORS.standard, text: '#ffffff' },
-    'Di qualità': { fill: COLORS.quality, text: '#ffffff' },
-    Eccellente: { fill: COLORS.quality, text: '#ffffff' },
-    'N/V': { fill: '#ffffff', text: COLORS.standard, stroke: COLORS.standard }
-  };
-  return styles[value] || { fill: COLORS.neutral, text: COLORS.muted, stroke: COLORS.line };
+function ratingStyle(value) {
+  return RATING_STYLES[value] || { fill: COLORS.neutral, text: COLORS.muted, stroke: COLORS.line };
 }
 
-function addRatingChip(doc, value, x, y, width = 74, options = {}) {
-  const style = ratingStyle(value, options);
+const CHIP_FONT_SIZE = 6.7;
+
+// Il chip si dimensiona sull'opzione più lunga del gruppo, così misura e
+// disegno cadono sempre sulla stessa larghezza e le etichette restano su una
+// riga anche con "SOPRA LO STANDARD".
+function chipWidthForGroup(doc, group) {
+  setFont(doc, 'semibold', CHIP_FONT_SIZE);
+  const widest = (group.options || []).reduce(
+    (max, option) => Math.max(max, doc.widthOfString(String(option).toUpperCase())),
+    0
+  );
+  return Math.max(62, Math.ceil(widest) + 14);
+}
+
+function addRatingChip(doc, value, x, y, width = 74) {
+  const style = ratingStyle(value);
   doc.save();
   if (style.stroke) {
     doc.roundedRect(x, y, width, 16, 8).fillAndStroke(style.fill, style.stroke);
   } else {
     doc.roundedRect(x, y, width, 16, 8).fill(style.fill);
   }
-  setFont(doc, 'semibold', 6.7, style.text).text(textOrDash(value).toUpperCase(), x + 5, y + 4.2, {
+  setFont(doc, 'semibold', CHIP_FONT_SIZE, style.text).text(textOrDash(value).toUpperCase(), x + 5, y + 4.2, {
     width: width - 10,
     align: 'center',
     lineBreak: false
@@ -253,8 +278,8 @@ function measureRatingGroups(doc, section, width) {
       lastCategory = group.category;
     }
 
+    const chipWidth = chipWidthForGroup(doc, group);
     setFont(doc, 'medium', 7.5, COLORS.ink);
-    const chipWidth = group.options?.includes('Di qualità') ? 78 : 68;
     const labelHeight = doc.heightOfString(group.label, {
       width: width - chipWidth - 26,
       lineGap: 0.2
@@ -264,7 +289,7 @@ function measureRatingGroups(doc, section, width) {
   return total;
 }
 
-function addRatingGroups(doc, section, sectionData, x, y, width, options = {}) {
+function addRatingGroups(doc, section, sectionData, x, y, width) {
   let cursorY = y;
   let lastCategory = null;
   for (const group of section.groups) {
@@ -290,13 +315,13 @@ function addRatingGroups(doc, section, sectionData, x, y, width, options = {}) {
     }
 
     const value = sectionData?.ratings?.[group.id];
-    const chipWidth = value === 'Di qualità' ? 78 : 68;
+    const chipWidth = chipWidthForGroup(doc, group);
     const label = section.description && section.groups.length === 1 ? section.description : group.label;
     setFont(doc, 'medium', 7.5, COLORS.ink).text(label, x, cursorY + 3, {
       width: width - chipWidth - 26,
       lineGap: 0.2
     });
-    addRatingChip(doc, value, x + width - chipWidth, cursorY, chipWidth, options);
+    addRatingChip(doc, value, x + width - chipWidth, cursorY, chipWidth);
     cursorY += Math.max(18, doc.heightOfString(label, { width: width - chipWidth - 26 }) + 4);
   }
   return cursorY;
@@ -310,7 +335,7 @@ function measureCommentBox(doc, label, comment, width, { important = false } = {
     width: width - padding * 2,
     lineGap: important ? 2 : 1.4
   });
-  return Math.max(important ? 82 : 42, padding * 2 + titleHeight + textHeight);
+  return Math.max(important ? 64 : 42, padding * 2 + titleHeight + textHeight);
 }
 
 function addCommentBox(doc, label, comment, x, y, width, { important = false } = {}) {
@@ -344,7 +369,7 @@ function measureSection(doc, section, sectionData, width) {
   }
   height += measureRatingGroups(doc, section, width - 22);
   if (section.commentLabel) {
-    height += 8 + measureCommentBox(doc, 'Commento:', sectionData?.comment, width - 22);
+    height += 8 + measureCommentBox(doc, section.commentLabel, sectionData?.comment, width - 22);
   }
   return height + 12;
 }
@@ -353,7 +378,6 @@ function addSection(doc, section, sectionData) {
   const x = PAGE.margin;
   const width = doc.page.width - PAGE.margin * 2;
   const height = measureSection(doc, section, sectionData, width);
-  const isCommonMatch = section.id === COMMON_MATCH_CHARACTERISTICS.id;
 
   ensureSpace(doc, Math.min(height, doc.page.height - PAGE.margin * 2));
   const y = doc.y;
@@ -371,18 +395,28 @@ function addSection(doc, section, sectionData) {
     cursorY += doc.heightOfString(section.description, { width: width - 22 }) + 7;
   }
 
-  cursorY = addRatingGroups(doc, section, sectionData, x + 11, cursorY, width - 22, { neutral: isCommonMatch });
+  cursorY = addRatingGroups(doc, section, sectionData, x + 11, cursorY, width - 22);
 
   if (section.commentLabel) {
     cursorY += 7;
-    cursorY += addCommentBox(doc, 'Commento:', sectionData?.comment, x + 11, cursorY, width - 22);
+    cursorY += addCommentBox(doc, `${section.commentLabel}:`, sectionData?.comment, x + 11, cursorY, width - 22);
   }
 
   doc.y = y + height + 9;
 }
 
 function addCommonMatchSection(doc, report) {
-  addSection(doc, COMMON_MATCH_CHARACTERISTICS, report.data.matchCharacteristics);
+  addSection(doc, matchCharacteristicsForPayload(report.data), report.data.matchCharacteristics);
+}
+
+function addClosingTitle(doc, title) {
+  const x = PAGE.margin;
+  const width = doc.page.width - PAGE.margin * 2;
+  if (doc.y >= 90 || doc.__closingTitleDone) return;
+  doc.__closingTitleDone = true;
+  setFont(doc, 'semibold', 7.2, COLORS.teal).text('SINTESI FINALE', x, doc.y, { width });
+  setFont(doc, 'extrabold', 21, COLORS.blue).text(title, x, doc.y + 10, { width });
+  doc.y += 46;
 }
 
 function addGlobalJudgement(doc, evaluation) {
@@ -390,40 +424,152 @@ function addGlobalJudgement(doc, evaluation) {
   const width = doc.page.width - PAGE.margin * 2;
   const height = measureCommentBox(doc, 'GIUDIZIO GLOBALE', evaluation?.globalJudgement, width, { important: true });
   ensureSpace(doc, height + 18);
-
-  if (doc.y < 90) {
-    setFont(doc, 'semibold', 7.2, COLORS.teal).text('SINTESI FINALE', x, doc.y, { width });
-    setFont(doc, 'extrabold', 21, COLORS.blue).text('Giudizio globale', x, doc.y + 10, { width });
-    doc.y += 46;
-  }
+  addClosingTitle(doc, 'Giudizio globale');
 
   addCommentBox(doc, 'GIUDIZIO GLOBALE', evaluation?.globalJudgement, x, doc.y, width, { important: true });
   doc.y += height + 10;
 }
 
-function addTechnicalErrors(doc, evaluation) {
+function addLabelledRow(doc, label, value) {
   const x = PAGE.margin;
   const width = doc.page.width - PAGE.margin * 2;
-  const value = textOrDash(evaluation?.technicalErrors || 'NO');
+  const text = textOrDash(value);
   const padding = 12;
   const labelWidth = 175;
   const textWidth = width - labelWidth - padding * 3;
   setFont(doc, 'medium', 8.4, COLORS.ink);
-  const textHeight = doc.heightOfString(value, { width: textWidth, lineGap: 1.2 });
+  const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 1.2 });
   const height = Math.max(42, padding * 2 + textHeight);
   ensureSpace(doc, height + 10);
   const y = doc.y;
   doc.save();
   doc.roundedRect(x, y, width, height, 10).fillAndStroke('#ffffff', COLORS.line);
-  setFont(doc, 'semibold', 7.5, COLORS.teal).text('EVENTUALI ERRORI TECNICI', x + padding, y + padding, {
+  setFont(doc, 'semibold', 7.5, COLORS.teal).text(label.toUpperCase(), x + padding, y + padding, {
     width: labelWidth
   });
-  setFont(doc, 'medium', 8.4, COLORS.ink).text(value, x + padding * 2 + labelWidth, y + padding, {
+  setFont(doc, 'medium', 8.4, COLORS.ink).text(text, x + padding * 2 + labelWidth, y + padding, {
     width: textWidth,
     lineGap: 1.2
   });
   doc.restore();
   doc.y = y + height + 8;
+}
+
+function addTechnicalErrors(doc, evaluation) {
+  addLabelledRow(doc, 'Eventuali errori tecnici', evaluation?.technicalErrors || 'NO');
+}
+
+// Note aggiuntive ed errori tecnici sono due righe brevi: stanno affiancate,
+// come nel resto delle schede.
+function addLabelledPair(doc, left, right) {
+  const x = PAGE.margin;
+  const width = doc.page.width - PAGE.margin * 2;
+  const gap = 9;
+  const rightWidth = 232;
+  const leftWidth = width - rightWidth - gap;
+  const padding = 12;
+  const boxes = [
+    { ...left, x, width: leftWidth, labelWidth: 96 },
+    { ...right, x: x + leftWidth + gap, width: rightWidth, labelWidth: 92 }
+  ];
+
+  setFont(doc, 'medium', 8.4, COLORS.ink);
+  const height = boxes.reduce((max, box) => {
+    const textWidth = box.width - box.labelWidth - padding * 3;
+    return Math.max(max, padding * 2 + doc.heightOfString(textOrDash(box.value), { width: textWidth, lineGap: 1.2 }));
+  }, 42);
+
+  ensureSpace(doc, height + 10);
+  const y = doc.y;
+  doc.save();
+  for (const box of boxes) {
+    const textWidth = box.width - box.labelWidth - padding * 3;
+    doc.roundedRect(box.x, y, box.width, height, 10).fillAndStroke(COLORS.card, COLORS.line);
+    setFont(doc, 'semibold', 7.5, COLORS.teal).text(box.label.toUpperCase(), box.x + padding, y + padding, {
+      width: box.labelWidth
+    });
+    setFont(doc, 'medium', 8.4, COLORS.ink).text(textOrDash(box.value), box.x + padding * 2 + box.labelWidth, y + padding, {
+      width: textWidth,
+      lineGap: 1.2
+    });
+  }
+  doc.restore();
+  doc.y = y + height + 8;
+}
+
+// Chiusura della v2: fascia a sinistra, voto a destra. La potenzialità resta
+// fuori dal PDF anche adesso che il voto è visibile all'arbitro.
+function addBandAndVote(doc, evaluation) {
+  const x = PAGE.margin;
+  const width = doc.page.width - PAGE.margin * 2;
+  const height = 56;
+  ensureSpace(doc, height + 12);
+  const y = doc.y;
+  const voteWidth = 108;
+  const bandWidth = width - voteWidth - 9;
+  const band = evaluation?.band || bandForVote(evaluation?.vote) || '';
+  const style = ratingStyle(band);
+
+  doc.save();
+  doc.roundedRect(x, y, bandWidth, height, 12).fillAndStroke(COLORS.card, COLORS.line);
+  setFont(doc, 'semibold', 7.5, COLORS.teal).text('FASCIA', x + 16, y + 13, { width: bandWidth - 32 });
+
+  if (band) {
+    setFont(doc, 'bold', 10.5);
+    const chipWidth = Math.ceil(doc.widthOfString(band.toUpperCase())) + 34;
+    if (style.stroke) {
+      doc.roundedRect(x + 16, y + 26, chipWidth, 20, 10).fillAndStroke(style.fill, style.stroke);
+    } else {
+      doc.roundedRect(x + 16, y + 26, chipWidth, 20, 10).fill(style.fill);
+    }
+    setFont(doc, 'bold', 10.5, style.text).text(band.toUpperCase(), x + 16, y + 31.5, {
+      width: chipWidth,
+      align: 'center',
+      lineBreak: false
+    });
+  } else {
+    setFont(doc, 'medium', 10, COLORS.muted).text('-', x + 16, y + 29);
+  }
+
+  doc.roundedRect(x + bandWidth + 9, y, voteWidth, height, 12).fill(COLORS.blue);
+  setFont(doc, 'extrabold', 21, '#ffffff').text(textOrDash(formatVote(evaluation?.vote)), x + bandWidth + 9, y + 12, {
+    width: voteWidth,
+    align: 'center'
+  });
+  setFont(doc, 'semibold', 7, '#9fc0de').text('VOTO', x + bandWidth + 9, y + 37, {
+    width: voteWidth,
+    align: 'center',
+    characterSpacing: 0.8
+  });
+  doc.restore();
+
+  doc.y = y + height + 8;
+}
+
+function addClosingSection(doc, evaluation, version) {
+  if (version === 1) {
+    addGlobalJudgement(doc, evaluation);
+    addTechnicalErrors(doc, evaluation);
+    return;
+  }
+
+  const x = PAGE.margin;
+  const width = doc.page.width - PAGE.margin * 2;
+  for (const field of CLOSING_FIELDS) {
+    if (field.id === 'technicalErrors' || field.id === 'additionalNotes') continue;
+    const height = measureCommentBox(doc, field.label, evaluation?.[field.id], width, { important: true });
+    ensureSpace(doc, height + 18);
+    addClosingTitle(doc, 'Giudizio finale');
+    addCommentBox(doc, field.label.toUpperCase(), evaluation?.[field.id], x, doc.y, width, { important: true });
+    doc.y += height + 9;
+  }
+
+  addLabelledPair(
+    doc,
+    { label: 'Note aggiuntive', value: evaluation?.additionalNotes },
+    { label: 'Errori tecnici', value: evaluation?.technicalErrors || 'NO' }
+  );
+  addBandAndVote(doc, evaluation);
 }
 
 function addFooter(doc, report, role) {
@@ -475,12 +621,11 @@ export function buildReportPdf(report, role) {
     addHeader(doc, report, role);
     addCommonMatchSection(doc, report);
 
-    for (const section of EVALUATION_SECTIONS) {
+    for (const section of sectionsForPayload(report.data)) {
       addSection(doc, section, evaluation?.sections?.[section.id]);
     }
 
-    addGlobalJudgement(doc, evaluation);
-    addTechnicalErrors(doc, evaluation);
+    addClosingSection(doc, evaluation, templateVersionOf(report.data));
 
     // La potenzialita resta deliberatamente fuori dall'export PDF.
     addFooter(doc, report, role);
