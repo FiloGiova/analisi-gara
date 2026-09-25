@@ -48,6 +48,7 @@ export async function initializeDatabase() {
 
 async function runBackfills() {
   await migrateFederationPdfSources();
+  await migrateFipAnalyticsSources();
   await ensureRefereeStatusColumns();
   await ensureReportTypeColumns();
   await seedCompetitions();
@@ -91,6 +92,30 @@ async function migrateFederationPdfSources() {
       [constraint.table, constraint.name]
     );
     if (row?.definition?.includes('federation_pdf') || row?.definition?.includes('pdf_report_import')) continue;
+    await getPool().query(`ALTER TABLE ${constraint.table} DROP CONSTRAINT IF EXISTS ${constraint.name}`);
+    await getPool().query(`ALTER TABLE ${constraint.table} ADD CONSTRAINT ${constraint.name} CHECK (${constraint.expression})`);
+  }
+}
+
+// FIP Analytics è arrivato dopo: stesso motivo della migrazione precedente,
+// i CHECK delle installazioni esistenti vanno allargati una volta sola. Va
+// eseguita dopo migrateFederationPdfSources, che riscrive gli stessi vincoli.
+async function migrateFipAnalyticsSources() {
+  const origins = "'fip_public', 'fip_analytics', 'xlsx', 'federation_pdf', 'manual'";
+  const constraints = [
+    { table: 'competition_sources', name: 'competition_sources_source_type_check', expression: "source_type IN ('fip_public', 'fip_analytics')" },
+    { table: 'games', name: 'games_external_source_check', expression: "external_source IN ('fip_public', 'fip_analytics', 'xlsx', 'manual')" },
+    { table: 'game_officials', name: 'game_officials_source_check', expression: `source IN (${origins})` },
+    { table: 'game_changes', name: 'game_changes_source_check', expression: `source IN (${origins})` }
+  ];
+  for (const constraint of constraints) {
+    const row = await dbGet(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = ?::regclass AND conname = ?`,
+      [constraint.table, constraint.name]
+    );
+    if (row?.definition?.includes('fip_analytics')) continue;
     await getPool().query(`ALTER TABLE ${constraint.table} DROP CONSTRAINT IF EXISTS ${constraint.name}`);
     await getPool().query(`ALTER TABLE ${constraint.table} ADD CONSTRAINT ${constraint.name} CHECK (${constraint.expression})`);
   }

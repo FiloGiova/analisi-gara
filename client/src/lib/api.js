@@ -349,6 +349,8 @@ export const api = {
   deleteSource: (id) => request(`/api/sources/${id}`, { method: 'DELETE' }),
   syncSource: (id) => request(`/api/sources/${id}/sync`, { method: 'POST' }),
   listSourceRuns: (id) => request(`/api/sources/${id}/runs`),
+  listAnalyticsCampionati: ({ season }) =>
+    request(`/api/sources/analytics/campionati?${new URLSearchParams({ season })}`),
   generateJudgment: (reportData, target = 'global') =>
     request('/api/ai/generate-judgment', {
       method: 'POST',

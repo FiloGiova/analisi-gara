@@ -233,6 +233,42 @@ errori generano anche una notifica email.
 La sincronizzazione FIP aggiorna gare e arbitri, ma non modifica mai gli
 osservatori interni né i valori bloccati manualmente.
 
+## FIP Analytics: designazioni in anticipo
+
+Le sorgenti **FIP Analytics** leggono calendario e designazioni arbitrali da
+[analytics.fip.it](https://analytics.fip.it) con l'account di un designatore,
+appena il designatore le carica (anche quelle ancora *temporanee*, mostrate con
+il badge «Temporanea»). Il sito FIP pubblico resta la fonte di risultato e
+stato delle gare.
+
+```env
+FIP_ANALYTICS_USERNAME=utente@example.com
+FIP_ANALYTICS_PASSWORD=
+# Facoltativo: orari del giro automatico (default 11:00,21:00)
+FIP_ANALYTICS_SYNC_TIMES=11:00,21:00
+```
+
+- Le credenziali stanno solo nelle variabili d'ambiente (in locale `.env`, in
+  produzione Render → Environment); mai nel database o nei log. Se la password
+  dell'account cambia, va aggiornata qui: la pagina Sorgenti e l'email di
+  avviso lo segnalano.
+- Da **Admin → Sorgenti gare → Nuova sorgente → FIP Analytics** si sceglie il
+  campionato FIP (Serie C = `C1`, DR1 = `D`): viene creata una sorgente per
+  ogni girone. Ripetere l'operazione più avanti aggiunge solo le fasi nuove.
+- Il giro automatico parte alle 11:00 e alle 21:00 (serve anche
+  `ENABLE_SCHEDULED_SYNC=true`); il sito pubblico mantiene il suo orario.
+- Una gara sincronizzata da FIP Analytics passa a quella sorgente: da lì in poi
+  il sito pubblico aggiorna solo punteggio e stato. Disattivando la sorgente
+  FIP Analytics il sito pubblico torna ad aggiornare tutto.
+- Gli arbitri si riconoscono dalla tessera; senza tessera in anagrafica si
+  usano alias e nome come per il sito pubblico.
+- L'account è da designatore e potrebbe modificare le designazioni: il codice
+  consente solo login e lettura delle gare, e dalle risposte tiene solo nome,
+  tessera, ruolo e stato degli arbitri.
+- Se la piattaforma iniziasse a chiedere il secondo fattore, la
+  sincronizzazione si ferma con un errore esplicito: disattivare le sorgenti
+  FIP Analytics finché non è risolto.
+
 ## Importazione rapporti PDF federali
 
 Admin e formatori possono caricare fino a 20 PDF digitali dalla pagina

@@ -41,6 +41,13 @@ services:
         value: "13:15"
       - key: SCHEDULED_SYNC_TIMEZONE
         value: Europe/Rome
+      # FIP Analytics: credenziali dell'account designatore, da impostare a mano.
+      - key: FIP_ANALYTICS_USERNAME
+        sync: false
+      - key: FIP_ANALYTICS_PASSWORD
+        sync: false
+      - key: FIP_ANALYTICS_SYNC_TIMES
+        value: "11:00,21:00"
       - key: DATABASE_URL
         sync: false
       - key: SUPABASE_URL

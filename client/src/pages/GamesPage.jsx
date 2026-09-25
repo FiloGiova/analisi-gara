@@ -5,6 +5,7 @@ import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
+import OfficialName from '../components/OfficialName.jsx';
 import { api, ApiError, downloadGamesExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
@@ -480,8 +481,8 @@ export default function GamesPage({ currentUser, season }) {
                         <span style={{ color: 'var(--muted)', fontWeight: 400 }}> ({game.scoreHome}-{game.scoreAway})</span>
                       ) : null}
                     </td>
-                    <td>{officialLabel(game.officials.referee1)}</td>
-                    <td>{officialLabel(game.officials.referee2)}</td>
+                    <td><OfficialName official={game.officials.referee1} /></td>
+                    <td><OfficialName official={game.officials.referee2} /></td>
                     <td style={{ fontWeight: game.officials.observer ? 600 : 400, color: game.officials.observer ? 'inherit' : 'var(--muted)' }}>
                       {officialLabel(game.officials.observer)}
                     </td>

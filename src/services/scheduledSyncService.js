@@ -1,9 +1,33 @@
 import { config } from '../config.js';
 import { dbGet, dbRun } from '../database/db.js';
-import { listSources, runFipSync } from './syncService.js';
+import { isFipAnalyticsConfigured, listSources, runSourceSync } from './syncService.js';
 import { sendOperationalEmail } from './emailService.js';
 
-const JOB_NAME = 'fip_daily_sync';
+// Due giri automatici indipendenti, ognuno con le proprie sorgenti:
+// - sito FIP pubblico una volta al giorno (risultati e stato delle gare);
+// - FIP Analytics negli orari configurati (calendario e designazioni), di
+//   default alle 11:00 e alle 21:00.
+// La chiave di esecuzione salvata in scheduled_jobs impedisce di ripetere lo
+// stesso giro anche con più riavvii o più processi.
+const JOBS = {
+  fip: {
+    name: 'fip_daily_sync',
+    sourceType: 'fip_public',
+    label: 'Sync FIP automatico',
+    times: () => [config.scheduledSync.time],
+    runKey: (date) => date,
+    enabled: () => config.scheduledSync.enabled
+  },
+  analytics: {
+    name: 'fip_analytics_sync',
+    sourceType: 'fip_analytics',
+    label: 'Sync FIP Analytics automatico',
+    times: () => config.fipAnalytics.syncTimes,
+    runKey: (date, slot) => `${date} ${slot}`,
+    enabled: () => config.scheduledSync.enabled && isFipAnalyticsConfigured()
+  }
+};
+
 let startTimer = null;
 let pollTimer = null;
 
@@ -33,13 +57,16 @@ function parseSummary(value) {
   }
 }
 
-function publicJobStatus(row) {
+function jobStatus(job, row) {
+  const lastRunKey = row?.last_run_key || null;
   return {
-    enabled: config.scheduledSync.enabled,
-    time: config.scheduledSync.time,
+    enabled: job.enabled(),
+    time: job.times()[0],
+    times: job.times(),
     timezone: config.scheduledSync.timezone,
     alertsEnabled: Boolean(config.smtp && config.scheduledSync.alertEmail),
-    lastRunDate: row?.last_run_key || null,
+    lastRunDate: lastRunKey ? lastRunKey.slice(0, 10) : null,
+    lastRunKey,
     status: row?.status || 'idle',
     startedAt: row?.started_at || null,
     finishedAt: row?.finished_at || null,
@@ -47,11 +74,19 @@ function publicJobStatus(row) {
   };
 }
 
-export async function getScheduledFipSyncStatus() {
-  return publicJobStatus(await dbGet('SELECT * FROM scheduled_jobs WHERE job_name = ?', [JOB_NAME]));
+async function getJobStatus(job) {
+  return jobStatus(job, await dbGet('SELECT * FROM scheduled_jobs WHERE job_name = ?', [job.name]));
 }
 
-async function claimRun(runDate) {
+export function getScheduledFipSyncStatus() {
+  return getJobStatus(JOBS.fip);
+}
+
+export async function getScheduledAnalyticsSyncStatus() {
+  return { ...(await getJobStatus(JOBS.analytics)), configured: isFipAnalyticsConfigured() };
+}
+
+async function claimRun(jobName, runKey) {
   const staleBefore = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
   const result = await dbRun(
     `INSERT INTO scheduled_jobs (job_name, last_run_key, status, started_at, finished_at, summary_json, updated_at)
@@ -66,7 +101,7 @@ async function claimRun(runDate) {
      WHERE scheduled_jobs.last_run_key IS DISTINCT FROM excluded.last_run_key
         OR (scheduled_jobs.status = 'running' AND scheduled_jobs.started_at < ?)
      RETURNING job_name`,
-    [JOB_NAME, runDate, staleBefore]
+    [jobName, runKey, staleBefore]
   );
   return result.rowCount > 0;
 }
@@ -75,31 +110,40 @@ function sleep(ms) {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
-export async function runScheduledFipSync({
-  now = new Date(),
-  fetchImpl = fetch,
-  force = false,
-  sourceDelayMs = config.scheduledSync.sourceDelayMs
-} = {}) {
+// L'ultimo orario già passato oggi: se il processo era spento alle 11:00 e
+// riparte alle 15:00, il giro delle 11:00 viene recuperato subito.
+function dueSlot(times, localTime) {
+  return times.filter((time) => time <= localTime).pop() || null;
+}
+
+async function runScheduledJob(
+  job,
+  { now = new Date(), fetchImpl = fetch, force = false, sourceDelayMs = config.scheduledSync.sourceDelayMs, credentials = null } = {}
+) {
   const local = zonedDateTime(now);
-  if (!force && local.time < config.scheduledSync.time) {
+  const times = job.times();
+  const slot = dueSlot(times, local.time);
+  if (!force && !slot) {
     return { executed: false, reason: 'before-scheduled-time', runDate: local.date };
   }
-  if (!(await claimRun(local.date))) {
-    return { executed: false, reason: 'already-run', runDate: local.date };
+  const runKey = job.runKey(local.date, slot || times[0]);
+  if (!(await claimRun(job.name, runKey))) {
+    return { executed: false, reason: 'already-run', runDate: local.date, runKey };
   }
 
   const summary = { sources: [], totals: { sources: 0, success: 0, partial: 0, error: 0 } };
   let status = 'success';
 
   try {
-    const sources = (await listSources()).filter((source) => source.active);
+    const sources = (await listSources()).filter((source) => source.active && source.sourceType === job.sourceType);
     summary.totals.sources = sources.length;
+    // Più gironi dello stesso campionato FIP Analytics: una sola richiesta.
+    const cache = new Map();
 
     for (const [index, source] of sources.entries()) {
       if (index > 0) await sleep(sourceDelayMs);
       try {
-        const result = await runFipSync(source.id, { fetchImpl });
+        const result = await runSourceSync(source.id, { fetchImpl, cache, ...(credentials ? { credentials } : {}) });
         summary.sources.push({
           sourceId: source.id,
           sourceName: source.name,
@@ -132,7 +176,7 @@ export async function runScheduledFipSync({
     `UPDATE scheduled_jobs
         SET status = ?, finished_at = iso_now(), summary_json = ?, updated_at = iso_now()
       WHERE job_name = ?`,
-    [status, JSON.stringify(summary), JOB_NAME]
+    [status, JSON.stringify(summary), job.name]
   );
 
   if (status !== 'success' && config.scheduledSync.alertEmail) {
@@ -143,36 +187,48 @@ export async function runScheduledFipSync({
         .join('\n');
       await sendOperationalEmail({
         to: config.scheduledSync.alertEmail,
-        subject: `[FischioLab] Sync FIP automatico: ${status}`,
+        subject: `[FischioLab] ${job.label}: ${status}`,
         text: [
-          `Esito sincronizzazione automatica del ${local.date}: ${status}.`,
+          `Esito sincronizzazione automatica (${runKey}): ${status}.`,
           '',
           failures || summary.fatalError || 'Controllare la pagina Sorgenti gare.'
         ].join('\n')
       });
     } catch (error) {
-      console.error('Invio avviso sync FIP fallito:', error);
+      console.error(`Invio avviso ${job.label} fallito:`, error);
     }
   }
 
   if (status === 'error') {
-    throw new Error(`Sincronizzazione FIP automatica fallita: ${summary.fatalError}`);
+    throw new Error(`${job.label} fallito: ${summary.fatalError}`);
   }
 
-  return { executed: true, runDate: local.date, status, summary };
+  return { executed: true, runDate: local.date, runKey, status, summary };
+}
+
+export function runScheduledFipSync(options = {}) {
+  return runScheduledJob(JOBS.fip, options);
+}
+
+export function runScheduledAnalyticsSync(options = {}) {
+  return runScheduledJob(JOBS.analytics, options);
 }
 
 async function tickScheduledSync() {
-  try {
-    const result = await runScheduledFipSync();
-    if (result.executed) {
-      console.log(
-        `Sincronizzazione FIP automatica ${result.status}: ` +
-          `${result.summary.totals.success} riuscite, ${result.summary.totals.partial} con avvisi, ${result.summary.totals.error} errori.`
-      );
+  // In sequenza: i due giri non si sovrappongono sulle stesse gare.
+  for (const job of Object.values(JOBS)) {
+    if (!job.enabled()) continue;
+    try {
+      const result = await runScheduledJob(job);
+      if (result.executed) {
+        console.log(
+          `${job.label} ${result.status} (${result.runKey}): ` +
+            `${result.summary.totals.success} riuscite, ${result.summary.totals.partial} con avvisi, ${result.summary.totals.error} errori.`
+        );
+      }
+    } catch (error) {
+      console.error(error);
     }
-  } catch (error) {
-    console.error(error);
   }
 }
 
@@ -180,6 +236,11 @@ export function startScheduledFipSync() {
   if (!config.scheduledSync.enabled || startTimer || pollTimer) return;
   console.log(
     `Sync FIP automatico attivo alle ${config.scheduledSync.time} (${config.scheduledSync.timezone}).`
+  );
+  console.log(
+    isFipAnalyticsConfigured()
+      ? `Sync FIP Analytics automatico attivo alle ${config.fipAnalytics.syncTimes.join(' e ')}.`
+      : 'Sync FIP Analytics automatico non attivo: credenziali FIP_ANALYTICS_* assenti.'
   );
   startTimer = setTimeout(() => {
     startTimer = null;

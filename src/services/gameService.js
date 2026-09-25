@@ -8,7 +8,7 @@ import {
 } from './observerAvailabilityService.js';
 
 export const OFFICIAL_ROLES = ['referee1', 'referee2', 'referee3', 'observer'];
-export const GAME_SOURCES = ['fip_public', 'xlsx', 'federation_pdf', 'manual'];
+export const GAME_SOURCES = ['fip_public', 'fip_analytics', 'xlsx', 'federation_pdf', 'manual'];
 export const GAME_STATUSES = ['scheduled', 'played', 'postponed', 'cancelled'];
 
 function asText(value) {
@@ -447,7 +447,7 @@ export async function setOfficial(gameId, { role, refereeId = null, userId = nul
   }
 
   if (!cleanRefereeId && !cleanUserId && !asText(externalName)) {
-    return removeOfficial(gameId, role, { user, syncRunId, reason });
+    return removeOfficial(gameId, role, { user, syncRunId, reason, source });
   }
 
   const existing = await getOfficialRow(gameId, role);
@@ -492,7 +492,7 @@ export async function setOfficial(gameId, { role, refereeId = null, userId = nul
   return getGame(gameId);
 }
 
-export async function removeOfficial(gameId, role, { user = null, syncRunId = null, reason = null } = {}) {
+export async function removeOfficial(gameId, role, { user = null, syncRunId = null, reason = null, source = 'manual' } = {}) {
   if (!OFFICIAL_ROLES.includes(role)) throw new HttpError(400, 'Ruolo ufficiale di gara non valido.');
   const existing = await getOfficialRow(gameId, role);
   if (existing) {
@@ -503,7 +503,7 @@ export async function removeOfficial(gameId, role, { user = null, syncRunId = nu
       field: `ufficiale:${role}`,
       oldValue: officialLabel(label) || existing.external_name || '',
       newValue: '',
-      source: 'manual',
+      source,
       changedBy: user?.id || null,
       syncRunId,
       reason

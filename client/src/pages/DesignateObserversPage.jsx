@@ -4,6 +4,7 @@ import Select from '../components/Select.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
+import OfficialName from '../components/OfficialName.jsx';
 import { api, ApiError, downloadDesignationsExport } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
@@ -14,11 +15,6 @@ import ReportTypeBadge from '../components/ReportTypeBadge.jsx';
 import { gameDateKey, isGameInPeriod, formatPeriodLabel } from '../../../shared/gamePeriod.js';
 import { availabilityOnDate, formatAvailabilityPeriod, observerOptionForDate } from '../lib/observerAvailability.js';
 import { can } from '../../../shared/permissions.js';
-
-function refereeLabel(official) {
-  if (!official) return '—';
-  return official.refereeName || official.externalName || '—';
-}
 
 export default function DesignateObserversPage({ currentUser, season }) {
   const { activeCompetitions, competitionLabel } = useCompetitions();
@@ -319,8 +315,8 @@ export default function DesignateObserversPage({ currentUser, season }) {
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{formatDateTime(game.scheduledAt)}</td>
                         <td style={{ color: 'var(--muted)' }}>{game.matchday ?? '—'}</td>
                         <td style={{ fontWeight: 600 }}>{game.teamHome} - {game.teamAway}</td>
-                        <td>{refereeLabel(game.officials.referee1)}</td>
-                        <td>{refereeLabel(game.officials.referee2)}</td>
+                        <td><OfficialName official={game.officials.referee1} /></td>
+                        <td><OfficialName official={game.officials.referee2} /></td>
                         <td>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <GameStateBadge state={game.derivedState} />

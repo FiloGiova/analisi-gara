@@ -167,7 +167,7 @@ gamesRouter.get(
 
 gamesRouter.post('/aliases', requireCapability('aliases:manage'), asyncHandler(async (req, res) => {
   const { source, externalName, refereeId, userId } = req.body || {};
-  if (!['fip_public', 'xlsx'].includes(String(source))) {
+  if (!['fip_public', 'fip_analytics', 'xlsx'].includes(String(source))) {
     throw new HttpError(400, 'Origine alias non valida.');
   }
   if (userId) {

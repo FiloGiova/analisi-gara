@@ -1931,6 +1931,14 @@ dd {
 .status-badge.status-on-dark { background: rgba(255, 255, 255, 0.18); color: #fff; }
 .status-badge.status-on-dark::before { background: #fff; }
 
+/* Nome di un ufficiale di gara con accanto lo stato della designazione. */
+.official-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
 .common-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2021,6 +2029,24 @@ dd {
   margin: 6px 0 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+/* Giri di sincronizzazione automatica: uno per riga, separati da un filetto. */
+.scheduled-jobs {
+  display: grid;
+}
+
+.scheduled-jobs > .section-heading {
+  margin-bottom: 0;
+  padding: var(--space-3) 0;
+}
+
+.scheduled-jobs > .section-heading + .section-heading {
+  border-top: 1px solid var(--line-soft);
+}
+
+.scheduled-jobs > .section-heading:last-child {
+  padding-bottom: 0;
 }
 
 .tabs-card {
@@ -2532,12 +2558,20 @@ dd {
 }
 
 .error-banner,
-.success-banner {
+.success-banner,
+.warning-banner {
   display: grid;
   gap: 8px;
   padding: 14px 16px;
   border-radius: 18px;
   font-weight: 500;
+}
+
+/* Condizione da sistemare prima di poter agire (es. configurazione mancante). */
+.warning-banner {
+  background: var(--orange-soft);
+  border: 1px solid var(--orange-soft);
+  color: var(--orange-ink);
 }
 
 .error-banner {

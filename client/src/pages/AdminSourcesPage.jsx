@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCompetitions } from '../lib/competitions.jsx';
 import Select from '../components/Select.jsx';
+import SegmentedChoice from '../components/SegmentedChoice.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
@@ -8,12 +9,22 @@ import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
 import ListSkeleton from '../components/ListSkeleton.jsx';
 import { can } from '../../../shared/permissions.js';
 
+const SOURCE_TYPE_LABELS = {
+  fip_analytics: 'FIP Analytics',
+  fip_public: 'Sito FIP'
+};
+const SOURCE_TYPE_BY_LABEL = Object.fromEntries(Object.entries(SOURCE_TYPE_LABELS).map(([value, label]) => [label, value]));
+
+const ROLE_LABELS = { referee1: '1° arbitro', referee2: '2° arbitro', referee3: '3° arbitro' };
+
 function emptyForm(season) {
   return {
+    sourceType: 'fip_analytics',
     name: '',
     sportSeason: season,
     competition: '',
-    url: ''
+    url: '',
+    codCampionato: ''
   };
 }
 
@@ -24,10 +35,44 @@ const SYNC_STATUS_LABELS = {
   running: 'In corso'
 };
 
+function timesLabel(times = []) {
+  if (times.length <= 1) return `alle ${times[0] || '—'}`;
+  return `alle ${times.slice(0, -1).join(', ')} e alle ${times[times.length - 1]}`;
+}
+
+// Un giro automatico: cosa fa, quando, com'è andato l'ultimo.
+function ScheduledJob({ title, job, description, disabledReason }) {
+  const lastRun = job.lastRunKey ? formatDateTime(job.lastRunKey.replace(' ', 'T')) : null;
+  return (
+    <div className="section-heading">
+      <div>
+        <h3>{title}</h3>
+        <p>
+          {job.enabled ? description : disabledReason}
+          {job.enabled && job.alertsEnabled ? ' Gli errori vengono notificati via email.' : ''}
+        </p>
+        {lastRun ? (
+          <p>
+            Ultima esecuzione: {lastRun} · {SYNC_STATUS_LABELS[job.status] || job.status}
+            {job.summary?.totals
+              ? ` · ${job.summary.totals.success} riuscite, ${job.summary.totals.partial} con avvisi, ${job.summary.totals.error} errori`
+              : ''}
+          </p>
+        ) : null}
+      </div>
+      <span className={`status-pill status-${job.enabled ? job.status : 'idle'}`}>
+        {job.enabled ? (SYNC_STATUS_LABELS[job.status] || 'In attesa') : 'Disattivata'}
+      </span>
+    </div>
+  );
+}
+
 export default function AdminSourcesPage({ currentUser, season }) {
   const { activeCompetitions } = useCompetitions();
   const [sources, setSources] = useState([]);
   const [scheduledSync, setScheduledSync] = useState(null);
+  const [analyticsSync, setAnalyticsSync] = useState(null);
+  const [campionati, setCampionati] = useState({ status: 'idle', list: [], error: '' });
   const [form, setForm] = useState(() => emptyForm(season));
   const [showForm, setShowForm] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
@@ -50,6 +95,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
       const data = await api.listSources({ season });
       setSources(data.sources || []);
       setScheduledSync(data.scheduledSync || null);
+      setAnalyticsSync(data.analyticsSync || null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Impossibile caricare le sorgenti.');
     } finally {
@@ -93,6 +139,45 @@ export default function AdminSourcesPage({ currentUser, season }) {
     load();
   }, [isAdmin, season]);
 
+  const analyticsConfigured = Boolean(analyticsSync?.configured);
+  const wantsCampionati = showForm && form.sourceType === 'fip_analytics' && analyticsConfigured;
+
+  // I campionati FIP si leggono dall'account configurato solo quando servono.
+  useEffect(() => {
+    if (!wantsCampionati) return undefined;
+    let cancelled = false;
+    setCampionati({ status: 'loading', list: [], error: '' });
+    api
+      .listAnalyticsCampionati({ season })
+      .then((data) => {
+        if (!cancelled) setCampionati({ status: 'ready', list: data.campionati || [], error: '' });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCampionati({
+            status: 'error',
+            list: [],
+            error: err instanceof ApiError ? err.message : 'Impossibile leggere i campionati da FIP Analytics.'
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsCampionati, season]);
+
+  // Campionati con una sorgente FIP Analytics attiva: sulle gare che ne
+  // arrivano, il sito FIP aggiorna solo risultato e stato.
+  const analyticsCovered = useMemo(
+    () =>
+      new Set(
+        sources
+          .filter((source) => source.sourceType === 'fip_analytics' && source.active && source.competition)
+          .map((source) => `${source.sportSeason}|${source.competition}`)
+      ),
+    [sources]
+  );
+
   if (!isAdmin) {
     return <div className="empty-state"><h2>Sezione riservata agli amministratori</h2></div>;
   }
@@ -107,7 +192,10 @@ export default function AdminSourcesPage({ currentUser, season }) {
     setError('');
     setSuccess('');
     try {
-      const data = await api.createSource(form);
+      const payload = form.sourceType === 'fip_analytics'
+        ? { sourceType: 'fip_analytics', sportSeason: form.sportSeason, name: form.name, competition: form.competition, codCampionato: form.codCampionato }
+        : { sportSeason: form.sportSeason, name: form.name, competition: form.competition, url: form.url };
+      const data = await api.createSource(payload);
       const created = data.sources || [];
       const names = created.map((s) => s.name).join(', ');
       const base = created.length > 1
@@ -194,8 +282,9 @@ export default function AdminSourcesPage({ currentUser, season }) {
           <p className="eyebrow">Amministrazione · stagione {season}</p>
           <h1>Sorgenti gare e sincronizzazioni</h1>
           <p>
-            Incolla il link pubblico FIP del girone (pagina "Risultati") per importare calendario e
-            designazioni. La sincronizzazione non tocca mai gli osservatori né i dati bloccati.
+            FIP Analytics porta calendario e designazioni arbitrali appena il designatore le carica; il
+            sito FIP porta risultati e stato delle gare. La sincronizzazione non tocca mai gli osservatori
+            né i dati bloccati.
           </p>
         </div>
         {!showForm ? (
@@ -210,31 +299,35 @@ export default function AdminSourcesPage({ currentUser, season }) {
       {error ? <div className="error-banner">{error}</div> : null}
       {success ? <div className="success-banner">{success}</div> : null}
 
-      {scheduledSync ? (
+      {scheduledSync || analyticsSync ? (
         <section className="toolbar-card">
-          <div className="section-heading" style={{ marginBottom: 0 }}>
+          <div className="section-heading">
             <div>
               <h2>Sincronizzazione automatica</h2>
-              <p>
-                {scheduledSync.enabled
-                  ? `Attiva ogni giorno alle ${scheduledSync.time} (${scheduledSync.timezone}).`
-                  : 'Disattivata nelle variabili d’ambiente.'}
-                {' '}Vengono elaborate in sequenza soltanto le sorgenti attive.
-                {scheduledSync.alertsEnabled ? ' Gli errori vengono notificati via email.' : ''}
-              </p>
-              {scheduledSync.lastRunDate ? (
-                <p style={{ marginTop: '5px' }}>
-                  Ultima esecuzione: {scheduledSync.lastRunDate} ·{' '}
-                  {SYNC_STATUS_LABELS[scheduledSync.status] || scheduledSync.status}
-                  {scheduledSync.summary?.totals
-                    ? ` · ${scheduledSync.summary.totals.success} riuscite, ${scheduledSync.summary.totals.partial} con avvisi, ${scheduledSync.summary.totals.error} errori`
-                    : ''}
-                </p>
-              ) : null}
+              <p>Vengono elaborate in sequenza soltanto le sorgenti attive, ognuna nel proprio giro.</p>
             </div>
-            <span className={`status-pill status-${scheduledSync.enabled ? scheduledSync.status : 'idle'}`}>
-              {scheduledSync.enabled ? (SYNC_STATUS_LABELS[scheduledSync.status] || 'In attesa') : 'Disattivata'}
-            </span>
+          </div>
+          <div className="scheduled-jobs">
+            {analyticsSync ? (
+              <ScheduledJob
+                title="FIP Analytics · calendario e designazioni"
+                job={analyticsSync}
+                description={`Ogni giorno ${timesLabel(analyticsSync.times)} (${analyticsSync.timezone}).`}
+                disabledReason={
+                  analyticsSync.configured
+                    ? 'Disattivata nelle variabili d’ambiente (ENABLE_SCHEDULED_SYNC).'
+                    : 'Credenziali assenti: impostare FIP_ANALYTICS_USERNAME e FIP_ANALYTICS_PASSWORD nelle variabili d’ambiente.'
+                }
+              />
+            ) : null}
+            {scheduledSync ? (
+              <ScheduledJob
+                title="Sito FIP · risultati e stato gare"
+                job={{ ...scheduledSync, lastRunKey: scheduledSync.lastRunKey || scheduledSync.lastRunDate }}
+                description={`Ogni giorno ${timesLabel([scheduledSync.time])} (${scheduledSync.timezone}).`}
+                disabledReason="Disattivata nelle variabili d’ambiente (ENABLE_SCHEDULED_SYNC)."
+              />
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -245,8 +338,11 @@ export default function AdminSourcesPage({ currentUser, season }) {
             <div>
               <h2>Esito sincronizzazione — {syncResult.sourceName}</h2>
               <p>
-                {syncResult.giornate} giornate lette · {syncResult.created} gare create ·{' '}
-                {syncResult.updated} aggiornate · {syncResult.officialsUpdated} designazioni aggiornate
+                {syncResult.sourceType === 'fip_analytics'
+                  ? `${syncResult.gamesRead} gare lette`
+                  : `${syncResult.giornate} giornate lette`}
+                {' · '}{syncResult.created} gare create · {syncResult.updated} aggiornate ·{' '}
+                {syncResult.officialsUpdated} designazioni aggiornate
               </p>
             </div>
             <button type="button" className="ghost-button" onClick={() => setSyncResult(null)}>Chiudi</button>
@@ -261,7 +357,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
               <ul style={{ paddingLeft: '18px', display: 'grid', gap: '4px' }}>
                 {syncResult.unresolved.map((item, idx) => (
                   <li key={idx}>
-                    <strong>{item.externalName}</strong> — gara {formatMatchNumber(item.matchNumber)} ({item.role})
+                    <strong>{item.externalName}</strong> — gara {formatMatchNumber(item.matchNumber)} ({ROLE_LABELS[item.role] || item.role})
                     {item.candidates?.length ? (
                       <span style={{ color: 'var(--muted)' }}>
                         {' '}· candidati: {item.candidates.map((c) => c.fullName).join(', ')}
@@ -283,7 +379,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
                       <th>Gara</th>
                       <th>Campo</th>
                       <th>Valore attuale</th>
-                      <th>Valore FIP</th>
+                      <th>Valore in arrivo</th>
                       <th>Origini</th>
                       <th>Azione proposta</th>
                     </tr>
@@ -332,35 +428,78 @@ export default function AdminSourcesPage({ currentUser, season }) {
         <form className="common-card" onSubmit={handleCreate}>
           <div className="section-heading">
             <div>
-              <h2>Nuova sorgente FIP</h2>
+              <h2>Nuova sorgente</h2>
               <p>
-                Apri fip.it → Risultati → seleziona campionato e fase, poi copia qui l'indirizzo
-                della pagina: i gironi vengono trovati da soli e viene creata una sorgente per
-                ognuno. Sono accettati solo link https del sito fip.it.
+                {form.sourceType === 'fip_analytics'
+                  ? 'Scegli il campionato FIP: viene creata una sorgente per ogni girone, con calendario e designazioni visibili appena il designatore le carica (anche quelle ancora temporanee).'
+                  : 'Apri fip.it → Risultati → seleziona campionato e fase, poi copia qui l’indirizzo della pagina: i gironi vengono trovati da soli e viene creata una sorgente per ognuno. Sono accettati solo link https del sito fip.it.'}
               </p>
             </div>
             <button type="button" className="ghost-button" onClick={() => setShowForm(false)}>Annulla</button>
           </div>
-          <div className="common-grid">
+
+          <SegmentedChoice
+            label="Da dove arrivano le gare"
+            compact
+            options={Object.values(SOURCE_TYPE_LABELS)}
+            value={SOURCE_TYPE_LABELS[form.sourceType]}
+            onChange={(label) => updateForm('sourceType', SOURCE_TYPE_BY_LABEL[label])}
+          />
+
+          {form.sourceType === 'fip_analytics' && !analyticsConfigured ? (
+            <div className="warning-banner" style={{ marginTop: 'var(--space-3)' }}>
+              Credenziali FIP Analytics non configurate: impostare FIP_ANALYTICS_USERNAME e FIP_ANALYTICS_PASSWORD
+              nelle variabili d’ambiente del server e riavviarlo.
+            </div>
+          ) : null}
+          {form.sourceType === 'fip_analytics' && campionati.status === 'error' ? (
+            <div className="error-banner" style={{ marginTop: 'var(--space-3)' }}>{campionati.error}</div>
+          ) : null}
+
+          <div className="common-grid" style={{ marginTop: 'var(--space-3)' }}>
             <div className="field field-span-3">
               <span>Stagione della nuova sorgente</span>
               <strong>{season}</strong>
             </div>
-            <label className="field field-span-3">
-              <span className="required-label">Link FIP del girone <small className="required-symbol">*</small></span>
-              <input
-                value={form.url}
-                onChange={(e) => updateForm('url', e.target.value)}
-                placeholder="https://fip.it/risultati/?...&codice_girone=..."
-                required
-              />
-            </label>
+            {form.sourceType === 'fip_analytics' ? (
+              <label className="field field-span-3">
+                <span className="required-label">Campionato FIP <small className="required-symbol">*</small></span>
+                <Select
+                  value={form.codCampionato}
+                  onChange={(v) => updateForm('codCampionato', v)}
+                  disabled={!analyticsConfigured || campionati.status !== 'ready'}
+                  placeholder={
+                    campionati.status === 'loading'
+                      ? 'Leggo i campionati da FIP Analytics…'
+                      : campionati.list.length || campionati.status !== 'ready'
+                        ? '— Seleziona —'
+                        : 'Nessun campionato visibile per questa stagione'
+                  }
+                  options={campionati.list.map((c) => ({ value: c.code, label: `${c.label} (${c.code})` }))}
+                  searchable
+                />
+              </label>
+            ) : (
+              <label className="field field-span-3">
+                <span className="required-label">Link FIP del girone <small className="required-symbol">*</small></span>
+                <input
+                  value={form.url}
+                  onChange={(e) => updateForm('url', e.target.value)}
+                  placeholder="https://fip.it/risultati/?...&codice_girone=..."
+                  required
+                />
+              </label>
+            )}
             <label className="field field-span-3">
               Nome visualizzato (con più gironi diventa un prefisso, es. "DR1 — Girone A")
-              <input value={form.name} onChange={(e) => updateForm('name', e.target.value)} placeholder="es. DR1 Piemonte" />
+              <input value={form.name} onChange={(e) => updateForm('name', e.target.value)} placeholder="es. DR1" />
             </label>
             <label className="field field-span-2">
-              Campionato
+              {form.sourceType === 'fip_analytics' ? (
+                <span className="required-label">Campionato della web app <small className="required-symbol">*</small></span>
+              ) : (
+                'Campionato'
+              )}
               <Select
                 value={form.competition}
                 onChange={(v) => updateForm('competition', v)}
@@ -371,7 +510,14 @@ export default function AdminSourcesPage({ currentUser, season }) {
           </div>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
             <button type="button" className="ghost-button" onClick={() => setShowForm(false)}>Annulla</button>
-            <button type="submit" className="primary-button" disabled={busy}>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={
+                busy ||
+                (form.sourceType === 'fip_analytics' && (!analyticsConfigured || !form.codCampionato || !form.competition))
+              }
+            >
               {busy ? 'Creazione...' : 'Crea sorgente'}
             </button>
           </div>
@@ -390,7 +536,8 @@ export default function AdminSourcesPage({ currentUser, season }) {
 
         {!loading && sources.length === 0 ? (
           <div className="empty-state" style={{ padding: '24px', textAlign: 'center' }}>
-            Nessuna sorgente configurata. Clicca "+ Nuova sorgente" e incolla il link FIP del girone.
+            Nessuna sorgente configurata. Clicca "+ Nuova sorgente" e scegli il campionato su FIP Analytics
+            oppure incolla il link FIP del girone.
           </div>
         ) : null}
 
@@ -416,15 +563,33 @@ export default function AdminSourcesPage({ currentUser, season }) {
                         <button type="button" className="ghost-button" onClick={() => setRenaming(null)}>Annulla</button>
                       </div>
                     ) : (
-                      <strong>{source.name}</strong>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <strong>{source.name}</strong>
+                        <span className={`status-badge status-badge-sm ${source.sourceType === 'fip_analytics' ? 'status-info' : 'status-neutral'}`}>
+                          {SOURCE_TYPE_LABELS[source.sourceType] || source.sourceType}
+                        </span>
+                      </div>
                     )}
                     <div style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>
                       {source.sportSeason}
                       {source.competition ? ` · ${source.competition}` : ''}
+                      {source.sourceType === 'fip_analytics' && source.params?.cod_campionato
+                        ? ` · Campionato FIP ${source.params.cod_campionato}${source.params.fase ? `, ${source.params.fase}` : ''}`
+                        : ''}
                       {' · '}
                       Ultima sincronizzazione: {formatDateTime(source.lastSyncedAt)}
                       {source.lastSyncStatus ? ` (${SYNC_STATUS_LABELS[source.lastSyncStatus] || source.lastSyncStatus})` : ''}
                     </div>
+                    {source.sourceType === 'fip_analytics' && analyticsSync && !analyticsConfigured ? (
+                      <div style={{ color: 'var(--orange-ink)', fontSize: '0.82rem' }}>
+                        Sincronizzazione non disponibile: credenziali FIP Analytics assenti sul server.
+                      </div>
+                    ) : null}
+                    {source.sourceType === 'fip_public' && source.active && analyticsCovered.has(`${source.sportSeason}|${source.competition}`) ? (
+                      <div style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>
+                        Sulle gare che arrivano anche da FIP Analytics, da qui si aggiornano solo risultato e stato.
+                      </div>
+                    ) : null}
                   </div>
                   <span className={`status-badge ${source.active ? 'status-final' : 'status-draft'}`} style={{ padding: '3px 8px', fontSize: '0.72rem' }}>
                     {source.active ? 'Attiva' : 'Disattivata'}
@@ -434,7 +599,7 @@ export default function AdminSourcesPage({ currentUser, season }) {
                       type="button"
                       className="primary-button"
                       onClick={() => handleSync(source)}
-                      disabled={Boolean(syncingId) || !source.active}
+                      disabled={Boolean(syncingId) || !source.active || (source.sourceType === 'fip_analytics' && !analyticsConfigured)}
                     >
                       {syncingId === source.id ? 'Sincronizzo…' : 'Sincronizza'}
                     </button>

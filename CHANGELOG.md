@@ -12,6 +12,108 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-25 — Designazioni in anticipo da FIP Analytics
+
+**Cosa cambia.** Nuovo tipo di sorgente gare **FIP Analytics**
+(analytics.fip.it): con l'account da designatore dell'utente legge calendario e
+designazioni arbitrali appena il designatore le carica, senza aspettare la
+pubblicazione sul sito FIP (circa 5 giorni) né il giro manuale template XLSX →
+designatore → reimport, che resta comunque disponibile. Il sito FIP pubblico
+resta la fonte di risultato e stato delle gare: servono entrambe le sorgenti.
+
+**Decisioni dell'utente (24–25/09).**
+- Le designazioni FIP in stato *temporanea* si importano e si vedono subito,
+  come designazione provvisoria (badge «Temporanea» in elenco gare, designa
+  osservatori e dettaglio gara); *trasmessa* e *accettata* sono confermate;
+  rifiuti e revoche liberano il posto. Le *pre_designata* non si importano.
+- Precedenza: FIP Analytics crea le gare e decide calendario e arbitri; il sito
+  pubblico, sulle gare passate a FIP Analytics, aggiorna solo punteggio e stato.
+  Modifiche manuali e blocchi restano rispettati come prima (conflitto da
+  verificare). Disattivando la sorgente FIP Analytics il sito pubblico torna ad
+  aggiornare tutto.
+- Giro automatico FIP Analytics alle 11:00 e alle 21:00 (Europe/Rome); il giro
+  del sito pubblico resta una volta al giorno all'orario già configurato.
+
+**Come funziona.**
+- [src/services/fip/fipAnalyticsAdapter.js](src/services/fip/fipAnalyticsAdapter.js):
+  login con password (`POST /api/auth/login`), una sola `POST /api/gare/search`
+  per l'intera stagione di un campionato (header `X-Stagione`, es. `2026_27`).
+  Chiamate consentite solo da elenco (`ALLOWED_CALLS`: login, ricerca gare,
+  filtri): l'account può anche modificare designazioni, il codice no. Dalle
+  risposte, che contengono anche codice fiscale, telefono, email e data di
+  nascita di ogni ufficiale, escono solo nome, tessera, ruolo e stato.
+- Numero gara a sei cifre come il sito pubblico ("000730" = `num_gara` 730),
+  giornata continua tra andata e ritorno, campo di gioco nello stesso formato del
+  sito pubblico: le due sorgenti si ritrovano sulla stessa riga senza modifiche
+  fittizie. Arbitri riconosciuti prima dalla tessera (senza zeri iniziali),
+  poi da alias e nome; gli alias confermati per il sito FIP valgono anche qui.
+- Una sorgente per girone (e fase), creata in automatico scegliendo il
+  campionato FIP: l'elenco gare resta raggruppato per girone come oggi.
+- Una gara già importata dal sito pubblico passa alla sorgente FIP Analytics
+  al primo passaggio (`competition_source_id`), con riga `sorgente` nello
+  storico modifiche.
+- Scheduler generalizzato a due giri indipendenti (`fip_daily_sync`,
+  `fip_analytics_sync`), stessa tabella `scheduled_jobs`: la chiave di
+  esecuzione di FIP Analytics è "data orario", così ogni orario gira una volta
+  sola anche con riavvii, e se il processo era spento all'orario il giro viene
+  recuperato. Più gironi dello stesso campionato nello stesso giro: una sola
+  richiesta.
+- `removeOfficial` registra ora l'origine reale della rimozione (prima sempre
+  `manual`).
+
+**File.** Nuovi: `src/services/fip/fipAnalyticsAdapter.js`,
+`client/src/components/OfficialName.jsx`, `tests/fipAnalyticsAdapter.test.js`,
+`tests/fipAnalyticsSync.test.js`, `tests/helpers/fipAnalyticsFixture.js` (dati
+inventati). Modificati: `src/services/syncService.js`,
+`src/services/scheduledSyncService.js`, `src/services/gameService.js`,
+`src/routes/sources.routes.js`, `src/routes/games.routes.js`, `src/config.js`,
+`src/database/schema.postgres.sql`, `src/database/connection.js`,
+`client/src/pages/AdminSourcesPage.jsx`, `GameDetailPage.jsx`, `GamesPage.jsx`,
+`DesignateObserversPage.jsx`, `client/src/lib/api.js`, `client/src/styles.css`
+(`.official-name`, `.warning-banner`, `.scheduled-jobs`), `package.json`
+(`test:unit`), `.env.example`, `render.yaml`, `README.md`, `CLAUDE.md`.
+
+**Database.** Nessuna tabella nuova. All'avvio `migrateFipAnalyticsSources()`
+allarga una sola volta i CHECK di `competition_sources.source_type`,
+`games.external_source`, `game_officials.source` e `game_changes.source` con
+`fip_analytics` (idempotente). Le sincronizzazioni FIP Analytics usano il tipo
+`fip_sync` già esistente in `sync_runs`. Ripristino: disattivare o eliminare le
+sorgenti FIP Analytics; le gare restano e il sito pubblico torna ad aggiornarle.
+
+**Configurazione.** `FIP_ANALYTICS_USERNAME`, `FIP_ANALYTICS_PASSWORD`,
+`FIP_ANALYTICS_SYNC_TIMES` (default `11:00,21:00`). Il giro automatico richiede
+anche `ENABLE_SCHEDULED_SYNC=true`. Nessuna nuova dipendenza.
+
+**Verifiche.**
+- Esplorazione del 24/09 con l'account dell'utente (sola lettura): login con
+  sola password, nessun secondo fattore attivo (l'utente lo riteneva via email);
+  Serie C = `C1` (306 gare), DR1 = `D` (2 gironi da 210). Confronto con il sito
+  pubblico: 16/16 gare coincidenti per numero, data e ora; poi 34 gare su 5
+  pagine con campo, squadre, data e giornata: 32 identiche, 2 differenti solo
+  per un errore di codifica del sito pubblico ("Libertа" con la «а» cirillica),
+  corretto su FIP Analytics.
+- Il 25/09 un primo login con le credenziali del `.env` è stato rifiutato
+  ("Utente o password errati"): la password era cambiata. Dopo che l'utente
+  l'ha aggiornata nel `.env`, login riuscito (ruolo designatore).
+- Prova end-to-end il 25/09 sul database locale `fischiolab_dev`, con le
+  credenziali reali e dal pulsante "Sincronizza" nel browser: sorgente Serie C,
+  306 gare lette, 34 aggiornate, tutte per un cambio reale di denominazione
+  (una squadra ha aggiunto lo sponsor al nome), 1 designazione aggiornata; il
+  modulo "Nuova sorgente" ha caricato dalla piattaforma l'elenco reale dei
+  campionati. La password va impostata anche su Render.
+- `npm test`: tutta la suite verde, con 18 test nuovi (adapter, precedenza tra
+  sorgenti, stati FIP, blocchi, credenziali errate, giri 11:00/21:00).
+- Pagine controllate in un browser headless su `fischiolab_dev` (mai
+  produzione), popolato dai campioni reali tramite il codice di sync con fetch
+  finto: Sorgenti (credenziali assenti e configurate), Nuova sorgente nelle
+  due modalità, Gare, Dettaglio gara, Designa osservatori, a 1280 e 390 px,
+  nessun errore in console.
+
+**Da fare in produzione.** Impostare `FIP_ANALYTICS_USERNAME` e
+`FIP_ANALYTICS_PASSWORD` su Render, creare da Admin → Sorgenti le sorgenti FIP
+Analytics per Serie C e DR1 della stagione 2026/2027 e lanciare la prima
+sincronizzazione di ciascuna.
+
 ## 2026-09-23 — Rapporto completo secondo le linee guida 2026/2027
 
 **Cosa cambia.** Il rapporto completo adotta il modello federale 2026/2027:

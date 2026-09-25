@@ -4,6 +4,7 @@ import Select from '../components/Select.jsx';
 import NewReportChoice from '../components/NewReportChoice.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
 import GameStateBadge from '../components/GameStateBadge.jsx';
+import { ProvisionalBadge } from '../components/OfficialName.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { navigate } from '../lib/navigation.js';
 import { formatMatchNumber, formatDateTime } from '../lib/formatters.js';
@@ -18,7 +19,8 @@ const REFEREE_ROLES = [
 ];
 
 const SOURCE_LABELS = {
-  fip_public: 'FIP',
+  fip_public: 'Sito FIP',
+  fip_analytics: 'FIP Analytics',
   xlsx: 'XLSX',
   federation_pdf: 'PDF federale',
   manual: 'Manuale'
@@ -454,7 +456,10 @@ export default function GameDetailPage({ id, currentUser }) {
         <div className="section-heading">
           <div>
             <h2>Arbitri designati</h2>
-            <p>Dati con provenienza: FIP pubblico, import XLSX o inserimento manuale.</p>
+            <p>
+              Dati con provenienza: FIP Analytics, sito FIP, import XLSX o inserimento manuale. Le designazioni
+              «Temporanea» sono già caricate dal designatore ma possono ancora cambiare.
+            </p>
           </div>
         </div>
         <div style={{ display: 'grid', gap: '14px' }}>
@@ -473,6 +478,7 @@ export default function GameDetailPage({ id, currentUser }) {
                       <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>({official.externalName})</span>
                     ) : null}
                     <SourceBadge official={official} />
+                    <ProvisionalBadge official={official} />
                     {unresolved ? (
                       <span className="status-badge status-badge-sm status-cancelled">
                         Da associare all'anagrafica
