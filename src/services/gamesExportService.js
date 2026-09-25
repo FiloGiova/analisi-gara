@@ -37,24 +37,16 @@ export function filterGamesForExport(games, {
   competition = '',
   matchday = '',
   sourceNames = [],
-  refereeId = null,
   search = '',
   dateFrom = '',
   dateTo = ''
 } = {}) {
-  const cleanRefereeId = Number(refereeId) || null;
   const query = String(search || '').toLowerCase();
   return games.filter((game) => {
     if (!isGameInPeriod(game, dateFrom, dateTo)) return false;
     if (competition && game.competition !== competition) return false;
     if (matchday && String(game.matchday) !== String(matchday)) return false;
     if (sourceNames.length && !sourceNames.includes(game.sourceName)) return false;
-    if (cleanRefereeId) {
-      const hasReferee = ['referee1', 'referee2', 'referee3'].some(
-        (role) => game.officials[role]?.refereeId === cleanRefereeId
-      );
-      if (!hasReferee) return false;
-    }
     if (query) {
       const haystack = [
         game.matchNumber,
@@ -76,7 +68,6 @@ export async function buildGamesWorkbook({
   competition = '',
   matchday = '',
   sourceNames = [],
-  refereeId = null,
   search = '',
   dateFrom = '',
   dateTo = ''
@@ -84,14 +75,8 @@ export async function buildGamesWorkbook({
   const allGames = await listGames({ season, competitions });
   const games = filterGamesForExport(
     allGames,
-    { competition, matchday, sourceNames, refereeId, search, dateFrom, dateTo }
+    { competition, matchday, sourceNames, search, dateFrom, dateTo }
   );
-  const cleanRefereeId = Number(refereeId) || null;
-  const selectedReferee = cleanRefereeId
-    ? allGames
-        .flatMap((game) => ['referee1', 'referee2', 'referee3'].map((role) => game.officials[role]))
-        .find((official) => official?.refereeId === cleanRefereeId)
-    : null;
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'FischioLab';
@@ -114,7 +99,6 @@ export async function buildGamesWorkbook({
     `Fasi: ${sourceNames.length ? sourceNames.join(', ') : 'tutte'}`,
     `Giornata: ${matchday || 'tutte'}`,
     `Periodo: ${formatPeriodLabel(dateFrom, dateTo)}`,
-    `Arbitro: ${selectedReferee ? officialLabel(selectedReferee) : cleanRefereeId ? `#${cleanRefereeId}` : 'tutti'}`,
     `Ricerca: ${String(search || '').trim() || 'nessuna'}`
   ].join(' · ');
 

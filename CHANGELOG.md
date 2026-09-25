@@ -12,6 +12,25 @@ Nota: oltre a questo file, ogni modifica ai **dati** delle gare (manuale o da
 sincronizzazione) è tracciata nella tabella `game_changes` ed è visibile nella
 sezione "Storico modifiche" del dettaglio gara.
 
+## 2026-09-25 — Elenco gare senza filtro arbitro
+
+**Cosa cambia.** Tolto il filtro «Arbitro» dall'elenco gare, su richiesta
+dell'utente: mandava a capo la riga dei filtri e non serviva, perché la scheda
+dell'arbitro ha già le sue designazioni e la barra di ricerca trova le gare per
+nome dell'arbitro (sia nell'elenco sia nell'export XLSX). Tolto di conseguenza
+anche il parametro `refereeId` dell'export (`downloadGamesExport`,
+`GET /api/games/export`, `buildGamesWorkbook`) e la riga «Arbitro» nella
+descrizione dei filtri del file. Resta il filtro per arbitro dell'API elenco
+gare (`GET /api/games?refereeId=`), usato dalla scheda arbitro.
+
+**File.** `client/src/pages/GamesPage.jsx`, `client/src/lib/api.js`,
+`src/routes/games.routes.js`, `src/services/gamesExportService.js`.
+Nessuna migrazione.
+
+**Verifiche.** `npm test` tutto verde; elenco gare controllato nel browser su
+`fischiolab_dev` a 1280 e 390 px: filtri su una riga, ricerca «chieppa» →
+una gara, nessun errore in console.
+
 ## 2026-09-25 — Designazioni in anticipo da FIP Analytics
 
 **Cosa cambia.** Nuovo tipo di sorgente gare **FIP Analytics**
@@ -109,10 +128,13 @@ anche `ENABLE_SCHEDULED_SYNC=true`. Nessuna nuova dipendenza.
   due modalità, Gare, Dettaglio gara, Designa osservatori, a 1280 e 390 px,
   nessun errore in console.
 
-**Da fare in produzione.** Impostare `FIP_ANALYTICS_USERNAME` e
-`FIP_ANALYTICS_PASSWORD` su Render, creare da Admin → Sorgenti le sorgenti FIP
-Analytics per Serie C e DR1 della stagione 2026/2027 e lanciare la prima
-sincronizzazione di ciascuna.
+**Rilascio.** Commit `426262e` portato su `main` e pubblicato su Render il
+25/09; verificato che `/app` serve la nuova interfaccia. Credenziali
+`FIP_ANALYTICS_*` impostate su Render dall'utente (riferito). La Serie C era già
+in app dal sito federale: per ora si tengono entrambe le sorgenti.
+**Da fare:** creare da Admin → Sorgenti le sorgenti FIP Analytics per Serie C
+e DR1 della stagione 2026/2027 e lanciare la prima sincronizzazione di
+ciascuna.
 
 ## 2026-09-23 — Rapporto completo secondo le linee guida 2026/2027
 

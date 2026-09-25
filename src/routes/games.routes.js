@@ -152,7 +152,6 @@ gamesRouter.get(
       competition: String(req.query.competition || '').trim(),
       matchday: String(req.query.matchday || '').trim(),
       sourceNames: repeatedParam(req, 'sources'),
-      refereeId: req.query.refereeId ? Number(req.query.refereeId) : null,
       search: String(req.query.search || ''),
       dateFrom: periodParam(req, 'dateFrom'),
       dateTo: periodParam(req, 'dateTo')

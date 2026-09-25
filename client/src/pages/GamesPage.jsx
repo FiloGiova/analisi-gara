@@ -70,7 +70,6 @@ export default function GamesPage({ currentUser, season }) {
   const [matchday, setMatchday] = useState('');
   const [competition, setCompetition] = useState('');
   const [sourceFilter, setSourceFilter] = useState([]); // fasi selezionate (menu a tendina multi)
-  const [refereeFilter, setRefereeFilter] = useState('');
   const [search, setSearch] = useState('');
   // Il periodo apre l'elenco sulla giornata in corso invece che sulla prima di
   // ottobre; l'ultimo scelto resta per la sessione (tornare dal dettaglio gara
@@ -106,7 +105,6 @@ export default function GamesPage({ currentUser, season }) {
     setMatchday('');
     setCompetition('');
     setSourceFilter([]);
-    setRefereeFilter('');
     setForm(EMPTY_FORM);
     setShowForm(false);
     if (canManage) loadGames();
@@ -129,8 +127,8 @@ export default function GamesPage({ currentUser, season }) {
 
   const showCompetitionFilter = !isScopedOnly(currentUser, 'games:manage') || competitionOptions.length > 1;
 
-  // Gli altri filtri si restringono al campionato scelto: fasi, giornate e
-  // arbitri di un altro campionato non servono a nessuno.
+  // Gli altri filtri si restringono al campionato scelto: fasi e giornate di
+  // un altro campionato non servono a nessuno.
   const gamesInCompetition = useMemo(
     () => (competition ? games.filter((game) => game.competition === competition) : games),
     [games, competition]
@@ -140,21 +138,6 @@ export default function GamesPage({ currentUser, season }) {
     () => Array.from(new Set(gamesInCompetition.map((g) => g.matchday).filter((m) => m !== null))).sort((a, b) => a - b),
     [gamesInCompetition]
   );
-
-  const refereeOptions = useMemo(() => {
-    const map = new Map();
-    for (const game of gamesInCompetition) {
-      for (const role of ['referee1', 'referee2', 'referee3']) {
-        const official = game.officials[role];
-        if (official?.refereeId) {
-          map.set(official.refereeId, official.refereeName || official.externalName);
-        }
-      }
-    }
-    return [...map.entries()]
-      .map(([id, label]) => ({ value: String(id), label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [gamesInCompetition]);
 
   const sourceOptions = useMemo(
     () => Array.from(new Set(gamesInCompetition.map((g) => g.sourceName).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
@@ -171,13 +154,6 @@ export default function GamesPage({ currentUser, season }) {
     if (competition && game.competition !== competition) return false;
     if (matchday && String(game.matchday) !== matchday) return false;
     if (sourceFilter.length && !sourceFilter.includes(game.sourceName)) return false;
-    if (refereeFilter) {
-      const refereeId = Number(refereeFilter);
-      const hasReferee = ['referee1', 'referee2', 'referee3'].some(
-        (role) => game.officials[role]?.refereeId === refereeId
-      );
-      if (!hasReferee) return false;
-    }
     if (search) {
       const q = search.toLowerCase();
       const haystack = [
@@ -220,7 +196,6 @@ export default function GamesPage({ currentUser, season }) {
       matchday,
       competition,
       sourceNames: sourceFilter,
-      refereeId: refereeFilter,
       search,
       dateFrom: period.from,
       dateTo: period.to
@@ -377,14 +352,12 @@ export default function GamesPage({ currentUser, season }) {
             (competition ? 1 : 0) +
             (sourceFilter.length ? 1 : 0) +
             (matchday ? 1 : 0) +
-            (refereeFilter ? 1 : 0) +
             (hasPeriod ? 1 : 0)
           }
           onReset={() => {
             setCompetition('');
             setSourceFilter([]);
             setMatchday('');
-            setRefereeFilter('');
             setPeriod({ from: '', to: '' });
           }}
         >
@@ -421,16 +394,6 @@ export default function GamesPage({ currentUser, season }) {
             placeholderOnEmpty
             options={[{ value: '', label: 'Tutte le giornate' }, ...matchdays.map((m) => ({ value: String(m), label: `Giornata ${m}` }))]}
           />
-          {refereeOptions.length ? (
-            <Select
-              value={refereeFilter}
-              onChange={setRefereeFilter}
-              placeholder="Arbitro"
-              placeholderOnEmpty
-              options={[{ value: '', label: 'Tutti gli arbitri' }, ...refereeOptions]}
-              searchable
-            />
-          ) : null}
         </FilterBar>
 
         {loading ? <ListSkeleton rows={6} /> : null}

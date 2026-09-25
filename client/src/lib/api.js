@@ -407,7 +407,6 @@ export function downloadGamesExport({
   competition = '',
   matchday = '',
   sourceNames = [],
-  refereeId = '',
   search = '',
   dateFrom = '',
   dateTo = ''
@@ -417,7 +416,6 @@ export function downloadGamesExport({
   if (competition) params.set('competition', competition);
   if (matchday) params.set('matchday', matchday);
   sourceNames.forEach((source) => params.append('sources', source));
-  if (refereeId) params.set('refereeId', refereeId);
   if (search) params.set('search', search);
   if (dateFrom) params.set('dateFrom', dateFrom);
   if (dateTo) params.set('dateTo', dateTo);
